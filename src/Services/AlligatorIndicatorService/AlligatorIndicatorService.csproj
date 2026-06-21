@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-AlligatorIndicatorService-92baad93-0fc9-4578-b44b-3ffc9a654847</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+    <PackageReference Include="StackExchange.Redis" Version="3.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />
+  </ItemGroup>
+</Project>

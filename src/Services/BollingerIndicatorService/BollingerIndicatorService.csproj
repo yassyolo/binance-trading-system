@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-BollingerIndicatorService-20771f60-1e3c-433e-a76a-72810473ca7b</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+    <PackageReference Include="StackExchange.Redis" Version="3.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />
+  </ItemGroup>
+</Project>
