@@ -11,6 +11,12 @@ public static class RedisNames
     public static string BinanceEventChannel(string symbol)
         => $"binance_futures_events:{symbol.ToUpperInvariant()}";
 
+    public static string BotPositionKey(string botName, string shortId)
+    => $"{botName}:position:{shortId}";
+
+    public static string BotPositionLockKey(string botName, string shortId)
+        => $"{BotPositionKey(botName, shortId)}:lock";
+
     public const string UserStreamOrder = "binance:userstream:order";
     public const string UserStreamAccount = "binance:userstream:account";
     public const string UserStreamRaw = "binance:userstream:raw";
