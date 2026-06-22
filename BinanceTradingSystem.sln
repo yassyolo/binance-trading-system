@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AlligatorIndicatorService",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BollingerIndicatorService", "src\Services\BollingerIndicatorService\BollingerIndicatorService.csproj", "{6AA72EE0-526E-4933-98FB-E86D4AC86E7E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UserStreamService", "src\Services\UserStreamService\UserStreamService.csproj", "{48BA7FFF-71DC-4929-9938-E8DE18F25C14}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -117,6 +119,18 @@ Global
 		{6AA72EE0-526E-4933-98FB-E86D4AC86E7E}.Release|x64.Build.0 = Release|Any CPU
 		{6AA72EE0-526E-4933-98FB-E86D4AC86E7E}.Release|x86.ActiveCfg = Release|Any CPU
 		{6AA72EE0-526E-4933-98FB-E86D4AC86E7E}.Release|x86.Build.0 = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|x64.Build.0 = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Debug|x86.Build.0 = Debug|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|x64.ActiveCfg = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|x64.Build.0 = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|x86.ActiveCfg = Release|Any CPU
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -131,5 +145,6 @@ Global
 		{4303BA7D-05F8-48FB-8DA5-CA02058D4A68} = {984BB9B3-3FA3-BE33-9484-CAC21695A33C}
 		{49872CAC-B3F5-49BB-B419-6D70D4DB6D0F} = {984BB9B3-3FA3-BE33-9484-CAC21695A33C}
 		{6AA72EE0-526E-4933-98FB-E86D4AC86E7E} = {984BB9B3-3FA3-BE33-9484-CAC21695A33C}
+		{48BA7FFF-71DC-4929-9938-E8DE18F25C14} = {984BB9B3-3FA3-BE33-9484-CAC21695A33C}
 	EndGlobalSection
 EndGlobal
