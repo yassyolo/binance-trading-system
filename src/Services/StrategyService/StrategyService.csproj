@@ -4,10 +4,18 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>dotnet-StrategyService-d569a89b-9781-4fad-99cf-0370b77a46ec</UserSecretsId>
+    <UserSecretsId>dotnet-StrategyService-7a19de4b-ad2d-49e4-9b70-55b6ea8871f0</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Binance.Net" Version="12.14.0" />
+    <PackageReference Include="CryptoExchange.Net" Version="11.2.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageReference Include="StackExchange.Redis" Version="3.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />
   </ItemGroup>
 </Project>

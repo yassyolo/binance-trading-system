@@ -1,12 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace StrategyService.Models;
 
-namespace StrategyService.Models
+public sealed class Signal
 {
-    internal class Signal
-    {
-    }
+    public string Action { get; set; } = string.Empty;
+
+    public string Symbol { get; set; } = string.Empty;
+
+    public string Source { get; set; } = "webhook";
+
+    public DateTime ReceivedAtUtc { get; set; } = DateTime.UtcNow;
 }
