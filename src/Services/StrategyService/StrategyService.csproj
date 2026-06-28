@@ -17,5 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Domain\TradingSystem.Domain.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Binance\TradingSystem.Binance.csproj" />
   </ItemGroup>
 </Project>

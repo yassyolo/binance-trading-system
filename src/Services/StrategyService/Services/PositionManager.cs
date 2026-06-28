@@ -1,46 +1,68 @@
-﻿using StrategyService.Models;
+﻿using TradingSystem.Application.Positions;
+using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Services;
 
-public sealed class PositionManager
+public sealed class PositionManager(IPositionStore positionStore)
 {
-    private readonly List<Position> _positions = [];
-    private readonly object _lock = new();
+    public Task AddAsync(BotPosition position, CancellationToken cancellationToken)
+        => positionStore.SaveAsync(position, cancellationToken);
 
-    public IReadOnlyList<Position> GetActivePositions()
+    public async Task<IReadOnlyCollection<BotPosition>> GetActivePositionsAsync(
+        string botName,
+        CancellationToken cancellationToken)
     {
-        lock (_lock)
-        {
-            return _positions
-                .Where(x => !x.Closed)
-                .ToList();
-        }
+        var positions = await positionStore.GetAllAsync(botName, cancellationToken);
+
+        return positions
+            .Where(x => !x.Closed)
+            .ToList();
     }
 
-    public int CountBySide(string side)
-        => GetActivePositions()
-            .Count(x => x.Side.Equals(side, StringComparison.OrdinalIgnoreCase));
-
-    public void Add(Position position)
+    public async Task<int> CountBySideAsync(
+        string botName,
+        PositionSide side,
+        CancellationToken cancellationToken)
     {
-        lock (_lock)
-        {
-            _positions.Add(position);
-        }
+        var activePositions = await GetActivePositionsAsync(botName, cancellationToken);
+
+        return activePositions.Count(x => x.Side == side);
     }
 
-    public void CloseOpposite(string side)
+    public async Task<IReadOnlyCollection<BotPosition>> GetBySideAsync(
+        string botName,
+        PositionSide side,
+        CancellationToken cancellationToken)
     {
-        var opposite = side.Equals("LONG", StringComparison.OrdinalIgnoreCase)
-            ? "SHORT"
-            : "LONG";
+        var activePositions = await GetActivePositionsAsync(botName, cancellationToken);
 
-        lock (_lock)
-        {
-            foreach (var position in _positions.Where(x => x.Side == opposite && !x.Closed))
-            {
-                position.Closed = true;
-            }
-        }
+        return activePositions
+            .Where(x => x.Side == side)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyCollection<BotPosition>> GetOppositeAsync(
+        string botName,
+        PositionSide side,
+        CancellationToken cancellationToken)
+    {
+        var oppositeSide = side == PositionSide.Long
+            ? PositionSide.Short
+            : PositionSide.Long;
+
+        return await GetBySideAsync(botName, oppositeSide, cancellationToken);
+    }
+
+    public async Task MarkClosedAsync(
+        BotPosition position,
+        CancellationToken cancellationToken)
+    {
+        position.Closed = true;
+        position.Status = "CLOSED";
+        position.ClosedAtUtc = DateTime.UtcNow;
+        position.UpdatedAtUtc = DateTime.UtcNow;
+
+        await positionStore.SaveAsync(position, cancellationToken);
     }
 }

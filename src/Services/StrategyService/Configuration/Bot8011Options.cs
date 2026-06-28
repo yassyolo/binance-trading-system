@@ -2,6 +2,8 @@
 
 public sealed class Bot8011Options
 {
+    public string BotName { get; set; } = "BOT8011";
+
     public string Symbol { get; set; } = "BTCUSDC";
 
     public decimal Quantity { get; set; } = 0.01m;
