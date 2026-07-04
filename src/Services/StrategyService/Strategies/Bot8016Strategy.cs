@@ -1,58 +1,43 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
-using StrategyService.Models;
 using StrategyService.Services;
 using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Strategies;
 
-public sealed class Bot8016Strategy
+public sealed class Bot8016Strategy(
+    IOptions<Bot8016Options> options,
+    PositionManager positionManager,
+    OrderExecutionService orders,
+    ILogger<Bot8016Strategy> logger)
+    : IBotStrategy
 {
-    private const string BotName = "BOT8016";
+    public string BotName => "bot8016";
 
-    private readonly Bot8016Options _options;
-    private readonly PositionManager _positions;
-    private readonly OrderExecutionService _orders;
-    private readonly ILogger<Bot8016Strategy> _logger;
-
-    public Bot8016Strategy(
-        IOptions<Bot8016Options> options,
-        PositionManager positions,
-        OrderExecutionService orders,
-        ILogger<Bot8016Strategy> logger)
-    {
-        _options = options.Value;
-        _positions = positions;
-        _orders = orders;
-        _logger = logger;
-    }
-
-    public async Task<bool> ProcessSignalAsync(Signal signal, CancellationToken cancellationToken = default)
+    private readonly Bot8016Options options = options.Value;
+    public async Task<bool> ProcessSignalAsync(TradingSignal signal, CancellationToken cancellationToken = default)
     {
         if (!TryParseSide(signal.Action, out var side))
             return false;
 
-        var sameSideCount = await _positions.CountBySideAsync(BotName, side, cancellationToken);
+        var sameSideCount = await positionManager.CountBySideAsync(BotName, side, cancellationToken);
 
-        if (sameSideCount >= _options.PositionSideLimit)
+        if (sameSideCount >= options.PositionSideLimit)
             return false;
 
-        var position = await _orders.OpenStop3TrailingPositionAsync(
+        var position = await orders.OpenStop3TrailingPositionAsync(
             BotName,
             side,
-            _options.Symbol,
-            _options.Quantity,
-            _options.InitialStopLoss,
-            _options.TakeProfitPercent,
+            options.Symbol,
+            options.Quantity,
+            options.InitialStopLoss,
+            options.TakeProfitPercent,
             cancellationToken);
 
-        await _positions.AddAsync(position, cancellationToken);
+        await positionManager.AddAsync(position, cancellationToken);
 
-        _logger.LogInformation(
-            "{BotName} indicator signal processed. Side={Side}, PositionId={PositionId}",
-            BotName,
-            side,
-            position.ShortId);
+        logger.LogInformation("{BotName} indicator signal processed. Side={Side}, PositionId={PositionId}", BotName, side, position.ShortId);
 
         return true;
     }

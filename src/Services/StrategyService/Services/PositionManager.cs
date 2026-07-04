@@ -59,7 +59,7 @@ public sealed class PositionManager(IPositionStore positionStore)
         CancellationToken cancellationToken)
     {
         position.Closed = true;
-        position.Status = "CLOSED";
+        position.Status = PositionStatus.Closed;
         position.ClosedAtUtc = DateTime.UtcNow;
         position.UpdatedAtUtc = DateTime.UtcNow;
 

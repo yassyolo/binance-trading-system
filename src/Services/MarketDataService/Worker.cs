@@ -1,44 +1,35 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using StackExchange.Redis;
-using TradingSystem.Contracts.Redis;
+using MarketDataService.Configuration;
+using MarketDataService.Services;
+using Microsoft.Extensions.Options;
 
 namespace MarketDataService;
 
-public sealed class Worker : BackgroundService
+public sealed class Worker(
+    ILogger<Worker> logger,
+    IOptions<MarketDataOptions> options,
+    KlinePublisher klinePublisher)
+    : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IConfiguration _configuration;
-
-    public Worker(
-        ILogger<Worker> logger,
-        IConnectionMultiplexer redis,
-        IConfiguration configuration)
-    {
-        _logger = logger;
-        _redis = redis;
-        _configuration = configuration;
-    }
+    private readonly MarketDataOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var symbols = _configuration
-            .GetSection("MarketData:Symbols")
-            .Get<string[]>() ?? ["BTCUSDC"];
+        var symbols = _options.Symbols.Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToUpperInvariant())
+            .Distinct()
+            .ToArray();
 
-        var intervals = _configuration
-            .GetSection("MarketData:Intervals")
-            .Get<string[]>() ?? ["1m"];
+        var intervals = _options.Intervals.Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToArray();
 
-        _logger.LogInformation(
-            "Starting MarketDataService. Symbols={Symbols}, Intervals={Intervals}",
-            string.Join(",", symbols),
-            string.Join(",", intervals));
+        logger.LogInformation("Starting MarketDataService. Symbols={Symbols}, Intervals={Intervals}", string.Join(",", symbols), string.Join(",", intervals));
 
-        var tasks = intervals.Select(interval =>
-            RunWebSocketLoopAsync(symbols, interval, stoppingToken));
+        var tasks = intervals.Select(interval => RunWebSocketLoopAsync(symbols, interval, stoppingToken));
 
         await Task.WhenAll(tasks);
     }
@@ -48,9 +39,6 @@ public sealed class Worker : BackgroundService
         string interval,
         CancellationToken stoppingToken)
     {
-        var reconnectDelaySeconds =
-            _configuration.GetValue<int>("MarketData:ReconnectDelaySeconds", 5);
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -59,16 +47,11 @@ public sealed class Worker : BackgroundService
 
                 using var socket = new ClientWebSocket();
 
-                _logger.LogInformation(
-                    "Connecting to Binance kline websocket. Interval={Interval}, Url={Url}",
-                    interval,
-                    url);
+                logger.LogInformation("Connecting to Binance kline websocket. Interval={Interval}, Url={Url}", interval, url);
 
                 await socket.ConnectAsync(new Uri(url), stoppingToken);
 
-                _logger.LogInformation(
-                    "Connected to Binance websocket. Interval={Interval}",
-                    interval);
+                logger.LogInformation("Connected to Binance websocket. Interval={Interval}", interval);
 
                 await ReceiveLoopAsync(socket, stoppingToken);
             }
@@ -78,31 +61,20 @@ public sealed class Worker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "WebSocket loop failed. Interval={Interval}",
-                    interval);
+                logger.LogError(ex, "WebSocket loop failed. Interval={Interval}", interval);
             }
 
-            _logger.LogWarning(
-                "Reconnecting websocket. Interval={Interval}, DelaySeconds={Delay}",
-                interval,
-                reconnectDelaySeconds);
+            logger.LogWarning("Reconnecting websocket. Interval={Interval}, DelaySeconds={Delay}", interval, _options.ReconnectDelaySeconds);
 
-            await Task.Delay(TimeSpan.FromSeconds(reconnectDelaySeconds), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(_options.ReconnectDelaySeconds), stoppingToken);
         }
     }
 
     private string BuildWebSocketUrl(string[] symbols, string interval)
     {
-        var baseUrl = _configuration["MarketData:BinanceWebSocketBaseUrl"]
-            ?? "wss://fstream.binance.com/market/stream";
+        var streams = string.Join("/", symbols.Select(symbol => $"{symbol.ToLowerInvariant()}@kline_{interval.ToLowerInvariant()}"));
 
-        var streams = string.Join(
-            "/",
-            symbols.Select(symbol => $"{symbol.ToLowerInvariant()}@kline_{interval.ToLowerInvariant()}"));
-
-        return $"{baseUrl}?streams={streams}";
+        return $"{_options.BinanceWebSocketBaseUrl}?streams={streams}";
     }
 
     private async Task ReceiveLoopAsync(
@@ -122,12 +94,11 @@ public sealed class Worker : BackgroundService
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    _logger.LogWarning("Binance websocket closed by remote server.");
+                    logger.LogWarning("Binance websocket closed by remote server.");
                     return;
                 }
 
-                var chunk = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                message.Append(chunk);
+                message.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
             }
             while (!result.EndOfMessage);
 
@@ -137,64 +108,26 @@ public sealed class Worker : BackgroundService
 
     private async Task ProcessMessageAsync(string json)
     {
-        using var document = JsonDocument.Parse(json);
-
-        if (!document.RootElement.TryGetProperty("data", out var data))
-            return;
-
-        if (!data.TryGetProperty("k", out var kline))
-            return;
-
-        var isClosed = kline.GetProperty("x").GetBoolean();
-
-        if (!isClosed)
-            return;
-
-        await HandleClosedKlineAsync(kline);
-    }
-
-    private async Task HandleClosedKlineAsync(JsonElement kline)
-    {
-        var symbol = kline.GetProperty("s").GetString()?.ToUpperInvariant();
-        var interval = kline.GetProperty("i").GetString()?.ToLowerInvariant();
-
-        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(interval))
+        try
         {
-            _logger.LogWarning("Invalid kline payload: {Payload}", kline.ToString());
-            return;
+            using var document = JsonDocument.Parse(json);
+
+            if (!document.RootElement.TryGetProperty("data", out var data))
+                return;
+
+            if (!data.TryGetProperty("k", out var kline))
+                return;
+
+            var isClosed = kline.GetProperty("x").GetBoolean();
+
+            if (!isClosed)
+                return;
+
+            await klinePublisher.PublishClosedKlineAsync(kline);
         }
-
-        var key = RedisNames.KlineKey(symbol, interval);
-        var channel = RedisNames.KlineChannel(interval, symbol);
-
-        var rawBinancePayload = kline.GetRawText();
-
-        var cleanPayload = new
+        catch (JsonException ex)
         {
-            symbol,
-            time = kline.GetProperty("t").GetInt64(),
-            open = kline.GetProperty("o").GetString(),
-            high = kline.GetProperty("h").GetString(),
-            low = kline.GetProperty("l").GetString(),
-            close = kline.GetProperty("c").GetString(),
-            volume = kline.GetProperty("v").GetString(),
-            close_time = kline.GetProperty("T").GetInt64(),
-            interval
-        };
-
-        var cleanJson = JsonSerializer.Serialize(cleanPayload);
-
-        var db = _redis.GetDatabase();
-
-        await db.StringSetAsync(key, rawBinancePayload);
-        await db.PublishAsync(RedisChannel.Literal(channel), cleanJson);
-
-        _logger.LogInformation(
-            "Closed kline published. Symbol={Symbol}, Interval={Interval}, Close={Close}, Key={Key}, Channel={Channel}",
-            symbol,
-            interval,
-            kline.GetProperty("c").GetString(),
-            key,
-            channel);
+            logger.LogWarning(ex, "Invalid Binance websocket JSON message.");
+        }
     }
 }

@@ -60,7 +60,7 @@ public sealed class Worker : BackgroundService
         {
             foreach (var interval in intervals)
             {
-                var channel = RedisNames.KlineChannel(interval, symbol);
+                var channel = RedisChannels.Kline(interval, symbol);
 
                 await subscriber.SubscribeAsync(
                     RedisChannel.Literal(channel),

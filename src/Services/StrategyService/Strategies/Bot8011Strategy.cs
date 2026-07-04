@@ -1,122 +1,93 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
-using StrategyService.Models;
 using StrategyService.Services;
 using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Strategies;
 
-public sealed class Bot8011Strategy
+public sealed class Bot8011Strategy(
+    IOptions<Bot8011Options> options,
+    PositionManager positionManager,
+    OrderExecutionService orders,
+    ILogger<Bot8011Strategy> logger) 
+    : IBotStrategy
 {
-    private readonly Bot8011Options _options;
-    private readonly PositionManager _positionManager;
-    private readonly OrderExecutionService _orders;
-    private readonly ILogger<Bot8011Strategy> _logger;
+    private readonly Bot8011Options options = options.Value;
+    private readonly Dictionary<PositionSide, DateTime> _lastSignalAt = [];
 
-    private readonly Dictionary<PositionSide, DateTime> _lastSignalAt = new();
+    public string BotName => options.BotName.ToLowerInvariant();
 
-    public Bot8011Strategy(
-        IOptions<Bot8011Options> options,
-        PositionManager positionManager,
-        OrderExecutionService orders,
-        ILogger<Bot8011Strategy> logger)
-    {
-        _options = options.Value;
-        _positionManager = positionManager;
-        _orders = orders;
-        _logger = logger;
-    }
-
-    public async Task<bool> ProcessSignalAsync(
-        Signal signal,
-        CancellationToken cancellationToken = default)
+    public async Task<bool> ProcessSignalAsync(TradingSignal signal, CancellationToken cancellationToken = default)
     {
         if (!TryParseSide(signal.Action, out var side))
         {
-            _logger.LogWarning("Invalid BOT8011 signal action: {Action}", signal.Action);
+            logger.LogWarning("Invalid BOT8011 signal action. Action={Action}", signal.Action);
             return false;
         }
 
-        if (side == PositionSide.Long && !_options.EnableLong)
+        if (!IsSideEnabled(side))
+        {
+            logger.LogInformation("BOT8011 {Side} signal ignored because side is disabled.", side);
             return false;
-
-        if (side == PositionSide.Short && !_options.EnableShort)
-            return false;
+        }
 
         if (IsInCooldown(side))
         {
-            _logger.LogInformation("BOT8011 {Side} signal ignored because of cooldown.", side);
+            logger.LogInformation("BOT8011 {Side} signal ignored because of cooldown.", side);
             return false;
         }
 
-        var active = await _positionManager.GetActivePositionsAsync(
-            _options.BotName,
-            cancellationToken);
+        await CloseOppositePositionsAsync(side, cancellationToken);
 
-        var longCount = active.Count(x => x.Side == PositionSide.Long);
-        var shortCount = active.Count(x => x.Side == PositionSide.Short);
+        var sameSideCount = await positionManager.CountBySideAsync(options.BotName, side, cancellationToken);
 
-        _logger.LogInformation(
-            "BOT8011 active positions. LONG={LongCount}, SHORT={ShortCount}",
-            longCount,
-            shortCount);
-
-        var oppositePositions = await _positionManager.GetOppositeAsync(
-            _options.BotName,
-            side,
-            cancellationToken);
-
-        foreach (var oppositePosition in oppositePositions)
+        if (sameSideCount >= options.OrderSideLimit)
         {
-            await _orders.ClosePositionAsync(
-                _options.BotName,
-                oppositePosition,
-                cancellationToken);
-
-            await _positionManager.MarkClosedAsync(
-    oppositePosition,
-    cancellationToken);
-        }
-
-        var sameSideCount = await _positionManager.CountBySideAsync(
-            _options.BotName,
-            side,
-            cancellationToken);
-
-        if (sameSideCount >= _options.OrderSideLimit)
-        {
-            _logger.LogInformation(
-                "BOT8011 signal blocked. Side={Side}, Count={Count}, Limit={Limit}",
-                side,
-                sameSideCount,
-                _options.OrderSideLimit);
+            logger.LogInformation("BOT8011 signal blocked. Side={Side}, Count={Count}, Limit={Limit}", side, sameSideCount, options.OrderSideLimit);
 
             return false;
         }
 
-        var position = await _orders.OpenBot8011PositionAsync(
-            side,
-            _options,
-            cancellationToken);
+        var position = await orders.OpenBot8011PositionAsync(side, options, cancellationToken);
 
-        await _positionManager.AddAsync(position, cancellationToken);
+        await positionManager.AddAsync(position, cancellationToken);
 
         _lastSignalAt[side] = DateTime.UtcNow;
 
-        _logger.LogInformation(
-            "BOT8011 signal processed successfully. Side={Side}, PositionId={PositionId}",
-            side,
-            position.ShortId);
+        logger.LogInformation("BOT8011 signal processed successfully. Side={Side}, PositionId={PositionId}", side, position.ShortId);
 
         return true;
     }
 
+    private async Task CloseOppositePositionsAsync(PositionSide side, CancellationToken cancellationToken)
+    {
+        var oppositePositions = await positionManager.GetOppositeAsync(options.BotName, side, cancellationToken);
+
+        foreach (var oppositePosition in oppositePositions)
+        {
+            await orders.ClosePositionAsync(options.BotName, oppositePosition, cancellationToken);
+
+            await positionManager.MarkClosedAsync(oppositePosition, cancellationToken);
+        }
+    }
+
+    private bool IsSideEnabled(PositionSide side)
+    {
+        return side switch
+        {
+            PositionSide.Long => options.EnableLong,
+            PositionSide.Short => options.EnableShort,
+            _ => false
+        };
+    }
+
     private bool IsInCooldown(PositionSide side)
     {
-        if (!_lastSignalAt.TryGetValue(side, out var last))
+        if (!_lastSignalAt.TryGetValue(side, out var lastSignalAt))
             return false;
 
-        return DateTime.UtcNow - last < TimeSpan.FromSeconds(_options.CooldownSeconds);
+        return DateTime.UtcNow - lastSignalAt < TimeSpan.FromSeconds(options.CooldownSeconds);
     }
 
     private static bool TryParseSide(string action, out PositionSide side)

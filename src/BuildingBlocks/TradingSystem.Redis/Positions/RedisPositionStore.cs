@@ -143,7 +143,7 @@ public sealed class RedisPositionStore : IPositionStore
             new("manual_position", ToRedis(position.ManualPosition)),
             new("closed", ToRedis(position.Closed)),
 
-            new("status", position.Status),
+            new("status", position.Status.ToString()),
             new("source", position.Source ?? string.Empty),
 
             new("created_at", ToRedis(position.CreatedAtUtc)),
@@ -210,7 +210,7 @@ public sealed class RedisPositionStore : IPositionStore
             ManualPosition = GetBool(map, "manual_position"),
             Closed = GetBool(map, "closed"),
 
-            Status = GetString(map, "status", "NEW"),
+            Status = ParseStatus(GetString(map, "status", "New")),
             Source = GetNullableString(map, "source"),
 
             CreatedAtUtc = GetDateTime(map, "created_at") ?? DateTime.UtcNow,
@@ -222,6 +222,16 @@ public sealed class RedisPositionStore : IPositionStore
             Stop3TriggeredAtUtc = GetDateTime(map, "stop3_triggered_at"),
             ClosedAtUtc = GetDateTime(map, "closed_at")
         };
+    }
+
+    private static PositionStatus ParseStatus(string value)
+    {
+        return Enum.TryParse<PositionStatus>(
+            value,
+            ignoreCase: true,
+            out var result)
+            ? result
+            : PositionStatus.New;
     }
 
     private static string GetString(

@@ -1,4 +1,3 @@
-using StrategyService.Models;
 using StrategyService.Services;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
@@ -34,7 +33,7 @@ public sealed class Worker : BackgroundService
             Mode = PositionMode.Stop3,
             Quantity = 0.001m,
             RemainingQuantity = 0.001m,
-            Status = "TEST"
+            Status = PositionStatus.Test
         };
 
         await _positionManager.AddAsync(testPosition, stoppingToken);

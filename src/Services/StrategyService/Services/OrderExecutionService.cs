@@ -26,7 +26,7 @@ public sealed class OrderExecutionService
         var shortId = CreateShortId();
         var entryClientId = CreateClientId(options.BotName, "P", shortId);
         var tpClientId = CreateClientId(options.BotName, "TP", shortId);
-        var stop3ClientId = CreateClientId(options.BotName, "S3", shortId);
+        var slClientId = CreateClientId(options.BotName, "SL", shortId);
 
         var entry = await _binanceOrders.PlaceMarketOrderAsync(
             options.Symbol,
@@ -39,7 +39,7 @@ public sealed class OrderExecutionService
         var entryPrice = entry.AveragePrice ?? 0;
 
         var tpPrice = CalculatePercentPrice(side, entryPrice, options.TakeProfitPercent, true);
-        var stop3Price = CalculatePercentPrice(side, entryPrice, options.StopLossPercent, false);
+        var slPrice = CalculatePercentPrice(side, entryPrice, options.StopLossPercent, false);
 
         var tpQuantity = options.Quantity / 2m;
 
@@ -52,13 +52,13 @@ public sealed class OrderExecutionService
             tpClientId,
             cancellationToken);
 
-        var stop3 = await _binanceOrders.PlaceStopMarketAlgoOrderAsync(
+        var sl = await _binanceOrders.PlaceStopMarketAlgoOrderAsync(
             options.Symbol,
             ToCloseSide(side),
             ToPositionSide(side),
             options.Quantity,
-            stop3Price,
-            stop3ClientId,
+            slPrice,
+            slClientId,
             cancellationToken);
 
         return new BotPosition
@@ -77,30 +77,29 @@ public sealed class OrderExecutionService
             ParentOrderId = entry.OrderId,
             ParentFilledAtUtc = DateTime.UtcNow,
 
-            TpPrice = tpPrice,
             TpClientId = tpClientId,
-
-            Stop3Initial = stop3Price,
-            Stop3Current = stop3Price,
-            Stop3Previous = stop3Price,
-            Stop3ClientId = stop3ClientId,
-            Stop3OrderId = stop3.AlgoOrderId,
-            Stop3Status = stop3.Status,
-
             TpOrderId = tp.OrderId,
+            TpPrice = tpPrice,
             TpStatus = tp.Status,
 
-            SlPrice = stop3Price,
-            SlClientId = stop3ClientId,
-            SlOrderId = stop3.AlgoOrderId,
-            SlStatus = stop3.Status,
+            SlClientId = slClientId,
+            SlOrderId = sl.AlgoOrderId,
+            SlPrice = slPrice,
+            SlStatus = sl.Status,
+            SlExecuted = false,
 
+            Stop3ClientId = null,
+            Stop3OrderId = null,
+            Stop3Initial = null,
+            Stop3Current = null,
+            Stop3Previous = null,
+            Stop3Status = null,
             Stop3Created = false,
             Stop3Pending = false,
 
             ProtectiveActive = true,
             Closed = false,
-            Status = "OPEN",
+            Status = PositionStatus.Open,
             Source = "binance"
         };
     }
@@ -163,7 +162,7 @@ public sealed class OrderExecutionService
 
             ProtectiveActive = true,
             Closed = false,
-            Status = "OPEN",
+            Status = PositionStatus.Open,
             Source = "binance"
         };
     }
@@ -253,7 +252,7 @@ public sealed class OrderExecutionService
 
             ProtectiveActive = true,
             Closed = false,
-            Status = "OPEN",
+            Status = PositionStatus.Open,
             Source = "binance"
         };
     }
@@ -265,7 +264,7 @@ public sealed class OrderExecutionService
     {
         if (!string.IsNullOrWhiteSpace(position.TpOrderId))
         {
-            await _binanceOrders.CancelAlgoOrderAsync(
+            await _binanceOrders.CancelOrderAsync(
                 position.Symbol,
                 position.TpOrderId,
                 cancellationToken);
@@ -273,9 +272,9 @@ public sealed class OrderExecutionService
 
         if (!string.IsNullOrWhiteSpace(position.Stop3OrderId))
         {
-            await _binanceOrders.CancelAlgoOrderAsync(
+            await _binanceOrders.CancelOrderAsync(
                 position.Symbol,
-                position.Stop3OrderId,
+                position.TpOrderId,
                 cancellationToken);
         }
 

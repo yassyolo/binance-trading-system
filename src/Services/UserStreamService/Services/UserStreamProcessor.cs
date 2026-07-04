@@ -1,70 +1,73 @@
 ﻿using System.Text.Json;
+using UserStreamService.Models;
 
 namespace UserStreamService.Services;
 
-public sealed class UserStreamProcessor
+public sealed class UserStreamProcessor(
+    RedisPublisher publisher,
+    ILogger<UserStreamProcessor> logger)
 {
-    private readonly RedisPublisher _publisher;
-    private readonly ILogger<UserStreamProcessor> _logger;
-
     private long _sequence;
-
-    public UserStreamProcessor(
-        RedisPublisher publisher,
-        ILogger<UserStreamProcessor> logger)
-    {
-        _publisher = publisher;
-        _logger = logger;
-    }
 
     public async Task ProcessAsync(string rawMessage)
     {
-        using var document = JsonDocument.Parse(rawMessage);
-        var root = document.RootElement;
-
-        if (root.TryGetProperty("id", out _))
+        try
         {
-            _logger.LogInformation("User stream control message received: {Message}", rawMessage);
-            return;
+            using var document = JsonDocument.Parse(rawMessage);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("id", out _))
+            {
+                logger.LogInformation("User stream control message received: {Message}", rawMessage);
+                return;
+            }
+
+            if (!root.TryGetProperty("e", out var eventTypeElement))
+            {
+                logger.LogDebug("Ignored non-event user stream message.");
+                return;
+            }
+
+            var eventType = eventTypeElement.GetString() ?? "unknown";
+
+            var envelope = new UserStreamEnvelope
+            {
+                HubTimestamp = DateTime.Now.ToString("HH:mm:ss"),
+                HubSequence = Interlocked.Increment(ref _sequence),
+                Binance = root.Clone()
+            };
+
+            await publisher.PublishRawAsync(envelope);
+
+            switch (eventType)
+            {
+                case "ORDER_TRADE_UPDATE":
+                    await publisher.PublishOrderAsync(envelope);
+                    logger.LogInformation("ORDER_TRADE_UPDATE published.");
+                    break;
+
+                case "ALGO_UPDATE":
+                    await publisher.PublishOrderAsync(envelope);
+                    logger.LogInformation("ALGO_UPDATE published.");
+                    break;
+
+                case "ACCOUNT_UPDATE":
+                    await publisher.PublishAccountAsync(envelope);
+                    logger.LogInformation("ACCOUNT_UPDATE published.");
+                    break;
+
+                default:
+                    logger.LogInformation("Unsupported user stream event received. Type={EventType}", eventType);
+                    break;
+            }
         }
-
-        if (!root.TryGetProperty("e", out var eventTypeElement))
+        catch (JsonException ex)
         {
-            _logger.LogDebug("Ignored non-event user stream message.");
-            return;
+            logger.LogWarning(ex, "Invalid user stream JSON message.");
         }
-
-        var eventType = eventTypeElement.GetString() ?? "unknown";
-
-        var wrapped = new
+        catch (Exception ex)
         {
-            hub_ts = DateTime.Now.ToString("HH:mm:ss"),
-            hub_seq = Interlocked.Increment(ref _sequence),
-            binance = root
-        };
-
-        await _publisher.PublishRawAsync(wrapped);
-
-        switch (eventType)
-        {
-            case "ORDER_TRADE_UPDATE":
-                await _publisher.PublishOrderAsync(wrapped);
-                _logger.LogInformation("ORDER_TRADE_UPDATE published.");
-                break;
-
-            case "ALGO_UPDATE":
-                await _publisher.PublishOrderAsync(wrapped);
-                _logger.LogInformation("ALGO_UPDATE published.");
-                break;
-
-            case "ACCOUNT_UPDATE":
-                await _publisher.PublishAccountAsync(wrapped);
-                _logger.LogInformation("ACCOUNT_UPDATE published.");
-                break;
-
-            default:
-                _logger.LogInformation("Unsupported user stream event received. Type={EventType}", eventType);
-                break;
+            logger.LogWarning(ex, "Error processing user stream message.");
         }
     }
 }

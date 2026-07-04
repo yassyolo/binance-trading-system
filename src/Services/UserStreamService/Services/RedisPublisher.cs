@@ -4,54 +4,41 @@ using TradingSystem.Contracts.Redis;
 
 namespace UserStreamService.Services;
 
-public sealed class RedisPublisher
+public sealed class RedisPublisher(
+    IConnectionMultiplexer redis,
+    IConfiguration configuration,
+    ILogger<RedisPublisher> logger)
 {
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<RedisPublisher> _logger;
-
-    public RedisPublisher(
-        IConnectionMultiplexer redis,
-        IConfiguration configuration,
-        ILogger<RedisPublisher> logger)
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        _redis = redis;
-        _configuration = configuration;
-        _logger = logger;
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
 
     public async Task PublishRawAsync(object payload)
     {
-        var publishRaw = _configuration.GetValue<bool>("UserStream:PublishRaw", true);
+        var publishRaw = configuration.GetValue<bool>("UserStream:PublishRaw", true);
 
         if (!publishRaw)
             return;
 
-        await PublishAsync(RedisNames.UserStreamRaw, payload);
+        await PublishAsync(RedisChannels.UserStreamRaw, payload);
     }
 
     public Task PublishOrderAsync(object payload)
-        => PublishAsync(RedisNames.UserStreamOrder, payload);
+        => PublishAsync(RedisChannels.UserStreamOrder, payload);
 
     public Task PublishAccountAsync(object payload)
-        => PublishAsync(RedisNames.UserStreamAccount, payload);
+        => PublishAsync(RedisChannels.UserStreamAccount, payload);
 
     public Task PublishHealingAsync(object payload)
-        => PublishAsync(RedisNames.HealingChannel, payload);
+        => PublishAsync(RedisChannels.Healing, payload);
 
     private async Task PublishAsync(string channel, object payload)
     {
-        var json = JsonSerializer.Serialize(
-            payload,
-            new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-            });
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
 
-        await _redis
-            .GetSubscriber()
-            .PublishAsync(RedisChannel.Literal(channel), json);
+        await redis.GetSubscriber().PublishAsync(RedisChannel.Literal(channel), json);
 
-        _logger.LogInformation("Redis publish. Channel={Channel}", channel);
+        logger.LogInformation("Redis publish. Channel={Channel}", channel);
     }
 }

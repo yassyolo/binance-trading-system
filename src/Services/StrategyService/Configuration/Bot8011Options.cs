@@ -23,4 +23,10 @@ public sealed class Bot8011Options
     public bool EnableShort { get; set; } = true;
 
     public int OrderSideLimit { get; set; } = 1;
+
+
+    public decimal Stop3EntryOffset { get; set; }
+
+    public decimal Stop3TrailingDistance { get; set; }
+    public int Stop3TrailingIntervalSeconds { get; set; } = 5;
 }

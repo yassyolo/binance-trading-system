@@ -50,8 +50,7 @@ public sealed class BotPosition
     public bool ManualPosition { get; set; }
     public bool Closed { get; set; }
 
-    public string Status { get; set; } = "NEW";
-    public string? Source { get; set; }
+    public PositionStatus Status { get; set; } = PositionStatus.New; public string? Source { get; set; }
 
     public DateTime CreatedAtUtc { get; init; } = DateTime.UtcNow;
     public DateTime? UpdatedAtUtc { get; set; }
@@ -61,4 +60,31 @@ public sealed class BotPosition
     public DateTime? SlTriggeredAtUtc { get; set; }
     public DateTime? Stop3TriggeredAtUtc { get; set; }
     public DateTime? ClosedAtUtc { get; set; }
+
+    public void MarkParentFilled(decimal entryPrice, string orderId)
+    {
+        EntryPrice = entryPrice;
+        ParentOrderId = orderId;
+        ParentFilledAtUtc = DateTime.UtcNow;
+        Status = PositionStatus.ParentFilled;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkTpFilled(decimal executedQuantity)
+    {
+        RemainingQuantity = Math.Max(RemainingQuantity - executedQuantity, 0);
+        TpExecuted = true;
+        TpStatus = "FILLED";
+        TpFilledAtUtc = DateTime.UtcNow;
+        Status = PositionStatus.TpExecuted;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkClosed(string reason)
+    {
+        Closed = true;
+        Status = PositionStatus.Closed;
+        ClosedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
 }
