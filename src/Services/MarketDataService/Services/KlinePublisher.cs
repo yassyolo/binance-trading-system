@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
-using MarketDataService.Models;
 using StackExchange.Redis;
+using TradingSystem.Contracts.Klines;
 using TradingSystem.Contracts.Redis;
 
 namespace MarketDataService.Services;

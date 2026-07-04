@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace MarketDataService.Models;
+namespace TradingSystem.Contracts.Klines;
 
 public sealed record ClosedKlineMessage(
     [property: JsonPropertyName("symbol")] string Symbol,
