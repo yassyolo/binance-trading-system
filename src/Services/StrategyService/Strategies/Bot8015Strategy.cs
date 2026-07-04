@@ -31,7 +31,7 @@ public sealed class Bot8015Strategy(
         foreach (var opposite in oppositePositions)
         {
             await orders.ClosePositionAsync(BotName, opposite, cancellationToken);
-            await positionManager.MarkClosedAsync(opposite, cancellationToken);
+            await positionManager.MarkClosedAsync(opposite, "OPPOSITE_SIGNAL", cancellationToken);
         }
 
         var sameSideCount = await positionManager.CountBySideAsync(BotName, side, cancellationToken);

@@ -1,32 +1,28 @@
-﻿using System.Text.Json;
+﻿using System.Globalization;
+using System.Text.Json;
+using BollingerIndicatorService.Configuration;
 using BollingerIndicatorService.Models;
+using Microsoft.Extensions.Options;
 
 namespace BollingerIndicatorService.Services;
 
-public sealed class BinanceHistoricalKlineClient
+public sealed class BinanceHistoricalKlineClient(
+    HttpClient httpClient,
+    IOptions<BollingerOptions> options)
 {
-    private readonly HttpClient _httpClient;
+    private readonly BollingerOptions options = options.Value;
 
-    public BinanceHistoricalKlineClient(HttpClient httpClient)
+    public async Task<List<BollingerCandle>> GetHistoricalCandlesAsync(string symbol, string interval, int limit, CancellationToken cancellationToken = default)
     {
-        _httpClient = httpClient;
-    }
+        var url = $"{options.BinanceKlinesUrl}?symbol={symbol}&interval={interval}&limit={limit}";
 
-    public async Task<List<BollingerCandle>> GetHistoricalCandlesAsync(
-        string symbol,
-        string interval,
-        int limit,
-        CancellationToken cancellationToken = default)
-    {
-        var url =
-            $"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval={interval}&limit={limit}";
+        using var response = await httpClient.GetAsync(url, cancellationToken);
 
-        var response = await _httpClient.GetAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-        using var document = JsonDocument.Parse(json);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
         var candles = new List<BollingerCandle>();
 
@@ -35,14 +31,15 @@ public sealed class BinanceHistoricalKlineClient
             candles.Add(new BollingerCandle
             {
                 Time = kline[0].GetInt64(),
-                Open = decimal.Parse(kline[1].GetString()!),
-                Close = decimal.Parse(kline[4].GetString()!),
+                Open = ParseDecimal(kline[1]),
+                Close = ParseDecimal(kline[4]),
                 CloseTime = kline[6].GetInt64()
             });
         }
 
-        return candles
-            .OrderBy(x => x.Time)
-            .ToList();
+        return candles.OrderBy(x => x.Time).ToList();
     }
+
+    private static decimal ParseDecimal(JsonElement element)
+        => decimal.Parse(element.GetString()!, NumberStyles.Any, CultureInfo.InvariantCulture);
 }

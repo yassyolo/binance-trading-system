@@ -13,4 +13,7 @@ public static class RedisKeys
 
     public static string AlligatorState(string symbol, string interval)
         => $"indicator_state:alligator_ma:{symbol.ToUpperInvariant()}:{interval.ToLowerInvariant()}";
+
+    public static string BollingerState(string symbol, string interval)
+    => $"indicator_state:bb:{symbol.ToUpperInvariant()}:{interval.ToLowerInvariant()}";
 }

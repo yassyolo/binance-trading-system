@@ -26,69 +26,50 @@ public sealed class Bot8011PositionEventService
         _logger = logger;
     }
 
-    public async Task HandleTpFilledAsync(
-        string shortId,
-        decimal executedQuantity,
-        CancellationToken cancellationToken)
+    public async Task HandleTpFilledAsync(string shortId, decimal executedQuantity, CancellationToken cancellationToken)
     {
-        var position = await _positionStore.GetAsync(
-            _options.BotName,
-            shortId,
-            cancellationToken);
+        var position = await LoadPositionAsync(shortId, cancellationToken);
 
-        if (position is null || position.Closed)
+        if (position is null)
             return;
 
         if (position.TpExecuted || position.Stop3Created || position.Stop3Pending)
             return;
 
-        var remainingQuantity = position.Quantity - executedQuantity;
+        position.MarkTpFilled(executedQuantity);
 
-        if (remainingQuantity <= 0)
+        if (position.RemainingQuantity <= 0)
         {
-            position.TpExecuted = true;
-            position.TpFilledAtUtc = DateTime.UtcNow;
-            position.TpStatus = "FILLED";
-            position.RemainingQuantity = 0;
-
+            await CancelInitialSlIfExistsAsync(position, cancellationToken);
             await MarkClosedAsync(position, "TP_FULL_EXIT", cancellationToken);
             return;
         }
 
-        position.TpExecuted = true;
-        position.TpFilledAtUtc = DateTime.UtcNow;
-        position.TpStatus = "FILLED";
-        position.RemainingQuantity = remainingQuantity;
         position.Stop3Pending = true;
         position.ProtectiveActive = true;
+        position.Status = PositionStatus.Stop3Pending;
         position.UpdatedAtUtc = DateTime.UtcNow;
 
         await _positionStore.SaveAsync(position, cancellationToken);
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(position.SlOrderId))
-            {
-                await _binanceOrders.CancelAlgoOrderAsync(
-                    position.Symbol,
-                    position.SlOrderId,
-                    cancellationToken);
-
-                position.SlStatus = "CANCELED";
-            }
+            await CancelInitialSlIfExistsAsync(position, cancellationToken);
 
             var stop3ClientId = CreateClientId(_options.BotName, "S3", position.ShortId);
             var stop3Price = CalculateInitialStop3Price(position);
 
-            var stop3 = await _binanceOrders.PlaceStopMarketAlgoOrderAsync(
-                position.Symbol,
-                ToCloseSide(position.Side),
-                ToPositionSide(position.Side),
-                remainingQuantity,
-                stop3Price,
-                stop3ClientId,
-                cancellationToken);
+            var stop3 = await _stop3Orders.CreateStop3WithFallbackAsync(
+     position,
+     position.RemainingQuantity,
+     stop3ClientId,
+     cancellationToken);
 
+            position.Stop3OrderId = stop3.AlgoOrderId;
+            position.Stop3Initial = stop3.TriggerPrice;
+            position.Stop3Current = stop3.TriggerPrice;
+            position.Stop3Previous = stop3.TriggerPrice;
+            position.Stop3Status = stop3.Status;
             position.Stop3ClientId = stop3ClientId;
             position.Stop3OrderId = stop3.AlgoOrderId;
             position.Stop3Initial = stop3Price;
@@ -98,44 +79,40 @@ public sealed class Bot8011PositionEventService
             position.Stop3Created = true;
             position.Stop3Pending = false;
             position.ProtectiveActive = true;
+            position.Status = PositionStatus.Stop3Active;
             position.UpdatedAtUtc = DateTime.UtcNow;
 
             await _positionStore.SaveAsync(position, cancellationToken);
 
             _logger.LogInformation(
-                "BOT8011 TP filled. STOP3 created. Position={ShortId}, RemainingQty={RemainingQuantity}, Stop3={Stop3Price}",
-                shortId,
-                remainingQuantity,
+                "BOT8011 TP filled and STOP3 created. Position={ShortId}, Remaining={Remaining}, Stop3={Stop3}",
+                position.ShortId,
+                position.RemainingQuantity,
                 stop3Price);
         }
         catch (Exception ex)
         {
             position.Stop3Pending = true;
             position.Stop3Created = false;
+            position.Status = PositionStatus.Stop3Pending;
             position.UpdatedAtUtc = DateTime.UtcNow;
 
             await _positionStore.SaveAsync(position, cancellationToken);
 
             _logger.LogError(
                 ex,
-                "BOT8011 TP handling failed after TP fill. Position={ShortId}, RemainingQty={RemainingQuantity}",
-                shortId,
-                remainingQuantity);
+                "BOT8011 failed to create STOP3 after TP. Position={ShortId}",
+                position.ShortId);
 
             throw;
         }
     }
 
-    public async Task HandleSlTriggeredAsync(
-        string shortId,
-        CancellationToken cancellationToken)
+    public async Task HandleSlTriggeredAsync(string shortId, CancellationToken cancellationToken)
     {
-        var position = await _positionStore.GetAsync(
-            _options.BotName,
-            shortId,
-            cancellationToken);
+        var position = await LoadPositionAsync(shortId, cancellationToken);
 
-        if (position is null || position.Closed)
+        if (position is null)
             return;
 
         position.SlExecuted = true;
@@ -148,16 +125,11 @@ public sealed class Bot8011PositionEventService
         await MarkClosedAsync(position, "SL_TRIGGERED", cancellationToken);
     }
 
-    public async Task HandleStop3TriggeredAsync(
-        string shortId,
-        CancellationToken cancellationToken)
+    public async Task HandleStop3TriggeredAsync(string shortId, CancellationToken cancellationToken)
     {
-        var position = await _positionStore.GetAsync(
-            _options.BotName,
-            shortId,
-            cancellationToken);
+        var position = await LoadPositionAsync(shortId, cancellationToken);
 
-        if (position is null || position.Closed)
+        if (position is null)
             return;
 
         position.Stop3Status = "FILLED";
@@ -169,16 +141,39 @@ public sealed class Bot8011PositionEventService
         await MarkClosedAsync(position, "STOP3_TRIGGERED", cancellationToken);
     }
 
-    private async Task MarkClosedAsync(
-        BotPosition position,
-        string reason,
-        CancellationToken cancellationToken)
+    private async Task<BotPosition?> LoadPositionAsync(string shortId, CancellationToken cancellationToken)
     {
-        position.Closed = true;
-        position.Status = PositionStatus.Closed;
-        position.ProtectiveActive = false;
-        position.ClosedAtUtc = DateTime.UtcNow;
+        var position = await _positionStore.GetAsync(
+            _options.BotName,
+            shortId,
+            cancellationToken);
+
+        if (position is null || position.Closed)
+            return null;
+
+        return position;
+    }
+
+    private async Task CancelInitialSlIfExistsAsync(BotPosition position, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(position.SlOrderId) || position.SlExecuted)
+            return;
+
+        await _binanceOrders.CancelAlgoOrderAsync(
+            position.Symbol,
+            position.SlOrderId,
+            cancellationToken);
+
+        position.SlStatus = "CANCELED";
         position.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task MarkClosedAsync(BotPosition position, string reason, CancellationToken cancellationToken)
+    {
+        position.MarkClosed(reason);
+        position.ProtectiveActive = false;
+        position.Stop3Pending = false;
+        position.TrailingInProgress = false;
 
         await _positionStore.SaveAsync(position, cancellationToken);
 
@@ -193,11 +188,9 @@ public sealed class Bot8011PositionEventService
         if (!position.EntryPrice.HasValue)
             throw new InvalidOperationException($"Position {position.ShortId} has no entry price.");
 
-        var offset = _options.Stop3EntryOffset;
-
         return position.Side == PositionSide.Long
-            ? position.EntryPrice.Value + offset
-            : position.EntryPrice.Value - offset;
+            ? position.EntryPrice.Value + _options.Stop3EntryOffset
+            : position.EntryPrice.Value - _options.Stop3EntryOffset;
     }
 
     private static string CreateClientId(string botName, string prefix, string shortId)

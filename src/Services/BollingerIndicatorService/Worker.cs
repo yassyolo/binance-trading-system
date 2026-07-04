@@ -1,60 +1,59 @@
+using System.Globalization;
 using System.Text.Json;
+using BollingerIndicatorService.Configuration;
 using BollingerIndicatorService.Models;
 using BollingerIndicatorService.Services;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using TradingSystem.Contracts.Klines;
 using TradingSystem.Contracts.Redis;
 
 namespace BollingerIndicatorService;
 
-public sealed class Worker : BackgroundService
+public sealed class Worker(
+    ILogger<Worker> logger,
+    IConnectionMultiplexer redis,
+    BinanceHistoricalKlineClient historicalClient,
+    BollingerEngine engine,
+    IOptions<BollingerOptions> options)
+    : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
-    private readonly IConfiguration _configuration;
-    private readonly IConnectionMultiplexer _redis;
-    private readonly BinanceHistoricalKlineClient _historicalClient;
-    private readonly BollingerEngine _engine;
-
-    public Worker(
-        ILogger<Worker> logger,
-        IConfiguration configuration,
-        IConnectionMultiplexer redis,
-        BinanceHistoricalKlineClient historicalClient,
-        BollingerEngine engine)
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        _logger = logger;
-        _configuration = configuration;
-        _redis = redis;
-        _historicalClient = historicalClient;
-        _engine = engine;
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
+    private readonly BollingerOptions options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var symbols = _configuration.GetSection("Bollinger:Symbols").Get<string[]>() ?? ["BTCUSDC"];
-        var intervals = _configuration.GetSection("Bollinger:Intervals").Get<string[]>() ?? ["30m", "1h"];
-        var historyLimit = _configuration.GetValue<int>("Bollinger:HistoryLimit", 200);
+        var symbols = Normalize(options.Symbols, x => x.ToUpperInvariant());
+        var intervals = Normalize(options.Intervals, x => x.ToLowerInvariant());
 
+        await InitializeAsync(symbols, intervals, stoppingToken);
+        await SubscribeAsync(symbols, intervals, stoppingToken);
+
+        await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private async Task InitializeAsync(IReadOnlyCollection<string> symbols, IReadOnlyCollection<string> intervals, CancellationToken cancellationToken)
+    {
         foreach (var symbol in symbols)
         {
             foreach (var interval in intervals)
             {
-                var candles = await _historicalClient.GetHistoricalCandlesAsync(
-                    symbol,
-                    interval,
-                    historyLimit,
-                    stoppingToken);
+                var candles = await historicalClient.GetHistoricalCandlesAsync(symbol, interval, options.HistoryLimit, cancellationToken);
 
-                _engine.InitializeHistory(symbol, interval, candles);
+                engine.InitializeHistory(symbol, interval, candles);
 
-                _logger.LogInformation(
-                    "Bollinger history initialized. Symbol={Symbol}, Interval={Interval}, Candles={Count}",
-                    symbol,
-                    interval,
-                    candles.Count);
+                logger.LogInformation("Bollinger initialized. Symbol={Symbol}, Interval={Interval}, Candles={Count}", symbol, interval, candles.Count);
             }
         }
+    }
 
-        var subscriber = _redis.GetSubscriber();
+    private async Task SubscribeAsync(IReadOnlyCollection<string> symbols, IReadOnlyCollection<string> intervals, CancellationToken cancellationToken)
+    {
+        var subscriber = redis.GetSubscriber();
 
         foreach (var symbol in symbols)
         {
@@ -62,68 +61,77 @@ public sealed class Worker : BackgroundService
             {
                 var channel = RedisChannels.Kline(interval, symbol);
 
-                await subscriber.SubscribeAsync(
-                    RedisChannel.Literal(channel),
+                await subscriber.SubscribeAsync(RedisChannel.Literal(channel),
                     async (_, message) =>
                     {
-                        await HandleKlineMessageAsync(message!, stoppingToken);
+                        await HandleKlineMessageAsync(message!, cancellationToken);
                     });
 
-                _logger.LogInformation("Subscribed to channel {Channel}", channel);
+                logger.LogInformation("Subscribed to {Channel}", channel);
             }
         }
-
-        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
     private async Task HandleKlineMessageAsync(string json, CancellationToken cancellationToken)
     {
         try
         {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
+            var message = JsonSerializer.Deserialize<ClosedKlineMessage>(json);
 
-            var symbol = root.GetProperty("symbol").GetString()!.ToUpperInvariant();
-            var interval = root.GetProperty("interval").GetString()!.ToLowerInvariant();
-
-            var candle = new BollingerCandle
+            if (message is null || !TryBuildCandle(message, out var candle))
             {
-                Time = root.GetProperty("time").GetInt64(),
-                CloseTime = root.GetProperty("close_time").GetInt64(),
-                Open = decimal.Parse(root.GetProperty("open").GetString()!),
-                Close = decimal.Parse(root.GetProperty("close").GetString()!)
-            };
+                logger.LogWarning("Invalid Bollinger kline message. Json={Json}", json);
+                return;
+            }
 
-            var payload = _engine.Process(symbol, interval, candle);
+            var symbol = message.Symbol.ToUpperInvariant();
+            var interval = message.Interval.ToLowerInvariant();
+
+            var payload = engine.Process(symbol, interval, candle);
 
             if (payload is null)
                 return;
 
-            var payloadJson = JsonSerializer.Serialize(
-                payload,
-                new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-                });
+            var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
 
-            var db = _redis.GetDatabase();
-
-            var stateKey = $"indicator_state:bb:{symbol}:{interval}";
+            var db = redis.GetDatabase();
+            var stateKey = RedisKeys.BollingerState(symbol, interval);
 
             await db.StringSetAsync(stateKey, payloadJson);
-            await db.PublishAsync(
-                RedisChannel.Literal("indicator_channel:bb"),
-                payloadJson);
+            await db.PublishAsync(RedisChannel.Literal(RedisChannels.Bollinger), payloadJson);
 
-            _logger.LogInformation(
-                "Bollinger published. Symbol={Symbol}, Interval={Interval}, StateKey={StateKey}",
-                symbol,
-                interval,
-                stateKey);
+            logger.LogInformation("Bollinger published. Symbol={Symbol}, Interval={Interval}, StateKey={StateKey}", symbol, interval, stateKey);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to process Bollinger kline message.");
+            logger.LogError(ex, "Failed to process Bollinger kline message.");
         }
     }
+
+    private static bool TryBuildCandle(ClosedKlineMessage message, out BollingerCandle candle)
+    {
+        candle = default!;
+
+        if (!TryParseDecimal(message.Open, out var open) || !TryParseDecimal(message.Close, out var close))
+            return false;
+
+        candle = new BollingerCandle
+        {
+            Time = message.Time,
+            CloseTime = message.CloseTime,
+            Open = open,
+            Close = close
+        };
+
+        return true;
+    }
+
+    private static bool TryParseDecimal(string? value, out decimal result)
+        => decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+
+    private static string[] Normalize(IEnumerable<string> values, Func<string, string> normalize)
+        => values.Select(x => normalize(x.Trim()))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToArray();
 }

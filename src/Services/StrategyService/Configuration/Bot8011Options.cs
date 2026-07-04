@@ -27,6 +27,8 @@ public sealed class Bot8011Options
 
     public decimal Stop3EntryOffset { get; set; }
 
-    public decimal Stop3TrailingDistance { get; set; }
     public int Stop3TrailingIntervalSeconds { get; set; } = 5;
+
+    public decimal Stop3TrailingStep { get; set; } = 400m;
+    public decimal Stop3TrailingBuffer { get; set; } = 50m;
 }

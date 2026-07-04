@@ -50,8 +50,8 @@ public sealed class BotPosition
     public bool ManualPosition { get; set; }
     public bool Closed { get; set; }
 
-    public PositionStatus Status { get; set; } = PositionStatus.New; public string? Source { get; set; }
-
+    public PositionStatus Status { get; set; } = PositionStatus.New;
+    public string? Source { get; set; }
     public DateTime CreatedAtUtc { get; init; } = DateTime.UtcNow;
     public DateTime? UpdatedAtUtc { get; set; }
 
@@ -76,7 +76,7 @@ public sealed class BotPosition
         TpExecuted = true;
         TpStatus = "FILLED";
         TpFilledAtUtc = DateTime.UtcNow;
-        Status = PositionStatus.TpExecuted;
+        Status = PositionStatus.TpFilled;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 

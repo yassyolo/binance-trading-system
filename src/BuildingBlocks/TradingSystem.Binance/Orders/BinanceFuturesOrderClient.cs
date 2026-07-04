@@ -1,10 +1,11 @@
-﻿using System.Globalization;
+﻿using Microsoft.Extensions.Options;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using TradingSystem.Binance.Configuration;
+using TradingSystem.Binance.Positions;
 
 namespace TradingSystem.Binance.Orders;
 
@@ -289,5 +290,132 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             cancellationToken);
 
         return ParseOrderResult(json);
+    }
+
+    public async Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(
+    string symbol,
+    CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol
+        };
+
+        var json = await SendSignedAsync(
+            HttpMethod.Get,
+            "/fapi/v1/openOrders",
+            parameters,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+
+        return document.RootElement
+            .EnumerateArray()
+            .Select(x => new BinanceOpenOrder
+            {
+                Symbol = GetString(x, "symbol"),
+                OrderId = GetFlexibleString(x, "orderId"),
+                ClientOrderId = GetString(x, "clientOrderId"),
+                Type = GetString(x, "type"),
+                PositionSide = GetString(x, "positionSide"),
+                Price = TryGetDecimal(x, "price") ?? 0,
+                Quantity = TryGetDecimal(x, "origQty") ?? 0
+            })
+            .ToList();
+    }
+
+    public async Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(
+        string symbol,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol
+        };
+
+        var json = await SendSignedAsync(
+            HttpMethod.Get,
+            "/fapi/v1/openAlgoOrders",
+            parameters,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+
+        return document.RootElement
+            .EnumerateArray()
+            .Select(x => new BinanceOpenAlgoOrder
+            {
+                Symbol = GetString(x, "symbol"),
+                AlgoOrderId = GetFlexibleString(x, "algoId"),
+                ClientAlgoId = GetString(x, "clientAlgoId"),
+                PositionSide = GetString(x, "positionSide"),
+                Status = GetString(x, "algoStatus"),
+                TriggerPrice = TryGetDecimal(x, "triggerPrice") ?? 0,
+                Quantity = TryGetDecimal(x, "quantity") ?? 0,
+                OrderType = GetString(x, "orderType")
+            })
+            .ToList();
+    }
+
+    public async Task SetHedgeModeAsync(CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["dualSidePosition"] = "true"
+        };
+
+        await SendSignedAsync(
+            HttpMethod.Post,
+            "/fapi/v1/positionSide/dual",
+            parameters,
+            cancellationToken);
+    }
+
+    public async Task SetLeverageAsync(
+        string symbol,
+        int leverage,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol,
+            ["leverage"] = leverage.ToString(CultureInfo.InvariantCulture)
+        };
+
+        await SendSignedAsync(
+            HttpMethod.Post,
+            "/fapi/v1/leverage",
+            parameters,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(
+    string symbol,
+    CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol
+        };
+
+        var json = await SendSignedAsync(
+            HttpMethod.Get,
+            "/fapi/v2/positionRisk",
+            parameters,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+
+        return document.RootElement
+            .EnumerateArray()
+            .Select(x => new BinancePositionRisk
+            {
+                Symbol = GetString(x, "symbol"),
+                PositionSide = GetString(x, "positionSide"),
+                PositionAmount = TryGetDecimal(x, "positionAmt") ?? 0,
+                EntryPrice = TryGetDecimal(x, "entryPrice") ?? 0,
+                MarkPrice = TryGetDecimal(x, "markPrice") ?? 0
+            })
+            .ToList();
     }
 }

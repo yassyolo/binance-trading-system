@@ -10,15 +10,17 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
     private readonly IConnectionMultiplexer _redis;
     private readonly Bot8011PositionEventService _bot8011Events;
     private readonly ILogger<UserStreamOrderSubscriber> _logger;
-
+    private readonly OrderEventDeduplicationService _deduplication;
     public UserStreamOrderSubscriber(
         IConnectionMultiplexer redis,
         Bot8011PositionEventService bot8011Events,
-        ILogger<UserStreamOrderSubscriber> logger)
+        ILogger<UserStreamOrderSubscriber> logger,
+        OrderEventDeduplicationService deduplication)
     {
         _redis = redis;
         _bot8011Events = bot8011Events;
         _logger = logger;
+        _deduplication = deduplication;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,16 +31,15 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
             RedisChannel.Literal(RedisChannels.UserStreamOrder),
             async (_, message) =>
             {
+                if (!message.HasValue)
+                    return;
+
                 try
                 {
-                    if (!message.HasValue)
-                        return;
-
                     await ProcessOrderEventAsync(message.ToString(), stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    // normal shutdown
                 }
                 catch (Exception ex)
                 {
@@ -51,13 +52,16 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private async Task ProcessOrderEventAsync(string json, CancellationToken cancellationToken)
+    private async Task ProcessOrderEventAsync(
+        string json,
+        CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
-        if (!root.TryGetProperty("binance", out var binance))
-            return;
+        var binance = root.TryGetProperty("binance", out var wrapped)
+            ? wrapped
+            : root;
 
         var eventType = GetString(binance, "e");
 
@@ -80,12 +84,37 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         if (!binance.TryGetProperty("o", out var order))
             return;
 
-        var clientOrderId = GetString(order, "c");
-        var status = GetString(order, "X");
+        var clientOrderId = GetString(order, "c")
+            ?? GetString(order, "clientOrderId");
+
+        var status = GetString(order, "X")
+            ?? GetString(order, "orderStatus");
+
         var executedQuantity = GetDecimal(order, "z");
 
         if (!TryParseClientId(clientOrderId, out var type, out var shortId))
             return;
+
+        var algoId =
+    GetString(order, "algoId") ??
+    GetString(order, "aid");
+
+        var eventKey = $"ALGO:{algoId}:{clientOrderId}:{status}";
+
+        if (IsFinalFilledStatus(status) &&
+            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
+        {
+            return;
+        }
+
+        var orderId = GetString(order, "i") ?? GetString(order, "orderId");
+        //var eventKey = $"ORDER:{orderId}:{clientOrderId}:{status}";
+
+        if (IsFilledStatus(status) &&
+            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
+        {
+            return;
+        }
 
         if (type == "TP" && IsFilledStatus(status))
         {
@@ -100,25 +129,52 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         JsonElement binance,
         CancellationToken cancellationToken)
     {
-        if (!binance.TryGetProperty("o", out var order))
-            return;
+        var order = ExtractAlgoPayload(binance);
 
-        var clientOrderId = GetString(order, "c");
-        var status = GetString(order, "X");
+        var clientOrderId =
+            GetString(order, "clientAlgoId") ??
+            GetString(order, "caid") ??
+            GetString(order, "c") ??
+            GetString(order, "clientOrderId");
+
+        var status =
+            GetString(order, "algoStatus") ??
+            GetString(order, "X") ??
+            GetString(order, "x") ??
+            GetString(order, "status");
 
         if (!TryParseClientId(clientOrderId, out var type, out var shortId))
             return;
 
         if (type == "SL" && IsFinalFilledStatus(status))
         {
-            await _bot8011Events.HandleSlTriggeredAsync(shortId, cancellationToken);
+            await _bot8011Events.HandleSlTriggeredAsync(
+                shortId,
+                cancellationToken);
+
             return;
         }
 
-        if (type == "S3" && IsFinalFilledStatus(status))
+        if ((type == "S3" || type == "STOP3") && IsFinalFilledStatus(status))
         {
-            await _bot8011Events.HandleStop3TriggeredAsync(shortId, cancellationToken);
+            await _bot8011Events.HandleStop3TriggeredAsync(
+                shortId,
+                cancellationToken);
         }
+    }
+
+    private static JsonElement ExtractAlgoPayload(JsonElement binance)
+    {
+        if (binance.TryGetProperty("o", out var order))
+            return order;
+
+        if (binance.TryGetProperty("ao", out var algoOrder))
+            return algoOrder;
+
+        if (binance.TryGetProperty("a", out var a))
+            return a;
+
+        return binance;
     }
 
     private static bool TryParseClientId(
@@ -145,7 +201,8 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
     }
 
     private static bool IsFilledStatus(string? status)
-        => string.Equals(status, "FILLED", StringComparison.OrdinalIgnoreCase);
+        => status is not null &&
+           status.Equals("FILLED", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsFinalFilledStatus(string? status)
         => status is not null &&

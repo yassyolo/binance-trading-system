@@ -258,11 +258,14 @@ public sealed class OrderExecutionService
     }
 
     public async Task ClosePositionAsync(
-        string botName,
-        BotPosition position,
-        CancellationToken cancellationToken = default)
+    string botName,
+    BotPosition position,
+    CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(position.TpOrderId))
+        position.Status = PositionStatus.Closing;
+        position.UpdatedAtUtc = DateTime.UtcNow;
+
+        if (!string.IsNullOrWhiteSpace(position.TpOrderId) && !position.TpExecuted)
         {
             await _binanceOrders.CancelOrderAsync(
                 position.Symbol,
@@ -272,19 +275,26 @@ public sealed class OrderExecutionService
 
         if (!string.IsNullOrWhiteSpace(position.Stop3OrderId))
         {
-            await _binanceOrders.CancelOrderAsync(
+            await _binanceOrders.CancelAlgoOrderAsync(
                 position.Symbol,
-                position.TpOrderId,
+                position.Stop3OrderId,
                 cancellationToken);
         }
 
         if (!string.IsNullOrWhiteSpace(position.SlOrderId) &&
-            position.SlOrderId != position.Stop3OrderId)
+            position.SlOrderId != position.Stop3OrderId &&
+            !position.SlExecuted)
         {
             await _binanceOrders.CancelAlgoOrderAsync(
                 position.Symbol,
                 position.SlOrderId,
                 cancellationToken);
+        }
+
+        if (position.RemainingQuantity <= 0)
+        {
+            position.MarkClosed("NO_REMAINING_QUANTITY");
+            return;
         }
 
         var closeClientId = CreateClientId(botName, "CL", position.ShortId);
@@ -301,9 +311,7 @@ public sealed class OrderExecutionService
         position.CloseOrderId = close.OrderId;
         position.CloseStatus = close.Status;
         position.ProtectiveActive = false;
-        position.Closed = true;
-        position.ClosedAtUtc = DateTime.UtcNow;
-        position.UpdatedAtUtc = DateTime.UtcNow;
+        position.MarkClosed("MANUAL_CLOSE");
 
         _logger.LogInformation(
             "{BotName} position closed. Id={Id}, Side={Side}",

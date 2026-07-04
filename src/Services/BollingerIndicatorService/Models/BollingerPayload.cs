@@ -8,6 +8,7 @@ public sealed record BollingerPayload
     public long CandleOpenTime { get; init; }
     public long CandleCloseTime { get; init; }
     public long PublishedAt { get; init; }
+
     public Dictionary<string, BollingerIndicatorValue> Indicators { get; init; } = new();
 }
 

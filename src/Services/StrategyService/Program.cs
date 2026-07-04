@@ -51,13 +51,38 @@ builder.Services.AddSingleton<IBotStrategy, Bot8016Strategy>();
 
 builder.Services.AddSingleton<SignalProcessor>();
 
+builder.Services.AddHttpClient<BinanceExchangeInfoService>();
+
+builder.Services.AddSingleton<PositionLockService>();
+builder.Services.AddSingleton<SafeBinanceOrderService>();
+builder.Services.AddSingleton<Bot8011EffectivePositionService>();
+
+builder.Services.AddHostedService<BinanceStartupService>();
+
+builder.Services.AddSingleton<OrderEventDeduplicationService>();
+
+builder.Services.AddSingleton<Bot8011RedisCleanupService>();
+builder.Services.AddHostedService<Bot8011StartupCleanupHostedService>();
+
+builder.Services.AddSingleton<Bot8011HealingService>();
+builder.Services.AddHostedService<HealingSnapshotSubscriber>();
+
 builder.Services.AddHttpClient<IBinanceFuturesMarketClient, BinanceFuturesMarketClient>(client =>
 {
     client.BaseAddress = new Uri(
         builder.Configuration["BinanceFutures:BaseUrl"]
         ?? "https://fapi.binance.com");
 });
+builder.Services.Configure<TelegramOptions>(
+    builder.Configuration.GetSection("Telegram"));
 
+builder.Services.AddSingleton<BinanceRetryService>();
+builder.Services.AddSingleton<Bot8011Stop3OrderService>();
+
+builder.Services.AddSingleton<Bot8011ManualPositionRecoveryService>();
+builder.Services.AddHostedService<Bot8011ManualRecoveryHostedService>();
+
+builder.Services.AddHttpClient<TelegramNotificationService>();
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<UserStreamOrderSubscriber>();
 builder.Services.AddHostedService<Bot8011Stop3TrailingWorker>();

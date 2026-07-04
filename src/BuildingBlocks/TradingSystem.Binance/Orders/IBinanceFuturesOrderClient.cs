@@ -1,4 +1,6 @@
-﻿namespace TradingSystem.Binance.Orders;
+﻿using TradingSystem.Binance.Positions;
+
+namespace TradingSystem.Binance.Orders;
 
 public interface IBinanceFuturesOrderClient
 {
@@ -45,5 +47,24 @@ public interface IBinanceFuturesOrderClient
     decimal quantity,
     decimal price,
     string clientOrderId,
+    CancellationToken cancellationToken);
+
+    Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(
+    string symbol,
+    CancellationToken cancellationToken);
+
+    Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(
+        string symbol,
+        CancellationToken cancellationToken);
+
+    Task SetHedgeModeAsync(CancellationToken cancellationToken);
+
+    Task SetLeverageAsync(
+        string symbol,
+        int leverage,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(
+    string symbol,
     CancellationToken cancellationToken);
 }
