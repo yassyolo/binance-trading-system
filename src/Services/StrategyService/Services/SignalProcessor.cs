@@ -1,21 +1,20 @@
-﻿using StrategyService.Strategies;
+﻿using TradingSystem.Application.Engine;
+using TradingSystem.Application.Strategies;
+using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Services;
 
 public sealed class SignalProcessor
 {
-    private readonly IReadOnlyDictionary<string, IBotStrategy> _strategies;
+    private readonly TradingEngine _engine;
     private readonly ILogger<SignalProcessor> _logger;
 
     public SignalProcessor(
-        IEnumerable<IBotStrategy> strategies,
+        TradingEngine engine,
         ILogger<SignalProcessor> logger)
     {
-        _strategies = strategies.ToDictionary(
-            x => x.BotName.ToLowerInvariant(),
-            x => x);
-
+        _engine = engine;
         _logger = logger;
     }
 
@@ -23,26 +22,48 @@ public sealed class SignalProcessor
         TradingSignal signal,
         CancellationToken cancellationToken = default)
     {
-        var source = string.IsNullOrWhiteSpace(signal.Source)
-            ? "bot8011"
-            : signal.Source.Trim().ToLowerInvariant();
-
-        _logger.LogInformation(
-            "Signal received. Source={Source}, Action={Action}, Symbol={Symbol}",
-            source,
-            signal.Action,
-            signal.Symbol);
-
-        if (!_strategies.TryGetValue(source, out var strategy))
+        if (!TryParseSide(signal.Action, out var side))
         {
             _logger.LogWarning(
-                "Unknown signal source. Source={Source}, AvailableStrategies={Strategies}",
-                source,
-                string.Join(", ", _strategies.Keys));
+                "Invalid signal action. Action={Action}",
+                signal.Action);
 
             return false;
         }
 
-        return await strategy.ProcessSignalAsync(signal, cancellationToken);
+        var botName = string.IsNullOrWhiteSpace(signal.Source)
+            ? "BOT8012"
+            : signal.Source.Trim();
+
+        var tradeSignal = new TradeSignal
+        {
+            BotName = botName,
+            Symbol = signal.Symbol,
+            Side = side,
+            Source = signal.Source
+        };
+
+        return await _engine.ProcessSignalAsync(
+            tradeSignal,
+            cancellationToken);
+    }
+
+    private static bool TryParseSide(string action, out PositionSide side)
+    {
+        side = default;
+
+        if (action.Equals("long", StringComparison.OrdinalIgnoreCase))
+        {
+            side = PositionSide.Long;
+            return true;
+        }
+
+        if (action.Equals("short", StringComparison.OrdinalIgnoreCase))
+        {
+            side = PositionSide.Short;
+            return true;
+        }
+
+        return false;
     }
 }

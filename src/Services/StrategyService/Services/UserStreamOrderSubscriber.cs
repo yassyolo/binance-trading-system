@@ -9,18 +9,22 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly Bot8011PositionEventService _bot8011Events;
-    private readonly ILogger<UserStreamOrderSubscriber> _logger;
+    private readonly Bot8012PositionEventService _bot8012Events;
     private readonly OrderEventDeduplicationService _deduplication;
+    private readonly ILogger<UserStreamOrderSubscriber> _logger;
+
     public UserStreamOrderSubscriber(
         IConnectionMultiplexer redis,
         Bot8011PositionEventService bot8011Events,
-        ILogger<UserStreamOrderSubscriber> logger,
-        OrderEventDeduplicationService deduplication)
+        Bot8012PositionEventService bot8012Events,
+        OrderEventDeduplicationService deduplication,
+        ILogger<UserStreamOrderSubscriber> logger)
     {
         _redis = redis;
         _bot8011Events = bot8011Events;
-        _logger = logger;
+        _bot8012Events = bot8012Events;
         _deduplication = deduplication;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -52,9 +56,7 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private async Task ProcessOrderEventAsync(
-        string json,
-        CancellationToken cancellationToken)
+    private async Task ProcessOrderEventAsync(string json, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -84,44 +86,63 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         if (!binance.TryGetProperty("o", out var order))
             return;
 
-        var clientOrderId = GetString(order, "c")
-            ?? GetString(order, "clientOrderId");
+        var clientOrderId =
+            GetString(order, "c") ??
+            GetString(order, "clientOrderId");
 
-        var status = GetString(order, "X")
-            ?? GetString(order, "orderStatus");
+        var status =
+            GetString(order, "X") ??
+            GetString(order, "orderStatus");
+
+        if (!TryParseClientId(clientOrderId, out var botName, out var type, out var shortId))
+            return;
+
+        var orderId =
+            GetString(order, "i") ??
+            GetString(order, "orderId");
+
+        var eventKey = $"ORDER:{orderId}:{clientOrderId}:{status}";
+
+        if (IsFinalStatus(status) &&
+            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
+        {
+            return;
+        }
 
         var executedQuantity = GetDecimal(order, "z");
 
-        if (!TryParseClientId(clientOrderId, out var type, out var shortId))
-            return;
-
-        var algoId =
-    GetString(order, "algoId") ??
-    GetString(order, "aid");
-
-        var eventKey = $"ALGO:{algoId}:{clientOrderId}:{status}";
-
-        if (IsFinalFilledStatus(status) &&
-            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
-        {
-            return;
-        }
-
-        var orderId = GetString(order, "i") ?? GetString(order, "orderId");
-        //var eventKey = $"ORDER:{orderId}:{clientOrderId}:{status}";
-
-        if (IsFilledStatus(status) &&
-            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
-        {
-            return;
-        }
-
         if (type == "TP" && IsFilledStatus(status))
         {
-            await _bot8011Events.HandleTpFilledAsync(
-                shortId,
-                executedQuantity,
-                cancellationToken);
+            if (botName.Equals("BOT8011", StringComparison.OrdinalIgnoreCase))
+            {
+                await _bot8011Events.HandleTpFilledAsync(
+                    shortId,
+                    executedQuantity,
+                    cancellationToken);
+
+                return;
+            }
+
+            if (botName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
+            {
+                await _bot8012Events.HandleTpFilledAsync(
+                    shortId,
+                    executedQuantity,
+                    cancellationToken);
+
+                return;
+            }
+        }
+
+        if (type == "TP" && IsTerminalNonFilledStatus(status))
+        {
+            if (botName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
+            {
+                await _bot8012Events.HandleTpTerminalAsync(
+                    shortId,
+                    status!,
+                    cancellationToken);
+            }
         }
     }
 
@@ -143,8 +164,23 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
             GetString(order, "x") ??
             GetString(order, "status");
 
-        if (!TryParseClientId(clientOrderId, out var type, out var shortId))
+        if (!TryParseClientId(clientOrderId, out var botName, out var type, out var shortId))
             return;
+
+        if (!botName.Equals("BOT8011", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var algoId =
+            GetString(order, "algoId") ??
+            GetString(order, "aid");
+
+        var eventKey = $"ALGO:{algoId}:{clientOrderId}:{status}";
+
+        if (IsFinalFilledStatus(status) &&
+            _deduplication.IsDuplicate(eventKey, TimeSpan.FromHours(1)))
+        {
+            return;
+        }
 
         if (type == "SL" && IsFinalFilledStatus(status))
         {
@@ -179,9 +215,11 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
 
     private static bool TryParseClientId(
         string? clientOrderId,
+        out string botName,
         out string type,
         out string shortId)
     {
+        botName = string.Empty;
         type = string.Empty;
         shortId = string.Empty;
 
@@ -193,11 +231,11 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         if (parts.Length < 3)
             return false;
 
+        botName = parts[0].ToUpperInvariant();
         type = parts[1].ToUpperInvariant();
         shortId = parts[2];
 
-        return !string.IsNullOrWhiteSpace(type) &&
-               !string.IsNullOrWhiteSpace(shortId);
+        return botName.Length > 0 && type.Length > 0 && shortId.Length > 0;
     }
 
     private static bool IsFilledStatus(string? status)
@@ -209,6 +247,15 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
            (status.Equals("FILLED", StringComparison.OrdinalIgnoreCase) ||
             status.Equals("FINISHED", StringComparison.OrdinalIgnoreCase) ||
             status.Equals("TRIGGERED", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsTerminalNonFilledStatus(string? status)
+        => status is not null &&
+           (status.Equals("CANCELED", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("EXPIRED", StringComparison.OrdinalIgnoreCase) ||
+            status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsFinalStatus(string? status)
+        => IsFilledStatus(status) || IsTerminalNonFilledStatus(status);
 
     private static string? GetString(JsonElement element, string property)
     {
@@ -230,9 +277,7 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
 
         if (value.ValueKind == JsonValueKind.Number &&
             value.TryGetDecimal(out var number))
-        {
             return number;
-        }
 
         if (value.ValueKind == JsonValueKind.String &&
             decimal.TryParse(
@@ -240,9 +285,7 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
                 NumberStyles.Any,
                 CultureInfo.InvariantCulture,
                 out var parsed))
-        {
             return parsed;
-        }
 
         return 0;
     }

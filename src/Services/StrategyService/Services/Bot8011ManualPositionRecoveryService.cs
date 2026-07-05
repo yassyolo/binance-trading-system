@@ -15,12 +15,13 @@ public sealed class Bot8011ManualPositionRecoveryService
     private readonly BinanceExchangeInfoService _exchangeInfo;
     private readonly BinanceRetryService _retry;
     private readonly ILogger<Bot8011ManualPositionRecoveryService> _logger;
-
+    private readonly Bot8011Stop3OrderService _stop3Orders;
     public Bot8011ManualPositionRecoveryService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient orders,
         BinanceExchangeInfoService exchangeInfo,
+        Bot8011Stop3OrderService stop3OrderService,
         BinanceRetryService retry,
         ILogger<Bot8011ManualPositionRecoveryService> logger)
     {
@@ -30,6 +31,7 @@ public sealed class Bot8011ManualPositionRecoveryService
         _exchangeInfo = exchangeInfo;
         _retry = retry;
         _logger = logger;
+        _stop3Orders = stop3OrderService;
     }
 
     public async Task<int> RecoverAsync(CancellationToken cancellationToken)
@@ -123,24 +125,30 @@ public sealed class Bot8011ManualPositionRecoveryService
                 ShortId = shortId,
                 Symbol = risk.Symbol,
                 Side = side,
+                Mode = PositionMode.Hedge,
+
                 Quantity = quantity,
                 RemainingQuantity = quantity,
                 EntryPrice = risk.EntryPrice,
-                ParentStatus = "MANUAL_RECOVERED",
-                ParentFilled = true,
+
+                ParentClientId = null,
+                ParentOrderId = null,
+                ParentFilledAtUtc = DateTime.UtcNow,
+
                 TpClientId = tpClientId,
                 TpOrderId = tp.OrderId,
                 TpPrice = tpPrice,
-                TpQuantity = tpQuantity,
                 TpStatus = tp.Status,
+
                 SlClientId = slClientId,
                 SlOrderId = sl.AlgoOrderId,
                 SlPrice = slPrice,
                 SlStatus = sl.Status,
+
                 ProtectiveActive = true,
+                ManualPosition = true,
                 Source = "MANUAL_RECOVERY",
                 Status = PositionStatus.Open,
-                CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow
             };
 

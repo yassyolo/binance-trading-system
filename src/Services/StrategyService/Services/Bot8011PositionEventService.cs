@@ -12,21 +12,27 @@ public sealed class Bot8011PositionEventService
     private readonly Bot8011Options _options;
     private readonly IPositionStore _positionStore;
     private readonly IBinanceFuturesOrderClient _binanceOrders;
+    private readonly Bot8011Stop3OrderService _stop3Orders;
     private readonly ILogger<Bot8011PositionEventService> _logger;
 
     public Bot8011PositionEventService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient binanceOrders,
+        Bot8011Stop3OrderService stop3Orders,
         ILogger<Bot8011PositionEventService> logger)
     {
         _options = options.Value;
         _positionStore = positionStore;
         _binanceOrders = binanceOrders;
+        _stop3Orders = stop3Orders;
         _logger = logger;
     }
 
-    public async Task HandleTpFilledAsync(string shortId, decimal executedQuantity, CancellationToken cancellationToken)
+    public async Task HandleTpFilledAsync(
+        string shortId,
+        decimal executedQuantity,
+        CancellationToken cancellationToken)
     {
         var position = await LoadPositionAsync(shortId, cancellationToken);
 
@@ -57,24 +63,18 @@ public sealed class Bot8011PositionEventService
             await CancelInitialSlIfExistsAsync(position, cancellationToken);
 
             var stop3ClientId = CreateClientId(_options.BotName, "S3", position.ShortId);
-            var stop3Price = CalculateInitialStop3Price(position);
 
             var stop3 = await _stop3Orders.CreateStop3WithFallbackAsync(
-     position,
-     position.RemainingQuantity,
-     stop3ClientId,
-     cancellationToken);
+                position,
+                position.RemainingQuantity,
+                stop3ClientId,
+                cancellationToken);
 
+            position.Stop3ClientId = stop3ClientId;
             position.Stop3OrderId = stop3.AlgoOrderId;
             position.Stop3Initial = stop3.TriggerPrice;
             position.Stop3Current = stop3.TriggerPrice;
             position.Stop3Previous = stop3.TriggerPrice;
-            position.Stop3Status = stop3.Status;
-            position.Stop3ClientId = stop3ClientId;
-            position.Stop3OrderId = stop3.AlgoOrderId;
-            position.Stop3Initial = stop3Price;
-            position.Stop3Current = stop3Price;
-            position.Stop3Previous = stop3Price;
             position.Stop3Status = stop3.Status;
             position.Stop3Created = true;
             position.Stop3Pending = false;
@@ -88,7 +88,7 @@ public sealed class Bot8011PositionEventService
                 "BOT8011 TP filled and STOP3 created. Position={ShortId}, Remaining={Remaining}, Stop3={Stop3}",
                 position.ShortId,
                 position.RemainingQuantity,
-                stop3Price);
+                stop3.TriggerPrice);
         }
         catch (Exception ex)
         {
@@ -108,7 +108,9 @@ public sealed class Bot8011PositionEventService
         }
     }
 
-    public async Task HandleSlTriggeredAsync(string shortId, CancellationToken cancellationToken)
+    public async Task HandleSlTriggeredAsync(
+        string shortId,
+        CancellationToken cancellationToken)
     {
         var position = await LoadPositionAsync(shortId, cancellationToken);
 
@@ -125,7 +127,9 @@ public sealed class Bot8011PositionEventService
         await MarkClosedAsync(position, "SL_TRIGGERED", cancellationToken);
     }
 
-    public async Task HandleStop3TriggeredAsync(string shortId, CancellationToken cancellationToken)
+    public async Task HandleStop3TriggeredAsync(
+        string shortId,
+        CancellationToken cancellationToken)
     {
         var position = await LoadPositionAsync(shortId, cancellationToken);
 
@@ -141,7 +145,9 @@ public sealed class Bot8011PositionEventService
         await MarkClosedAsync(position, "STOP3_TRIGGERED", cancellationToken);
     }
 
-    private async Task<BotPosition?> LoadPositionAsync(string shortId, CancellationToken cancellationToken)
+    private async Task<BotPosition?> LoadPositionAsync(
+        string shortId,
+        CancellationToken cancellationToken)
     {
         var position = await _positionStore.GetAsync(
             _options.BotName,
@@ -154,7 +160,9 @@ public sealed class Bot8011PositionEventService
         return position;
     }
 
-    private async Task CancelInitialSlIfExistsAsync(BotPosition position, CancellationToken cancellationToken)
+    private async Task CancelInitialSlIfExistsAsync(
+        BotPosition position,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(position.SlOrderId) || position.SlExecuted)
             return;
@@ -168,7 +176,10 @@ public sealed class Bot8011PositionEventService
         position.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    private async Task MarkClosedAsync(BotPosition position, string reason, CancellationToken cancellationToken)
+    private async Task MarkClosedAsync(
+        BotPosition position,
+        string reason,
+        CancellationToken cancellationToken)
     {
         position.MarkClosed(reason);
         position.ProtectiveActive = false;
@@ -183,16 +194,6 @@ public sealed class Bot8011PositionEventService
             reason);
     }
 
-    private decimal CalculateInitialStop3Price(BotPosition position)
-    {
-        if (!position.EntryPrice.HasValue)
-            throw new InvalidOperationException($"Position {position.ShortId} has no entry price.");
-
-        return position.Side == PositionSide.Long
-            ? position.EntryPrice.Value + _options.Stop3EntryOffset
-            : position.EntryPrice.Value - _options.Stop3EntryOffset;
-    }
-
     private static string CreateClientId(string botName, string prefix, string shortId)
     {
         var shortBot = botName.Length > 8 ? botName[..8] : botName;
@@ -200,10 +201,4 @@ public sealed class Bot8011PositionEventService
 
         return value[..Math.Min(32, value.Length)];
     }
-
-    private static string ToCloseSide(PositionSide side)
-        => side == PositionSide.Long ? "SELL" : "BUY";
-
-    private static string ToPositionSide(PositionSide side)
-        => side == PositionSide.Long ? "LONG" : "SHORT";
 }

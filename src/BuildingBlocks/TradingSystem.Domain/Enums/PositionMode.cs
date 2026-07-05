@@ -3,5 +3,6 @@
 public enum PositionMode
 {
     TpOnly = 1,
-    Stop3 = 2
+    Stop3 = 2,
+    Hedge = 3,
 }

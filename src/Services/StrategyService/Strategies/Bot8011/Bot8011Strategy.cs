@@ -4,7 +4,7 @@ using StrategyService.Services;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Signals;
 
-namespace StrategyService.Strategies;
+namespace StrategyService.Strategies.Bot8011;
 
 public sealed class Bot8011Strategy(
     IOptions<Bot8011Options> options,
