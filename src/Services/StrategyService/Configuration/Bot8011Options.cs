@@ -1,6 +1,8 @@
-﻿namespace StrategyService.Configuration;
+﻿using TradingSystem.Binance.Startup;
 
-public sealed class Bot8011Options
+namespace StrategyService.Configuration;
+
+public sealed class Bot8011Options : IBinanceTradingConfiguration
 {
     public string BotName { get; set; } = "BOT8011";
 

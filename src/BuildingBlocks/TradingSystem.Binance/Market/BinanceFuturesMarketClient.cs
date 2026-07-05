@@ -1,28 +1,18 @@
 ﻿using System.Globalization;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
-using TradingSystem.Binance.Configuration;
+using TradingSystem.Binance.Market.Contracts;
 
 namespace TradingSystem.Binance.Market;
 
-public sealed class BinanceFuturesMarketClient : IBinanceFuturesMarketClient
+public sealed class BinanceFuturesMarketClient(
+    HttpClient httpClient) 
+    : IBinanceFuturesMarketClient
 {
-    private readonly HttpClient _httpClient;
-    private readonly BinanceFuturesOptions _options;
-
-    public BinanceFuturesMarketClient(
-        HttpClient httpClient,
-        IOptions<BinanceFuturesOptions> options)
-    {
-        _httpClient = httpClient;
-        _options = options.Value;
-    }
-
     public async Task<decimal> GetMarkPriceAsync(
         string symbol,
         CancellationToken cancellationToken = default)
     {
-        using var response = await _httpClient.GetAsync(
+        using var response = await httpClient.GetAsync(
             $"/fapi/v1/premiumIndex?symbol={symbol}",
             cancellationToken);
 

@@ -1,4 +1,4 @@
-﻿namespace TradingSystem.Binance.Market;
+﻿namespace TradingSystem.Binance.Market.Contracts;
 
 public interface IBinanceFuturesMarketClient
 {

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Resilience;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 

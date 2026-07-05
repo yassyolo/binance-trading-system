@@ -2,34 +2,24 @@
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
 using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Healing;
 
-namespace StrategyService.Services;
+namespace StrategyService.Services.Healing;
 
-public sealed class Bot8011HealingService
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly SafeBinanceOrderService _safeOrders;
-    private readonly ILogger<Bot8011HealingService> _logger;
-
-    public Bot8011HealingService(
+public sealed class Bot8011HealingService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient orders,
         SafeBinanceOrderService safeOrders,
         ILogger<Bot8011HealingService> logger)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _orders = orders;
-        _safeOrders = safeOrders;
-        _logger = logger;
-    }
-
+    : IBotHealingService
+{
+    private readonly Bot8011Options _options = options.Value;
+    public string BotName => _options.BotName;
     public async Task HealAsync(
-        HealingSnapshotDto snapshot,
+        HealingSnapshot snapshot,
         CancellationToken cancellationToken)
     {
         if (!snapshot.Type.Equals("healing_snapshot", StringComparison.OrdinalIgnoreCase))
@@ -42,7 +32,7 @@ public sealed class Bot8011HealingService
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var positions = await _positionStore.GetAllAsync(
+        var positions = await positionStore.GetAllAsync(
             _options.BotName,
             cancellationToken);
 
@@ -54,7 +44,7 @@ public sealed class Bot8011HealingService
 
             if (tpPresent && slPresent && !position.TpExecuted)
             {
-                _logger.LogInformation(
+                logger.LogInformation(
                     "BOT8011 healing OK. Position={ShortId}, Mode=TP_SL",
                     position.ShortId);
 
@@ -77,7 +67,7 @@ public sealed class Bot8011HealingService
             {
                 if (stop3Present)
                 {
-                    _logger.LogInformation(
+                    logger.LogInformation(
                         "BOT8011 healing OK. Position={ShortId}, Mode=STOP3",
                         position.ShortId);
 
@@ -90,12 +80,12 @@ public sealed class Bot8011HealingService
 
             if (!tpPresent && !slPresent && !stop3Present)
             {
-                await _positionStore.DeleteAsync(
+                await positionStore.DeleteAsync(
                     _options.BotName,
                     position.ShortId,
                     cancellationToken);
 
-                _logger.LogWarning(
+                logger.LogWarning(
                     "BOT8011 healing deleted ghost position. Position={ShortId}",
                     position.ShortId);
             }
@@ -118,18 +108,18 @@ public sealed class Bot8011HealingService
         position.Status = PositionStatus.Stop3Pending;
         position.UpdatedAtUtc = DateTime.UtcNow;
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
         if (remaining <= 0)
         {
             position.MarkClosed("HEALING_TP_FULL_EXIT");
-            await _positionStore.SaveAsync(position, cancellationToken);
+            await positionStore.SaveAsync(position, cancellationToken);
             return;
         }
 
         if (!position.EntryPrice.HasValue)
         {
-            _logger.LogWarning(
+            logger.LogWarning(
                 "BOT8011 healing TP hit but missing entry price. Position={ShortId}",
                 position.ShortId);
 
@@ -142,7 +132,7 @@ public sealed class Bot8011HealingService
             ? position.EntryPrice.Value + _options.Stop3EntryOffset
             : position.EntryPrice.Value - _options.Stop3EntryOffset;
 
-        var stop3 = await _orders.PlaceStopMarketAlgoOrderAsync(
+        var stop3 = await orders.PlaceStopMarketAlgoOrderAsync(
             position.Symbol,
             ToCloseSide(position.Side),
             ToPositionSide(position.Side),
@@ -164,7 +154,7 @@ public sealed class Bot8011HealingService
 
         if (!string.IsNullOrWhiteSpace(position.SlOrderId))
         {
-            await _safeOrders.SafeCancelAlgoAsync(
+            await safeOrders.SafeCancelAlgoAsync(
                 position.Symbol,
                 position.SlOrderId,
                 position.SlClientId,
@@ -173,9 +163,9 @@ public sealed class Bot8011HealingService
             position.SlStatus = "CANCELED";
         }
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
-        _logger.LogWarning(
+        logger.LogWarning(
             "BOT8011 healing detected TP hit and created STOP3. Position={ShortId}, Stop3={Stop3}",
             position.ShortId,
             stop3Price);
@@ -193,9 +183,9 @@ public sealed class Bot8011HealingService
         position.TrailingInProgress = false;
         position.MarkClosed("HEALING_SL_HIT");
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
-        _logger.LogWarning(
+        logger.LogWarning(
             "BOT8011 healing detected SL hit. Position={ShortId}",
             position.ShortId);
     }
@@ -211,9 +201,9 @@ public sealed class Bot8011HealingService
         position.TrailingInProgress = false;
         position.MarkClosed("HEALING_STOP3_HIT");
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
-        _logger.LogWarning(
+        logger.LogWarning(
             "BOT8011 healing detected STOP3 hit. Position={ShortId}",
             position.ShortId);
     }

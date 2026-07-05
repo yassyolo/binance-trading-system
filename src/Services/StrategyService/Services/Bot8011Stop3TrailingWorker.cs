@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Market;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Market.Contracts;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Services;

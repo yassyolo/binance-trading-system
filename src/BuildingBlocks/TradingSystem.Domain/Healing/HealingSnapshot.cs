@@ -1,8 +1,8 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace StrategyService.Services;
+namespace TradingSystem.Domain.Healing;
 
-public sealed record HealingSnapshotDto
+public sealed record HealingSnapshot
 {
     [JsonPropertyName("type")]
     public string Type { get; init; } = string.Empty;

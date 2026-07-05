@@ -8,6 +8,12 @@ public interface ITradeExecutor
         string botName,
         string symbol,
         PositionSide side,
-        string source,
+        string? source,
+        CancellationToken cancellationToken);
+
+    Task CloseAsync(
+        string botName,
+        string shortId,
+        string reason,
         CancellationToken cancellationToken);
 }

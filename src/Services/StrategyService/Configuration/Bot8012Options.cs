@@ -1,6 +1,8 @@
-﻿namespace StrategyService.Configuration;
+﻿using TradingSystem.Binance.Startup;
 
-public class Bot8012Options
+namespace StrategyService.Configuration;
+
+public class Bot8012Options : IBinanceTradingConfiguration
 {
     public string BotName { get; set; } = "BOT8012";
     public string Symbol { get; set; } = "BTCUSDC";
@@ -15,4 +17,7 @@ public class Bot8012Options
 
     public bool EnableLong { get; set; } = true;
     public bool EnableShort { get; set; } = true;
+
+    public bool EnableHealing { get; set; } = true;
+    public int HealingIntervalSeconds { get; set; } = 10;
 }

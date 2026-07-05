@@ -1,14 +1,9 @@
-﻿namespace StrategyService.Services;
+﻿using Microsoft.Extensions.Logging;
 
-public sealed class BinanceRetryService
+namespace TradingSystem.Binance.Resilience;
+
+public sealed class BinanceRetryService(ILogger<BinanceRetryService> logger)
 {
-    private readonly ILogger<BinanceRetryService> _logger;
-
-    public BinanceRetryService(ILogger<BinanceRetryService> logger)
-    {
-        _logger = logger;
-    }
-
     public async Task<T> ExecuteAsync<T>(
         string operation,
         Func<CancellationToken, Task<T>> action,
@@ -27,7 +22,7 @@ public sealed class BinanceRetryService
             {
                 lastException = ex;
 
-                _logger.LogWarning(
+                logger.LogWarning(
                     ex,
                     "Binance operation failed. Operation={Operation}, Attempt={Attempt}/{Attempts}",
                     operation,

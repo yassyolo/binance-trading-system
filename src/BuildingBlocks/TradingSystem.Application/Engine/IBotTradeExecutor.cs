@@ -1,6 +1,6 @@
 ﻿using TradingSystem.Domain.Enums;
 
-namespace TradingSystem.Application.Engine;
+namespace StrategyService.Execution;
 
 public interface IBotTradeExecutor
 {
@@ -10,6 +10,12 @@ public interface IBotTradeExecutor
         string botName,
         string symbol,
         PositionSide side,
-        string source,
+        string? source,
+        CancellationToken cancellationToken);
+
+    Task CloseAsync(
+        string botName,
+        string shortId,
+        string reason,
         CancellationToken cancellationToken);
 }

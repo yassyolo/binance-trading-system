@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using System.Runtime.InteropServices;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 
 namespace StrategyService.Controllers;
 

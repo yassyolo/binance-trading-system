@@ -1,40 +1,28 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 
 namespace StrategyService.Services;
 
-public sealed class Bot8011RedisCleanupService
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly ILogger<Bot8011RedisCleanupService> _logger;
-
-    public Bot8011RedisCleanupService(
+public sealed class Bot8011RedisCleanupService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient orders,
         ILogger<Bot8011RedisCleanupService> logger)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _orders = orders;
-        _logger = logger;
-    }
-
+{
+    private readonly Bot8011Options _options = options.Value;
     public async Task<int> CleanupGhostPositionsAsync(CancellationToken cancellationToken)
     {
-        var positions = await _positionStore.GetAllAsync(
+        var positions = await positionStore.GetAllAsync(
             _options.BotName,
             cancellationToken);
 
-        var openOrders = await _orders.GetOpenOrdersAsync(
+        var openOrders = await orders.GetOpenOrdersAsync(
             _options.Symbol,
             cancellationToken);
 
-        var openAlgoOrders = await _orders.GetOpenAlgoOrdersAsync(
+        var openAlgoOrders = await orders.GetOpenAlgoOrdersAsync(
             _options.Symbol,
             cancellationToken);
 
@@ -63,14 +51,14 @@ public sealed class Bot8011RedisCleanupService
             if (hasNormalOrder || hasAlgoOrder || hasUsefulRedisState)
                 continue;
 
-            await _positionStore.DeleteAsync(
+            await positionStore.DeleteAsync(
                 _options.BotName,
                 position.ShortId,
                 cancellationToken);
 
             cleaned++;
 
-            _logger.LogWarning(
+            logger.LogWarning(
                 "BOT8011 ghost Redis position deleted. Position={ShortId}",
                 position.ShortId);
         }

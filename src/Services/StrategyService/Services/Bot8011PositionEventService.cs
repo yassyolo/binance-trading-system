@@ -1,33 +1,20 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Services;
 
-public sealed class Bot8011PositionEventService
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _binanceOrders;
-    private readonly Bot8011Stop3OrderService _stop3Orders;
-    private readonly ILogger<Bot8011PositionEventService> _logger;
-
-    public Bot8011PositionEventService(
+public sealed class Bot8011PositionEventService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient binanceOrders,
         Bot8011Stop3OrderService stop3Orders,
         ILogger<Bot8011PositionEventService> logger)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _binanceOrders = binanceOrders;
-        _stop3Orders = stop3Orders;
-        _logger = logger;
-    }
+{
+    private readonly Bot8011Options _options = options.Value;
 
     public async Task HandleTpFilledAsync(
         string shortId,
@@ -56,7 +43,7 @@ public sealed class Bot8011PositionEventService
         position.Status = PositionStatus.Stop3Pending;
         position.UpdatedAtUtc = DateTime.UtcNow;
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
         try
         {
@@ -64,7 +51,7 @@ public sealed class Bot8011PositionEventService
 
             var stop3ClientId = CreateClientId(_options.BotName, "S3", position.ShortId);
 
-            var stop3 = await _stop3Orders.CreateStop3WithFallbackAsync(
+            var stop3 = await stop3Orders.CreateStop3WithFallbackAsync(
                 position,
                 position.RemainingQuantity,
                 stop3ClientId,
@@ -82,9 +69,9 @@ public sealed class Bot8011PositionEventService
             position.Status = PositionStatus.Stop3Active;
             position.UpdatedAtUtc = DateTime.UtcNow;
 
-            await _positionStore.SaveAsync(position, cancellationToken);
+            await positionStore.SaveAsync(position, cancellationToken);
 
-            _logger.LogInformation(
+            logger.LogInformation(
                 "BOT8011 TP filled and STOP3 created. Position={ShortId}, Remaining={Remaining}, Stop3={Stop3}",
                 position.ShortId,
                 position.RemainingQuantity,
@@ -97,9 +84,9 @@ public sealed class Bot8011PositionEventService
             position.Status = PositionStatus.Stop3Pending;
             position.UpdatedAtUtc = DateTime.UtcNow;
 
-            await _positionStore.SaveAsync(position, cancellationToken);
+            await positionStore.SaveAsync(position, cancellationToken);
 
-            _logger.LogError(
+            logger.LogError(
                 ex,
                 "BOT8011 failed to create STOP3 after TP. Position={ShortId}",
                 position.ShortId);
@@ -149,7 +136,7 @@ public sealed class Bot8011PositionEventService
         string shortId,
         CancellationToken cancellationToken)
     {
-        var position = await _positionStore.GetAsync(
+        var position = await positionStore.GetAsync(
             _options.BotName,
             shortId,
             cancellationToken);
@@ -167,7 +154,7 @@ public sealed class Bot8011PositionEventService
         if (string.IsNullOrWhiteSpace(position.SlOrderId) || position.SlExecuted)
             return;
 
-        await _binanceOrders.CancelAlgoOrderAsync(
+        await binanceOrders.CancelAlgoOrderAsync(
             position.Symbol,
             position.SlOrderId,
             cancellationToken);
@@ -186,9 +173,9 @@ public sealed class Bot8011PositionEventService
         position.Stop3Pending = false;
         position.TrailingInProgress = false;
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await positionStore.SaveAsync(position, cancellationToken);
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "BOT8011 position closed. Position={ShortId}, Reason={Reason}",
             position.ShortId,
             reason);

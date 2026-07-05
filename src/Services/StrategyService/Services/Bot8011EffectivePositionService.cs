@@ -1,44 +1,35 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Services;
 
-public sealed class Bot8011EffectivePositionService
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _orders;
-
-    public Bot8011EffectivePositionService(
+public sealed class Bot8011EffectivePositionService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient orders)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _orders = orders;
-    }
+{
+    private readonly Bot8011Options options = options.Value;
 
     public async Task<IReadOnlyCollection<BotPosition>> GetEffectiveActiveAsync(
         CancellationToken cancellationToken)
     {
-        var redisPositions = await _positionStore.GetAllAsync(
-            _options.BotName,
+        var redisPositions = await positionStore.GetAllAsync(
+            options.BotName,
             cancellationToken);
 
-        var openOrders = await _orders.GetOpenOrdersAsync(
-            _options.Symbol,
+        var openOrders = await orders.GetOpenOrdersAsync(
+            options.Symbol,
             cancellationToken);
 
-        var openAlgoOrders = await _orders.GetOpenAlgoOrdersAsync(
-            _options.Symbol,
+        var openAlgoOrders = await orders.GetOpenAlgoOrdersAsync(
+            options.Symbol,
             cancellationToken);
 
-        var shortBot = GetShortBot(_options.BotName);
+        var shortBot = GetShortBot(options.BotName);
 
         var activeShortIds = new HashSet<string>();
 

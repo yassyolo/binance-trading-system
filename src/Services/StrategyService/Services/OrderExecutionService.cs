@@ -1,5 +1,6 @@
 ﻿using StrategyService.Configuration;
 using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 
@@ -105,12 +106,12 @@ public sealed class OrderExecutionService
     }
 
     public async Task<BotPosition> OpenTpOnlyPositionAsync(
-        string botName,
-        PositionSide side,
-        string symbol,
-        decimal quantity,
-        decimal profitDistance,
-        CancellationToken cancellationToken = default)
+    string botName,
+    PositionSide side,
+    string symbol,
+    decimal quantity,
+    decimal profitDistance,
+    CancellationToken cancellationToken = default)
     {
         var shortId = CreateShortId();
         var entryClientId = CreateClientId(botName, "P", shortId);
@@ -124,13 +125,40 @@ public sealed class OrderExecutionService
             entryClientId,
             cancellationToken);
 
-        var entryPrice = entry.AveragePrice ?? 0;
+        var filledEntry = await WaitForFilledAsync(
+            symbol,
+            entry.OrderId,
+            cancellationToken);
 
-        var tpPrice = side == PositionSide.Long
-            ? entryPrice + profitDistance
-            : entryPrice - profitDistance;
+        var entryPrice = ResolveEntryPrice(filledEntry);
 
-        var tp = await _binanceOrders.PlaceTakeProfitMarketAlgoOrderAsync(
+        if (entryPrice <= 0)
+            throw new InvalidOperationException(
+                $"BOT8012 parent MARKET order filled without valid entry price. ShortId={shortId}, OrderId={entry.OrderId}");
+
+        var filters = await _binanceOrders.GetSymbolFiltersAsync(
+            symbol,
+            cancellationToken);
+
+        var entryRounded = QuantizePrice(entryPrice, filters.TickSize);
+
+        var rawTpPrice = side == PositionSide.Long
+            ? entryRounded + profitDistance
+            : entryRounded - profitDistance;
+
+        var tpPrice = QuantizePrice(rawTpPrice, filters.TickSize);
+
+        var existingTpOrders = await _binanceOrders.GetOpenOrdersAsync(
+            symbol,
+            cancellationToken);
+
+        var tpAlreadyExists = existingTpOrders.Any(x =>
+            x.ClientOrderId.Equals(tpClientId, StringComparison.OrdinalIgnoreCase));
+
+        if (tpAlreadyExists)
+            throw new InvalidOperationException($"BOT8012 TP already exists. TpClientId={tpClientId}");
+
+        var tp = await _binanceOrders.PlaceLimitOrderAsync(
             symbol,
             ToCloseSide(side),
             ToPositionSide(side),
@@ -138,6 +166,13 @@ public sealed class OrderExecutionService
             tpPrice,
             tpClientId,
             cancellationToken);
+
+        _logger.LogInformation(
+            "BOT8012 position opened. Side={Side}, ShortId={ShortId}, Entry={EntryPrice}, TP={TpPrice}",
+            side,
+            shortId,
+            entryPrice,
+            tpPrice);
 
         return new BotPosition
         {
@@ -152,12 +187,12 @@ public sealed class OrderExecutionService
             RemainingQuantity = quantity,
 
             ParentClientId = entryClientId,
-            ParentOrderId = entry.OrderId,
+            ParentOrderId = filledEntry.OrderId,
             ParentFilledAtUtc = DateTime.UtcNow,
 
-            TpPrice = tpPrice,
             TpClientId = tpClientId,
-            TpOrderId = tp.AlgoOrderId,
+            TpOrderId = tp.OrderId,
+            TpPrice = tpPrice,
             TpStatus = tp.Status,
 
             ProtectiveActive = true,
@@ -167,6 +202,54 @@ public sealed class OrderExecutionService
         };
     }
 
+    private async Task<BinanceOrderResult> WaitForFilledAsync(
+        string symbol,
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var order = await _binanceOrders.GetOrderAsync(
+                symbol,
+                orderId,
+                cancellationToken);
+
+            if (order.Status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase) == true)
+                return order;
+
+            if (order.Status is "CANCELED" or "EXPIRED" or "REJECTED")
+                throw new InvalidOperationException(
+                    $"Parent MARKET order terminal before FILLED. OrderId={orderId}, Status={order.Status}");
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+
+        throw new TimeoutException($"Parent MARKET order was not FILLED within 20 seconds. OrderId={orderId}");
+    }
+
+    private static decimal ResolveEntryPrice(BinanceOrderResult order)
+    {
+        if (order.AveragePrice is > 0)
+            return order.AveragePrice.Value;
+
+        if (order.CumulativeQuoteQuantity is > 0 &&
+            order.ExecutedQuantity is > 0)
+        {
+            return order.CumulativeQuoteQuantity.Value / order.ExecutedQuantity.Value;
+        }
+
+        return 0;
+    }
+
+    private static decimal QuantizePrice(decimal price, decimal tickSize)
+    {
+        if (tickSize <= 0)
+            return Math.Round(price, 0);
+
+        return Math.Floor(price / tickSize) * tickSize;
+    }
     public async Task<BotPosition> OpenStop3TrailingPositionAsync(
         string botName,
         PositionSide side,

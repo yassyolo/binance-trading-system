@@ -2,29 +2,16 @@
 
 namespace TradingSystem.Application.Engine;
 
-public sealed class TradingEngine
-{
-    private readonly IReadOnlyDictionary<string, ITradingStrategy> _strategies;
-    private readonly IMarketPriceProvider _marketPriceProvider;
-    private readonly IActivePositionProvider _activePositionProvider;
-    private readonly ITradeExecutor _tradeExecutor;
-
-    public TradingEngine(
+public sealed class TradingEngine(
         IEnumerable<ITradingStrategy> strategies,
         IMarketPriceProvider marketPriceProvider,
         IActivePositionProvider activePositionProvider,
         ITradeExecutor tradeExecutor)
-    {
-        _strategies = strategies.ToDictionary(
-            x => x.BotName,
-            x => x,
-            StringComparer.OrdinalIgnoreCase);
-
-        _marketPriceProvider = marketPriceProvider;
-        _activePositionProvider = activePositionProvider;
-        _tradeExecutor = tradeExecutor;
-    }
-
+{
+    private readonly IReadOnlyDictionary<string, ITradingStrategy> _strategies = strategies.ToDictionary(
+        x => x.BotName,
+        x => x,
+        StringComparer.OrdinalIgnoreCase);
     public async Task<bool> ProcessSignalAsync(
         TradeSignal signal,
         CancellationToken cancellationToken)
@@ -32,11 +19,11 @@ public sealed class TradingEngine
         if (!_strategies.TryGetValue(signal.BotName, out var strategy))
             return false;
 
-        var markPrice = await _marketPriceProvider.GetMarkPriceAsync(
+        var markPrice = await marketPriceProvider.GetMarkPriceAsync(
             signal.Symbol,
             cancellationToken);
 
-        var activePositions = await _activePositionProvider.GetActivePositionsAsync(
+        var activePositions = await activePositionProvider.GetActivePositionsAsync(
             signal.BotName,
             signal.Symbol,
             cancellationToken);
@@ -55,7 +42,21 @@ public sealed class TradingEngine
         if (decision.DecisionType != StrategyDecisionType.Open)
             return false;
 
-        await _tradeExecutor.OpenAsync(
+        foreach (var shortId in decision.PositionsToClose)
+        {
+            await tradeExecutor.CloseAsync(
+                signal.BotName,
+                shortId,
+                "OPPOSITE_SIGNAL",
+                cancellationToken);
+        }
+
+        if (decision.PositionsToClose.Count > 0)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        await tradeExecutor.OpenAsync(
             signal.BotName,
             signal.Symbol,
             signal.Side,

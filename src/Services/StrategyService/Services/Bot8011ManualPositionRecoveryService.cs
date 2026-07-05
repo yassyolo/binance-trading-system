@@ -1,46 +1,30 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Resilience;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Services;
 
-public sealed class Bot8011ManualPositionRecoveryService
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly BinanceExchangeInfoService _exchangeInfo;
-    private readonly BinanceRetryService _retry;
-    private readonly ILogger<Bot8011ManualPositionRecoveryService> _logger;
-    private readonly Bot8011Stop3OrderService _stop3Orders;
-    public Bot8011ManualPositionRecoveryService(
+public sealed class Bot8011ManualPositionRecoveryService(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
         IBinanceFuturesOrderClient orders,
         BinanceExchangeInfoService exchangeInfo,
-        Bot8011Stop3OrderService stop3OrderService,
         BinanceRetryService retry,
         ILogger<Bot8011ManualPositionRecoveryService> logger)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _orders = orders;
-        _exchangeInfo = exchangeInfo;
-        _retry = retry;
-        _logger = logger;
-        _stop3Orders = stop3OrderService;
-    }
+{
+    private readonly Bot8011Options _options = options.Value;
 
     public async Task<int> RecoverAsync(CancellationToken cancellationToken)
     {
-        var existing = await _positionStore.GetAllAsync(
+        var existing = await positionStore.GetAllAsync(
             _options.BotName,
             cancellationToken);
 
-        var risks = await _orders.GetPositionRiskAsync(
+        var risks = await orders.GetPositionRiskAsync(
             _options.Symbol,
             cancellationToken);
 
@@ -62,7 +46,7 @@ public sealed class Bot8011ManualPositionRecoveryService
 
             var quantity = Math.Abs(risk.PositionAmount);
 
-            quantity = await _exchangeInfo.RoundQuantityAsync(
+            quantity = await exchangeInfo.RoundQuantityAsync(
                 risk.Symbol,
                 quantity,
                 cancellationToken);
@@ -84,10 +68,10 @@ public sealed class Bot8011ManualPositionRecoveryService
                 ? risk.EntryPrice * (1 - _options.StopLossPercent / 100m)
                 : risk.EntryPrice * (1 + _options.StopLossPercent / 100m);
 
-            tpPrice = await _exchangeInfo.RoundPriceAsync(risk.Symbol, tpPrice, cancellationToken);
-            slPrice = await _exchangeInfo.RoundPriceAsync(risk.Symbol, slPrice, cancellationToken);
+            tpPrice = await exchangeInfo.RoundPriceAsync(risk.Symbol, tpPrice, cancellationToken);
+            slPrice = await exchangeInfo.RoundPriceAsync(risk.Symbol, slPrice, cancellationToken);
 
-            var tpQuantity = await _exchangeInfo.RoundQuantityAsync(
+            var tpQuantity = await exchangeInfo.RoundQuantityAsync(
                 risk.Symbol,
                 quantity / 2m,
                 cancellationToken);
@@ -95,9 +79,9 @@ public sealed class Bot8011ManualPositionRecoveryService
             if (tpQuantity <= 0)
                 continue;
 
-            var tp = await _retry.ExecuteAsync(
+            var tp = await retry.ExecuteAsync(
                 "RECOVER_TP",
-                ct => _orders.PlaceLimitOrderAsync(
+                ct => orders.PlaceLimitOrderAsync(
                     risk.Symbol,
                     ToCloseSide(side),
                     ToPositionSide(side),
@@ -107,9 +91,9 @@ public sealed class Bot8011ManualPositionRecoveryService
                     ct),
                 cancellationToken);
 
-            var sl = await _retry.ExecuteAsync(
+            var sl = await retry.ExecuteAsync(
                 "RECOVER_SL",
-                ct => _orders.PlaceStopMarketAlgoOrderAsync(
+                ct => orders.PlaceStopMarketAlgoOrderAsync(
                     risk.Symbol,
                     ToCloseSide(side),
                     ToPositionSide(side),
@@ -152,11 +136,11 @@ public sealed class Bot8011ManualPositionRecoveryService
                 UpdatedAtUtc = DateTime.UtcNow
             };
 
-            await _positionStore.SaveAsync(position, cancellationToken);
+            await positionStore.SaveAsync(position, cancellationToken);
 
             recovered++;
 
-            _logger.LogWarning(
+            logger.LogWarning(
                 "BOT8011 manual Binance position recovered. Position={ShortId}, Side={Side}, Qty={Qty}, Entry={Entry}",
                 shortId,
                 side,

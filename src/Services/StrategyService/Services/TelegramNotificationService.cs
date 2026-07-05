@@ -1,14 +1,7 @@
-﻿using System.Text;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
+using StrategyService.Configuration;
 
 namespace StrategyService.Services;
-
-public sealed record TelegramOptions
-{
-    public bool Enabled { get; init; }
-    public string BotToken { get; init; } = string.Empty;
-    public string ChatId { get; init; } = string.Empty;
-}
 
 public sealed class TelegramNotificationService
 {

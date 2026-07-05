@@ -1,21 +1,12 @@
-﻿using StrategyService.Configuration;
-using TradingSystem.Binance.Orders;
+﻿using Microsoft.Extensions.Logging;
+using TradingSystem.Binance.Orders.Contracts;
 
-namespace StrategyService.Services;
+namespace TradingSystem.Binance.Orders;
 
-public sealed class SafeBinanceOrderService
+public sealed class SafeBinanceOrderService(
+    IBinanceFuturesOrderClient orders,
+    ILogger<SafeBinanceOrderService> logger)
 {
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly ILogger<SafeBinanceOrderService> _logger;
-
-    public SafeBinanceOrderService(
-        IBinanceFuturesOrderClient orders,
-        ILogger<SafeBinanceOrderService> logger)
-    {
-        _orders = orders;
-        _logger = logger;
-    }
-
     public async Task<bool> SafeCancelNormalAsync(
         string symbol,
         string? orderId,
@@ -26,12 +17,12 @@ public sealed class SafeBinanceOrderService
         {
             try
             {
-                await _orders.CancelOrderAsync(symbol, orderId, cancellationToken);
+                await orders.CancelOrderAsync(symbol, orderId, cancellationToken);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Normal cancel by order id failed. OrderId={OrderId}", orderId);
+                logger.LogWarning(ex, "Normal cancel by order id failed. OrderId={OrderId}", orderId);
             }
         }
 
@@ -54,12 +45,12 @@ public sealed class SafeBinanceOrderService
             {
                 try
                 {
-                    await _orders.CancelAlgoOrderAsync(symbol, algoOrderId, cancellationToken);
+                    await orders.CancelAlgoOrderAsync(symbol, algoOrderId, cancellationToken);
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(
+                    logger.LogWarning(
                         ex,
                         "Algo cancel failed. Attempt={Attempt}, AlgoId={AlgoId}, ClientAlgoId={ClientAlgoId}",
                         i + 1,
@@ -84,11 +75,11 @@ public sealed class SafeBinanceOrderService
         string? clientOrderId,
         CancellationToken cancellationToken)
     {
-        var openOrders = await _orders.GetOpenOrdersAsync(symbol, cancellationToken);
+        var openOrders = await orders.GetOpenOrdersAsync(symbol, cancellationToken);
 
         var exists = openOrders.Any(x =>
-            (!string.IsNullOrWhiteSpace(orderId) && x.OrderId == orderId) ||
-            (!string.IsNullOrWhiteSpace(clientOrderId) && x.ClientOrderId == clientOrderId));
+            !string.IsNullOrWhiteSpace(orderId) && x.OrderId == orderId ||
+            !string.IsNullOrWhiteSpace(clientOrderId) && x.ClientOrderId == clientOrderId);
 
         return !exists;
     }
@@ -99,11 +90,11 @@ public sealed class SafeBinanceOrderService
         string? clientAlgoId,
         CancellationToken cancellationToken)
     {
-        var openAlgoOrders = await _orders.GetOpenAlgoOrdersAsync(symbol, cancellationToken);
+        var openAlgoOrders = await orders.GetOpenAlgoOrdersAsync(symbol, cancellationToken);
 
         var exists = openAlgoOrders.Any(x =>
-            (!string.IsNullOrWhiteSpace(algoOrderId) && x.AlgoOrderId == algoOrderId) ||
-            (!string.IsNullOrWhiteSpace(clientAlgoId) && x.ClientAlgoId == clientAlgoId));
+            !string.IsNullOrWhiteSpace(algoOrderId) && x.AlgoOrderId == algoOrderId ||
+            !string.IsNullOrWhiteSpace(clientAlgoId) && x.ClientAlgoId == clientAlgoId);
 
         return !exists;
     }

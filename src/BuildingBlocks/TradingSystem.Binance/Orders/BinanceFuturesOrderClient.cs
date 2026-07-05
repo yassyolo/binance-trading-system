@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using TradingSystem.Binance.Configuration;
+using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Positions;
 
 namespace TradingSystem.Binance.Orders;
@@ -205,10 +206,11 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             ClientOrderId = GetString(root, "clientOrderId"),
             OrderId = GetFlexibleString(root, "orderId"),
             Status = TryGetString(root, "status"),
-            AveragePrice = TryGetDecimal(root, "avgPrice")
+            AveragePrice = TryGetDecimal(root, "avgPrice"),
+            ExecutedQuantity = TryGetDecimal(root, "executedQty"),
+            CumulativeQuoteQuantity = TryGetDecimal(root, "cumQuote")
         };
     }
-
     private static BinanceAlgoOrderResult ParseAlgoOrderResult(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -310,18 +312,28 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         using var document = JsonDocument.Parse(json);
 
         return document.RootElement
-            .EnumerateArray()
-            .Select(x => new BinanceOpenOrder
-            {
-                Symbol = GetString(x, "symbol"),
-                OrderId = GetFlexibleString(x, "orderId"),
-                ClientOrderId = GetString(x, "clientOrderId"),
-                Type = GetString(x, "type"),
-                PositionSide = GetString(x, "positionSide"),
-                Price = TryGetDecimal(x, "price") ?? 0,
-                Quantity = TryGetDecimal(x, "origQty") ?? 0
-            })
-            .ToList();
+    .EnumerateArray()
+    .Select(x =>
+    {
+        var createdTimeMs = TryGetLong(x, "time") ?? 0;
+        var updateTimeMs = TryGetLong(x, "updateTime") ?? createdTimeMs;
+
+        return new BinanceOpenOrder
+        {
+            Symbol = GetString(x, "symbol"),
+            OrderId = GetFlexibleString(x, "orderId"),
+            ClientOrderId = GetString(x, "clientOrderId"),
+            Type = GetString(x, "type"),
+            Side = GetString(x, "side"),
+            PositionSide = GetString(x, "positionSide"),
+            Price = TryGetDecimal(x, "price") ?? 0,
+            Quantity = TryGetDecimal(x, "origQty") ?? 0,
+
+            CreatedAtUtc = FromUnixMs(createdTimeMs),
+            UpdateTimeUtc = FromUnixMs(updateTimeMs)
+        };
+    })
+    .ToList();
     }
 
     public async Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(
@@ -417,5 +429,107 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
                 MarkPrice = TryGetDecimal(x, "markPrice") ?? 0
             })
             .ToList();
+    }
+
+    public async Task<BinanceOrderResult> GetOrderAsync(
+    string symbol,
+    string orderId,
+    CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol,
+            ["orderId"] = orderId
+        };
+
+        var json = await SendSignedAsync(
+            HttpMethod.Get,
+            "/fapi/v1/order",
+            parameters,
+            cancellationToken);
+
+        return ParseOrderResult(json);
+    }
+
+    public async Task<BinanceSymbolFilters> GetSymbolFiltersAsync(
+        string symbol,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["symbol"] = symbol
+        };
+
+        var json = await SendUnsignedAsync(
+            HttpMethod.Get,
+            "/fapi/v1/exchangeInfo",
+            parameters,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+
+        var symbolElement = document.RootElement
+            .GetProperty("symbols")
+            .EnumerateArray()
+            .First(x => GetString(x, "symbol").Equals(symbol, StringComparison.OrdinalIgnoreCase));
+
+        var priceFilter = symbolElement
+            .GetProperty("filters")
+            .EnumerateArray()
+            .First(x => GetString(x, "filterType").Equals("PRICE_FILTER", StringComparison.OrdinalIgnoreCase));
+
+        var lotSizeFilter = symbolElement
+            .GetProperty("filters")
+            .EnumerateArray()
+            .First(x => GetString(x, "filterType").Equals("LOT_SIZE", StringComparison.OrdinalIgnoreCase));
+
+        return new BinanceSymbolFilters
+        {
+            TickSize = TryGetDecimal(priceFilter, "tickSize") ?? 0,
+            StepSize = TryGetDecimal(lotSizeFilter, "stepSize") ?? 0
+        };
+    }
+
+    private async Task<string> SendUnsignedAsync(
+        HttpMethod method,
+        string endpoint,
+        Dictionary<string, string> parameters,
+        CancellationToken cancellationToken)
+    {
+        var query = BuildQueryString(parameters);
+
+        using var request = new HttpRequestMessage(method, $"{endpoint}?{query}");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Binance request failed. Status={(int)response.StatusCode}, Body={content}");
+
+        return content;
+    }
+
+    private static long? TryGetLong(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number))
+            return number;
+
+        if (value.ValueKind == JsonValueKind.String &&
+            long.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static DateTime FromUnixMs(long milliseconds)
+    {
+        if (milliseconds <= 0)
+            return DateTime.UtcNow;
+
+        return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).UtcDateTime;
     }
 }

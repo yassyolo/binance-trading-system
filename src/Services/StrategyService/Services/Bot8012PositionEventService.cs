@@ -9,40 +9,43 @@ public sealed class Bot8012PositionEventService
     private readonly Bot8012Options _options;
     private readonly IPositionStore _positionStore;
     private readonly ILogger<Bot8012PositionEventService> _logger;
-
+    private readonly TelegramNotificationService _telegram;
     public Bot8012PositionEventService(
         IOptions<Bot8012Options> options,
         IPositionStore positionStore,
-        ILogger<Bot8012PositionEventService> logger)
+        ILogger<Bot8012PositionEventService> logger,
+        TelegramNotificationService telegram)
     {
         _options = options.Value;
         _positionStore = positionStore;
         _logger = logger;
+        _telegram = telegram;
     }
 
     public async Task HandleTpFilledAsync(
-        string shortId,
-        decimal executedQuantity,
-        CancellationToken cancellationToken)
+    string shortId,
+    decimal executedQuantity,
+    CancellationToken cancellationToken)
     {
         var position = await _positionStore.GetAsync(
             _options.BotName,
             shortId,
             cancellationToken);
 
-        if (position is null || position.Closed)
+        if (position is null)
             return;
 
-        position.TpExecuted = true;
-        position.TpStatus = "FILLED";
-        position.TpFilledAtUtc = DateTime.UtcNow;
-        position.RemainingQuantity = Math.Max(position.RemainingQuantity - executedQuantity, 0);
-        position.MarkClosed("TP_FILLED");
+        await _positionStore.DeleteAsync(
+            _options.BotName,
+            shortId,
+            cancellationToken);
 
-        await _positionStore.SaveAsync(position, cancellationToken);
+        await _telegram.SendAsync(
+            $"✅ BOT8012 TP FILLED\nSide: {position.Side}\nShortId: {shortId}\nQty: {executedQuantity}\nTP: {position.TpPrice}",
+            cancellationToken);
 
         _logger.LogInformation(
-            "BOT8012 TP filled. Position={ShortId}, ExecutedQuantity={ExecutedQuantity}",
+            "BOT8012 TP filled. Redis position deleted. Position={ShortId}, ExecutedQuantity={ExecutedQuantity}",
             shortId,
             executedQuantity);
     }

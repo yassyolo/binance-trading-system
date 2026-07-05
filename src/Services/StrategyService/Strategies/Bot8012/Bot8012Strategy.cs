@@ -1,59 +1,60 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
+using StrategyService.Services;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Strategies.Bot8012;
 
-public sealed class Bot8012Strategy : ITradingStrategy
-{
-    private readonly Bot8012Options _options;
-    private readonly Bot8012GapPolicy _gapPolicy;
-    private readonly ILogger<Bot8012Strategy> _logger;
-    private readonly Dictionary<PositionSide, DateTime> _lastSignalAt = [];
-
-    public Bot8012Strategy(
+public sealed class Bot8012Strategy(
         IOptions<Bot8012Options> options,
         Bot8012GapPolicy gapPolicy,
-        ILogger<Bot8012Strategy> logger)
-    {
-        _options = options.Value;
-        _gapPolicy = gapPolicy;
-        _logger = logger;
-    }
+        ILogger<Bot8012Strategy> logger,
+        TelegramNotificationService telegram)
+    : ITradingStrategy
+{
+    private readonly Bot8012Options options = options.Value;
+    private readonly Dictionary<PositionSide, DateTime> _lastSignalAt = [];
 
-    public string BotName => _options.BotName;
+    public string BotName => options.BotName;
 
-    public Task<StrategyDecision> DecideAsync(
+    public async Task<StrategyDecision> DecideAsync(
         StrategyContext context,
         CancellationToken cancellationToken)
     {
         var side = context.Signal.Side;
 
-        if (side == PositionSide.Long && !_options.EnableLong)
-            return Task.FromResult(StrategyDecision.Block("LONG disabled"));
+        if (side == PositionSide.Long && !options.EnableLong)
+            return await Task.FromResult(StrategyDecision.Block("LONG disabled"));
 
-        if (side == PositionSide.Short && !_options.EnableShort)
-            return Task.FromResult(StrategyDecision.Block("SHORT disabled"));
+        if (side == PositionSide.Short && !options.EnableShort)
+            return await Task.FromResult(StrategyDecision.Block("SHORT disabled"));
 
         if (IsInCooldown(side))
-            return Task.FromResult(StrategyDecision.Block($"{side} cooldown active"));
+            return  await Task.FromResult(StrategyDecision.Block($"{side} cooldown active"));
 
-        var decision = _gapPolicy.Validate(
+        var decision = gapPolicy.Validate(
             side,
             context.MarkPrice,
             context.ActivePositions);
 
+        if (!decision.ShouldOpen)
+        {
+            await telegram.SendAsync(
+                $"⛔ BOT8012 BLOCKED\nSide: {side}\nMark: {context.MarkPrice}\nReason: {decision.Reason}",
+                cancellationToken);
+        }
+
         if (decision.ShouldOpen)
             _lastSignalAt[side] = DateTime.UtcNow;
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "BOT8012 decision. Side={Side}, ShouldOpen={ShouldOpen}, Reason={Reason}",
             side,
             decision.ShouldOpen,
             decision.Reason);
 
-        return Task.FromResult(decision);
+        return await Task.FromResult(decision);
     }
 
     private bool IsInCooldown(PositionSide side)
@@ -62,6 +63,6 @@ public sealed class Bot8012Strategy : ITradingStrategy
             return false;
 
         return DateTime.UtcNow - lastSignalAt <
-               TimeSpan.FromSeconds(_options.CooldownSeconds);
+               TimeSpan.FromSeconds(options.CooldownSeconds);
     }
 }

@@ -1,6 +1,6 @@
 ﻿using TradingSystem.Binance.Positions;
 
-namespace TradingSystem.Binance.Orders;
+namespace TradingSystem.Binance.Orders.Contracts;
 
 public interface IBinanceFuturesOrderClient
 {
@@ -10,6 +10,24 @@ public interface IBinanceFuturesOrderClient
         string positionSide,
         decimal quantity,
         string clientOrderId,
+        CancellationToken cancellationToken);
+
+    Task<BinanceOrderResult> PlaceLimitOrderAsync(
+        string symbol,
+        string side,
+        string positionSide,
+        decimal quantity,
+        decimal price,
+        string clientOrderId,
+        CancellationToken cancellationToken);
+
+    Task<BinanceOrderResult> GetOrderAsync(
+        string symbol,
+        string orderId,
+        CancellationToken cancellationToken);
+
+    Task<BinanceSymbolFilters> GetSymbolFiltersAsync(
+        string symbol,
         CancellationToken cancellationToken);
 
     Task<BinanceAlgoOrderResult> PlaceTakeProfitMarketAlgoOrderAsync(
@@ -40,18 +58,9 @@ public interface IBinanceFuturesOrderClient
         string algoOrderId,
         CancellationToken cancellationToken);
 
-    Task<BinanceOrderResult> PlaceLimitOrderAsync(
-    string symbol,
-    string side,
-    string positionSide,
-    decimal quantity,
-    decimal price,
-    string clientOrderId,
-    CancellationToken cancellationToken);
-
     Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(
-    string symbol,
-    CancellationToken cancellationToken);
+        string symbol,
+        CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(
         string symbol,
@@ -65,6 +74,6 @@ public interface IBinanceFuturesOrderClient
         CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(
-    string symbol,
-    CancellationToken cancellationToken);
+        string symbol,
+        CancellationToken cancellationToken);
 }
