@@ -25,7 +25,6 @@ public sealed class CompositeTradeExecutor : ITradeExecutor
         var executor = GetExecutor(botName);
 
         return executor.OpenAsync(
-            botName,
             symbol,
             side,
             source,
@@ -41,7 +40,6 @@ public sealed class CompositeTradeExecutor : ITradeExecutor
         var executor = GetExecutor(botName);
 
         return executor.CloseAsync(
-            botName,
             shortId,
             reason,
             cancellationToken);

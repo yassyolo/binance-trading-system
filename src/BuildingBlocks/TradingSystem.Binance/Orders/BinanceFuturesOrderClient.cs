@@ -117,10 +117,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         return ParseAlgoOrderResult(json);
     }
 
-    public Task CancelOrderAsync(
-        string symbol,
-        string orderId,
-        CancellationToken cancellationToken)
+    public Task CancelOrderAsync(string symbol, string orderId, CancellationToken cancellationToken)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -226,9 +223,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     private static string GetString(JsonElement root, string name)
-        => root.TryGetProperty(name, out var value)
-            ? value.GetString() ?? string.Empty
-            : string.Empty;
+        => root.TryGetProperty(name, out var value) ? value.GetString() ?? string.Empty : string.Empty;
 
     private static string GetFlexibleString(JsonElement root, string name)
     {
@@ -244,9 +239,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     private static string? TryGetString(JsonElement root, string name)
-        => root.TryGetProperty(name, out var value)
-            ? value.GetString()
-            : null;
+        => root.TryGetProperty(name, out var value) ? value.GetString() : null;
 
     private static decimal? TryGetDecimal(JsonElement root, string name)
     {
@@ -264,13 +257,13 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     public async Task<BinanceOrderResult> PlaceLimitOrderAsync(
-    string symbol,
-    string side,
-    string positionSide,
-    decimal quantity,
-    decimal price,
-    string clientOrderId,
-    CancellationToken cancellationToken)
+        string symbol,
+        string side,
+        string positionSide,
+        decimal quantity,
+        decimal price,
+        string clientOrderId,
+        CancellationToken cancellationToken)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -294,9 +287,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         return ParseOrderResult(json);
     }
 
-    public async Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(
-    string symbol,
-    CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(string symbol, CancellationToken cancellationToken)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -311,29 +302,28 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
         using var document = JsonDocument.Parse(json);
 
-        return document.RootElement
-    .EnumerateArray()
-    .Select(x =>
-    {
-        var createdTimeMs = TryGetLong(x, "time") ?? 0;
-        var updateTimeMs = TryGetLong(x, "updateTime") ?? createdTimeMs;
-
-        return new BinanceOpenOrder
+        return document.RootElement.EnumerateArray()
+        .Select(x =>
         {
-            Symbol = GetString(x, "symbol"),
-            OrderId = GetFlexibleString(x, "orderId"),
-            ClientOrderId = GetString(x, "clientOrderId"),
-            Type = GetString(x, "type"),
-            Side = GetString(x, "side"),
-            PositionSide = GetString(x, "positionSide"),
-            Price = TryGetDecimal(x, "price") ?? 0,
-            Quantity = TryGetDecimal(x, "origQty") ?? 0,
+            var createdTimeMs = TryGetLong(x, "time") ?? 0;
+            var updateTimeMs = TryGetLong(x, "updateTime") ?? createdTimeMs;
 
-            CreatedAtUtc = FromUnixMs(createdTimeMs),
-            UpdateTimeUtc = FromUnixMs(updateTimeMs)
-        };
-    })
-    .ToList();
+            return new BinanceOpenOrder
+            {
+                Symbol = GetString(x, "symbol"),
+                OrderId = GetFlexibleString(x, "orderId"),
+                ClientOrderId = GetString(x, "clientOrderId"),
+                Type = GetString(x, "type"),
+                Side = GetString(x, "side"),
+                PositionSide = GetString(x, "positionSide"),
+                Price = TryGetDecimal(x, "price") ?? 0,
+                Quantity = TryGetDecimal(x, "origQty") ?? 0,
+
+                CreatedAtUtc = FromUnixMs(createdTimeMs),
+                UpdateTimeUtc = FromUnixMs(updateTimeMs)
+            };
+        })
+        .ToList();
     }
 
     public async Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(
@@ -353,8 +343,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
         using var document = JsonDocument.Parse(json);
 
-        return document.RootElement
-            .EnumerateArray()
+        return document.RootElement.EnumerateArray()
             .Select(x => new BinanceOpenAlgoOrder
             {
                 Symbol = GetString(x, "symbol"),
@@ -383,10 +372,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             cancellationToken);
     }
 
-    public async Task SetLeverageAsync(
-        string symbol,
-        int leverage,
-        CancellationToken cancellationToken)
+    public async Task SetLeverageAsync(string symbol, int leverage, CancellationToken cancellationToken)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -451,9 +437,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         return ParseOrderResult(json);
     }
 
-    public async Task<BinanceSymbolFilters> GetSymbolFiltersAsync(
-        string symbol,
-        CancellationToken cancellationToken)
+    public async Task<BinanceSymbolFilters> GetSymbolFiltersAsync(string symbol, CancellationToken cancellationToken)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -468,18 +452,15 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
         using var document = JsonDocument.Parse(json);
 
-        var symbolElement = document.RootElement
-            .GetProperty("symbols")
+        var symbolElement = document.RootElement.GetProperty("symbols")
             .EnumerateArray()
             .First(x => GetString(x, "symbol").Equals(symbol, StringComparison.OrdinalIgnoreCase));
 
-        var priceFilter = symbolElement
-            .GetProperty("filters")
+        var priceFilter = symbolElement.GetProperty("filters")
             .EnumerateArray()
             .First(x => GetString(x, "filterType").Equals("PRICE_FILTER", StringComparison.OrdinalIgnoreCase));
 
-        var lotSizeFilter = symbolElement
-            .GetProperty("filters")
+        var lotSizeFilter = symbolElement.GetProperty("filters")
             .EnumerateArray()
             .First(x => GetString(x, "filterType").Equals("LOT_SIZE", StringComparison.OrdinalIgnoreCase));
 

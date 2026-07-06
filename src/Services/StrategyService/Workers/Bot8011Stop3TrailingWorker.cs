@@ -5,7 +5,7 @@ using TradingSystem.Binance.Market.Contracts;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 
-namespace StrategyService.Services;
+namespace StrategyService.Workers;
 
 public sealed class Bot8011Stop3TrailingWorker : BackgroundService
 {

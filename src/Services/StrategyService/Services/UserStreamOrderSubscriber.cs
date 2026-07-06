@@ -1,6 +1,8 @@
-﻿using System.Globalization;
+﻿using StackExchange.Redis;
+using StrategyService.Infrastructure.Events;
+using System.Globalization;
 using System.Text.Json;
-using StackExchange.Redis;
+using TradingSystem.Application.Orders;
 using TradingSystem.Contracts.Redis;
 
 namespace StrategyService.Services;
@@ -8,21 +10,19 @@ namespace StrategyService.Services;
 public sealed class UserStreamOrderSubscriber : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
-    private readonly Bot8011PositionEventService _bot8011Events;
-    private readonly Bot8012PositionEventService _bot8012Events;
     private readonly OrderEventDeduplicationService _deduplication;
     private readonly ILogger<UserStreamOrderSubscriber> _logger;
 
+    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers;
+
     public UserStreamOrderSubscriber(
         IConnectionMultiplexer redis,
-        Bot8011PositionEventService bot8011Events,
-        Bot8012PositionEventService bot8012Events,
+        IEnumerable<IBotOrderEventHandler> handlers,
         OrderEventDeduplicationService deduplication,
         ILogger<UserStreamOrderSubscriber> logger)
     {
         _redis = redis;
-        _bot8011Events = bot8011Events;
-        _bot8012Events = bot8012Events;
+        _handlers = handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
         _deduplication = deduplication;
         _logger = logger;
     }
@@ -111,38 +111,19 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
 
         var executedQuantity = GetDecimal(order, "z");
 
+        if (!_handlers.TryGetValue(botName, out var handler))
+            return;
+
         if (type == "TP" && IsFilledStatus(status))
         {
-            if (botName.Equals("BOT8011", StringComparison.OrdinalIgnoreCase))
-            {
-                await _bot8011Events.HandleTpFilledAsync(
-                    shortId,
-                    executedQuantity,
-                    cancellationToken);
-
-                return;
-            }
-
-            if (botName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
-            {
-                await _bot8012Events.HandleTpFilledAsync(
-                    shortId,
-                    executedQuantity,
-                    cancellationToken);
-
-                return;
-            }
+            await handler.HandleTpFilledAsync(shortId, executedQuantity, cancellationToken);
+            return;
         }
 
         if (type == "TP" && IsTerminalNonFilledStatus(status))
         {
-            if (botName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
-            {
-                await _bot8012Events.HandleTpTerminalAsync(
-                    shortId,
-                    status!,
-                    cancellationToken);
-            }
+            await handler.HandleTpTerminalAsync(shortId, status!, cancellationToken);
+            return;
         }
     }
 
@@ -167,9 +148,6 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
         if (!TryParseClientId(clientOrderId, out var botName, out var type, out var shortId))
             return;
 
-        if (!botName.Equals("BOT8011", StringComparison.OrdinalIgnoreCase))
-            return;
-
         var algoId =
             GetString(order, "algoId") ??
             GetString(order, "aid");
@@ -182,20 +160,18 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
             return;
         }
 
+        if (!_handlers.TryGetValue(botName, out var handler))
+            return;
+
         if (type == "SL" && IsFinalFilledStatus(status))
         {
-            await _bot8011Events.HandleSlTriggeredAsync(
-                shortId,
-                cancellationToken);
-
+            await handler.HandleSlTriggeredAsync(shortId, cancellationToken);
             return;
         }
 
         if ((type == "S3" || type == "STOP3") && IsFinalFilledStatus(status))
         {
-            await _bot8011Events.HandleStop3TriggeredAsync(
-                shortId,
-                cancellationToken);
+            await handler.HandleStop3TriggeredAsync(shortId, cancellationToken);
         }
     }
 

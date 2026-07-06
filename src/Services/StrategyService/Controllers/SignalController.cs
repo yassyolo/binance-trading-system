@@ -1,26 +1,20 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using StrategyService.Services;
+using StrategyService.Signals;
+using TradingSystem.Application.Execution;
 using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Controllers;
 
 [ApiController]
 [Route("api/signals")]
-public sealed class SignalController : ControllerBase
+public sealed class SignalController(ITradingSignalHandler signalHandler) : ControllerBase
 {
-    private readonly SignalProcessor _signalProcessor;
-
-    public SignalController(SignalProcessor signalProcessor)
-    {
-        _signalProcessor = signalProcessor;
-    }
-
     [HttpPost]
     public async Task<IActionResult> ReceiveAsync(
         [FromBody] TradingSignal signal,
         CancellationToken cancellationToken)
     {
-        var processed = await _signalProcessor.ProcessAsync(
+        var processed = await signalHandler.HandleAsync(
             signal,
             cancellationToken);
 

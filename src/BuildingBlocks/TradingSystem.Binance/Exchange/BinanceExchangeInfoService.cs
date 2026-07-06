@@ -1,7 +1,8 @@
-﻿using System.Globalization;
+﻿using Microsoft.Extensions.Options;
+using System.Globalization;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using TradingSystem.Binance.Configuration;
+using TradingSystem.Binance.Exchange;
 
 namespace StrategyService.Services;
 
@@ -12,7 +13,7 @@ public sealed class BinanceExchangeInfoService
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     private DateTime _expiresAtUtc;
-    private Dictionary<string, SymbolTradingRules> _rules = new();
+    private Dictionary<string, BinanceSymbolTradingRules> _rules = new();
 
     public BinanceExchangeInfoService(
         HttpClient httpClient,
@@ -23,10 +24,7 @@ public sealed class BinanceExchangeInfoService
         _httpClient.BaseAddress = new Uri(_options.BaseUrl);
     }
 
-    public async Task<decimal> RoundPriceAsync(
-        string symbol,
-        decimal price,
-        CancellationToken cancellationToken)
+    public async Task<decimal> RoundPriceAsync(string symbol, decimal price,  CancellationToken cancellationToken)
     {
         var rules = await GetRulesAsync(symbol, cancellationToken);
 
@@ -35,10 +33,7 @@ public sealed class BinanceExchangeInfoService
             : Math.Floor(price / rules.TickSize) * rules.TickSize;
     }
 
-    public async Task<decimal> RoundQuantityAsync(
-        string symbol,
-        decimal quantity,
-        CancellationToken cancellationToken)
+    public async Task<decimal> RoundQuantityAsync(string symbol, decimal quantity, CancellationToken cancellationToken)
     {
         var rules = await GetRulesAsync(symbol, cancellationToken);
 
@@ -52,15 +47,13 @@ public sealed class BinanceExchangeInfoService
             : rounded;
     }
 
-    private async Task<SymbolTradingRules> GetRulesAsync(
-        string symbol,
-        CancellationToken cancellationToken)
+    private async Task<BinanceSymbolTradingRules> GetRulesAsync(string symbol, CancellationToken cancellationToken)
     {
         await EnsureCacheAsync(cancellationToken);
 
         return _rules.TryGetValue(symbol.ToUpperInvariant(), out var rules)
             ? rules
-            : new SymbolTradingRules(0.01m, 0.001m, 0.001m);
+            : new BinanceSymbolTradingRules(0.01m, 0.001m, 0.001m);
     }
 
     private async Task EnsureCacheAsync(CancellationToken cancellationToken)
@@ -75,19 +68,15 @@ public sealed class BinanceExchangeInfoService
             if (_expiresAtUtc > DateTime.UtcNow && _rules.Count > 0)
                 return;
 
-            using var response = await _httpClient.GetAsync(
-                "/fapi/v1/exchangeInfo",
-                cancellationToken);
+            using var response = await _httpClient.GetAsync("/fapi/v1/exchangeInfo", cancellationToken);
 
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-            using var document = await JsonDocument.ParseAsync(
-                stream,
-                cancellationToken: cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
-            var result = new Dictionary<string, SymbolTradingRules>();
+            var result = new Dictionary<string, BinanceSymbolTradingRules>();
 
             foreach (var symbolElement in document.RootElement.GetProperty("symbols").EnumerateArray())
             {
@@ -116,8 +105,7 @@ public sealed class BinanceExchangeInfoService
                     }
                 }
 
-                result[symbolName.ToUpperInvariant()] =
-                    new SymbolTradingRules(tickSize, stepSize, minQuantity);
+                result[symbolName.ToUpperInvariant()] = new BinanceSymbolTradingRules(tickSize, stepSize, minQuantity);
             }
 
             _rules = result;
@@ -130,16 +118,6 @@ public sealed class BinanceExchangeInfoService
     }
 
     private static decimal ParseDecimal(string? value)
-        => decimal.TryParse(
-            value,
-            NumberStyles.Any,
-            CultureInfo.InvariantCulture,
-            out var parsed)
-            ? parsed
-            : 0;
-
-    private sealed record SymbolTradingRules(
-        decimal TickSize,
-        decimal StepSize,
-        decimal MinQuantity);
+        => decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed : 0;
 }

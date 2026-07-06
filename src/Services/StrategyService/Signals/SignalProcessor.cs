@@ -1,30 +1,22 @@
 ﻿using TradingSystem.Application.Engine;
+using TradingSystem.Application.Execution;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Signals;
 
-namespace StrategyService.Services;
+namespace StrategyService.Signals;
 
-public sealed class SignalProcessor
-{
-    private readonly TradingEngine _engine;
-    private readonly ILogger<SignalProcessor> _logger;
-
-    public SignalProcessor(
+public sealed class SignalProcessor(
         TradingEngine engine,
-        ILogger<SignalProcessor> logger)
-    {
-        _engine = engine;
-        _logger = logger;
-    }
-
-    public async Task<bool> ProcessAsync(
+        ILogger<SignalProcessor> logger) : ITradingSignalHandler
+{
+    public async Task<bool> HandleAsync(
         TradingSignal signal,
         CancellationToken cancellationToken = default)
     {
         if (!TryParseSide(signal.Action, out var side))
         {
-            _logger.LogWarning(
+            logger.LogWarning(
                 "Invalid signal action. Action={Action}",
                 signal.Action);
 
@@ -43,7 +35,7 @@ public sealed class SignalProcessor
             Source = signal.Source
         };
 
-        return await _engine.ProcessSignalAsync(
+        return await engine.ProcessSignalAsync(
             tradeSignal,
             cancellationToken);
     }

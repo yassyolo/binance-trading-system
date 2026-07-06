@@ -1,13 +1,22 @@
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using StrategyService;
 using StrategyService.Configuration;
 using StrategyService.Execution;
+using StrategyService.Infrastructure.Events;
+using StrategyService.Infrastructure.Locking;
+using StrategyService.Orders;
 using StrategyService.Positions;
 using StrategyService.Services;
 using StrategyService.Services.Healing;
+using StrategyService.Signals;
 using StrategyService.Strategies.Bot8011;
 using StrategyService.Strategies.Bot8012;
+using StrategyService.Strategies.Bot8013;
+using StrategyService.Strategies.Bot8014;
+using StrategyService.Workers;
 using TradingSystem.Application.Engine;
+using TradingSystem.Application.Orders;
 using TradingSystem.Application.Positions;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Binance.Configuration;
@@ -19,6 +28,7 @@ using TradingSystem.Binance.Resilience;
 using TradingSystem.Binance.Startup;
 using TradingSystem.Redis.Configuration;
 using TradingSystem.Redis.Positions;
+using TradingSystem.Redis.Subscribers;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -88,6 +98,11 @@ builder.Services.AddSingleton<Bot8011ManualPositionRecoveryService>();
 builder.Services.AddSingleton<Bot8012PositionEventService>();
 builder.Services.AddSingleton<IBotHealingService, Bot8011HealingService>();
 builder.Services.AddSingleton<IBotHealingService, Bot8012HealingService>();
+builder.Services.AddSingleton<IBinanceTradingConfiguration>(
+    sp => sp.GetRequiredService<IOptions<Bot8011Options>>().Value);
+
+builder.Services.AddSingleton<IBinanceTradingConfiguration>(
+    sp => sp.GetRequiredService<IOptions<Bot8012Options>>().Value);
 
 builder.Services.AddHostedService<HealingSnapshotSubscriber>();
 builder.Services.AddHostedService<RedisSignalSubscriber>();
@@ -99,5 +114,32 @@ builder.Services.AddHostedService<Bot8011Stop3TrailingWorker>();
 builder.Services.AddHostedService<Bot8011ManualRecoveryHostedService>();
 builder.Services.AddHostedService<Worker>();
 
+builder.Services.AddSingleton<IBotOrderEventHandler, Bot8011OrderEventHandler>();
+builder.Services.AddSingleton<IBotOrderEventHandler, Bot8012OrderEventHandler>();
+
+
+builder.Services.Configure<Bot8013Options>(
+    builder.Configuration.GetSection("Bot8013"));
+
+builder.Services.AddSingleton<Bot8013GapPolicy>();
+builder.Services.AddSingleton<ITradingStrategy, Bot8013Strategy>();
+
+builder.Services.AddSingleton<IBotActivePositionProvider, Bot8013ActivePositionProvider>();
+builder.Services.AddSingleton<IBotTradeExecutor, Bot8013TradeExecutor>();
+
+builder.Services.AddSingleton<Bot8013PositionEventService>();
+builder.Services.AddSingleton<IBotOrderEventHandler, Bot8013OrderEventHandler>();
+
+builder.Services.Configure<Bot8014Options>(
+    builder.Configuration.GetSection("Bot8014"));
+
+builder.Services.AddSingleton<Bot8014GapPolicy>();
+builder.Services.AddSingleton<ITradingStrategy, Bot8014Strategy>();
+
+builder.Services.AddSingleton<IBotActivePositionProvider, Bot8014ActivePositionProvider>();
+builder.Services.AddSingleton<IBotTradeExecutor, Bot8014TradeExecutor>();
+
+builder.Services.AddSingleton<Bot8014PositionEventService>();
+builder.Services.AddSingleton<IBotOrderEventHandler, Bot8014OrderEventHandler>();
 var host = builder.Build();
 host.Run();

@@ -1,4 +1,6 @@
-﻿namespace StrategyService.Services;
+﻿using StrategyService.Services;
+
+namespace StrategyService.Workers;
 
 public sealed class Bot8011StartupCleanupHostedService : IHostedService
 {

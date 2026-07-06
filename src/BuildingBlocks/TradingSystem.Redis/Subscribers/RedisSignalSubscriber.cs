@@ -1,29 +1,22 @@
-﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
+using System.Text.Json;
+using TradingSystem.Application.Execution;
 using TradingSystem.Contracts.Redis;
 using TradingSystem.Domain.Signals;
 
-namespace StrategyService.Services;
+namespace TradingSystem.Redis.Subscribers;
 
-public sealed class RedisSignalSubscriber : BackgroundService
-{
-    private readonly IConnectionMultiplexer _redis;
-    private readonly SignalProcessor _signalProcessor;
-    private readonly ILogger<RedisSignalSubscriber> _logger;
-
-    public RedisSignalSubscriber(
+public sealed class RedisSignalSubscriber(
         IConnectionMultiplexer redis,
-        SignalProcessor signalProcessor,
+        ITradingSignalHandler signalHandler,
         ILogger<RedisSignalSubscriber> logger)
-    {
-        _redis = redis;
-        _signalProcessor = signalProcessor;
-        _logger = logger;
-    }
-
+    : BackgroundService
+{
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var subscriber = _redis.GetSubscriber();
+        var subscriber = redis.GetSubscriber();
 
         await subscriber.SubscribeAsync(
             RedisChannel.Literal(RedisChannels.StrategySignals),
@@ -41,15 +34,15 @@ public sealed class RedisSignalSubscriber : BackgroundService
                     if (signal is null)
                         return;
 
-                    await _signalProcessor.ProcessAsync(signal, stoppingToken);
+                    await signalHandler.HandleAsync(signal, stoppingToken);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Trading signal processing failed. Raw={Raw}", message.ToString());
+                    logger.LogError(ex, "Trading signal processing failed. Raw={Raw}", message.ToString());
                 }
             });
 
-        _logger.LogInformation(
+        logger.LogInformation(
             "Subscribed to strategy signal channel {Channel}",
             RedisChannels.StrategySignals);
 

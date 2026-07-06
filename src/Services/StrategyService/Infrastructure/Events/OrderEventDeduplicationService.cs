@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 
-namespace StrategyService.Services;
+namespace StrategyService.Infrastructure.Events;
 
 public sealed class OrderEventDeduplicationService
 {

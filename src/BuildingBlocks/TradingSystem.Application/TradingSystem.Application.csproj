@@ -8,7 +8,6 @@
     <Folder Include="Bots\" />
     <Folder Include="Notifications\" />
     <Folder Include="Risk\" />
-    <Folder Include="Orders\" />
   </ItemGroup>
 
   <ItemGroup>

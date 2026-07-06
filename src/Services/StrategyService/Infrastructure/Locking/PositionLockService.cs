@@ -3,20 +3,14 @@ using StackExchange.Redis;
 using TradingSystem.Contracts.Redis;
 using TradingSystem.Redis.Configuration;
 
-namespace StrategyService.Services;
+namespace StrategyService.Infrastructure.Locking;
 
-public sealed class PositionLockService
-{
-    private readonly IDatabase _database;
-    private readonly RedisPositionStoreOptions _options;
-
-    public PositionLockService(
+public sealed class PositionLockService(
         IConnectionMultiplexer redis,
         IOptions<RedisPositionStoreOptions> options)
-    {
-        _database = redis.GetDatabase();
-        _options = options.Value;
-    }
+{
+    private readonly IDatabase database = redis.GetDatabase();
+    private readonly RedisPositionStoreOptions options = options.Value;
 
     public async Task<bool> TryAcquireAsync(
         string botName,
@@ -25,7 +19,7 @@ public sealed class PositionLockService
     {
         var key = GetLockKey(botName, shortId);
 
-        return await _database.StringSetAsync(
+        return await database.StringSetAsync(
             key,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             ttl,
@@ -36,15 +30,15 @@ public sealed class PositionLockService
     {
         var key = GetLockKey(botName, shortId);
 
-        return _database.KeyDeleteAsync(key);
+        return database.KeyDeleteAsync(key);
     }
 
     private RedisKey GetLockKey(string botName, string shortId)
     {
         var key = RedisKeys.PositionLock(botName, shortId);
 
-        return string.IsNullOrWhiteSpace(_options.Prefix)
+        return string.IsNullOrWhiteSpace(options.Prefix)
             ? key
-            : $"{_options.Prefix}:{key}";
+            : $"{options.Prefix}:{key}";
     }
 }

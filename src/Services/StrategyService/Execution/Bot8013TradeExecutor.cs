@@ -6,16 +6,16 @@ using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Execution;
 
-public sealed class Bot8012TradeExecutor(
-    IOptions<Bot8012Options> options,
+public sealed class Bot8013TradeExecutor(
+    IOptions<Bot8013Options> options,
     OrderExecutionService orders,
     IPositionStore positionStore,
-    ILogger<Bot8012TradeExecutor> logger) 
+    ILogger<Bot8013TradeExecutor> logger)
     : IBotTradeExecutor
 {
-    private readonly Bot8012Options options = options.Value;
+    private readonly Bot8013Options _options = options.Value;
 
-    public string BotName => options.BotName;
+    public string BotName => _options.BotName;
 
     public async Task OpenAsync(
         string symbol,
@@ -24,31 +24,34 @@ public sealed class Bot8012TradeExecutor(
         CancellationToken cancellationToken)
     {
         var position = await orders.OpenTpOnlyPositionAsync(
-            options.BotName,
+            _options.BotName,
             side,
-            options.Symbol,
-            options.Quantity,
-            options.ProfitDistance,
+            _options.Symbol,
+            _options.Quantity,
+            _options.ProfitDistance,
             cancellationToken);
 
-        position.Source = source;
+        position.Source = string.IsNullOrWhiteSpace(source)
+            ? "webhook"
+            : source;
 
         await positionStore.SaveAsync(position, cancellationToken);
 
         logger.LogInformation(
-            "BOT8012 opened position. Position={ShortId}, Side={Side}, Symbol={Symbol}",
+            "BOT8013 opened position. ShortId={ShortId}, Side={Side}, Symbol={Symbol}, Source={Source}",
             position.ShortId,
             position.Side,
-            position.Symbol);
+            position.Symbol,
+            position.Source);
     }
 
     public async Task CloseAsync(
-    string shortId,
-    string reason,
-    CancellationToken cancellationToken)
+        string shortId,
+        string reason,
+        CancellationToken cancellationToken)
     {
         var position = await positionStore.GetAsync(
-            options.BotName,
+            _options.BotName,
             shortId,
             cancellationToken);
 
@@ -56,7 +59,7 @@ public sealed class Bot8012TradeExecutor(
             return;
 
         await orders.ClosePositionAsync(
-            options.BotName,
+            _options.BotName,
             position,
             cancellationToken);
 

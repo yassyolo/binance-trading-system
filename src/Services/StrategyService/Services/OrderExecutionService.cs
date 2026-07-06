@@ -394,7 +394,6 @@ public sealed class OrderExecutionService
         position.CloseOrderId = close.OrderId;
         position.CloseStatus = close.Status;
         position.ProtectiveActive = false;
-        position.MarkClosed("MANUAL_CLOSE");
 
         _logger.LogInformation(
             "{BotName} position closed. Id={Id}, Side={Side}",

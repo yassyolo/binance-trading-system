@@ -8,7 +8,6 @@ namespace StrategyService.Strategies.Bot8011;
 
 public sealed class Bot8011Strategy(
         IOptions<Bot8011Options> options,
-        Bot8011EffectivePositionService effectivePositions,
         TelegramNotificationService telegram,
         ILogger<Bot8011Strategy> logger) : ITradingStrategy
 {
@@ -38,7 +37,7 @@ public sealed class Bot8011Strategy(
             return StrategyDecision.Block($"{side} cooldown active: {remainingSeconds}s remaining");
         }
 
-        var effectiveActive = await effectivePositions.GetEffectiveActiveAsync(cancellationToken);
+        var effectiveActive = context.ActivePositions;
 
         var sameSide = effectiveActive
             .Where(x => x.Side == side)

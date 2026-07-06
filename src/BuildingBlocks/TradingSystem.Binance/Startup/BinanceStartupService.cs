@@ -23,28 +23,17 @@ public sealed class BinanceStartupService(
                 "Could not set hedge mode. It may already be enabled.");
         }
 
-        foreach (var config in configurations
-                     .GroupBy(x => x.Symbol)
-                     .Select(x => x.First()))
+        foreach (var config in configurations.GroupBy(x => x.Symbol).Select(x => x.First()))
         {
             try
             {
-                await orders.SetLeverageAsync(
-                    config.Symbol,
-                    config.Leverage,
-                    cancellationToken);
+                await orders.SetLeverageAsync(config.Symbol, config.Leverage, cancellationToken);
 
-                logger.LogInformation(
-                    "Binance leverage set. Symbol={Symbol}, Leverage={Leverage}",
-                    config.Symbol,
-                    config.Leverage);
+                logger.LogInformation("Binance leverage set. Symbol={Symbol}, Leverage={Leverage}", config.Symbol, config.Leverage);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(
-                    ex,
-                    "Could not set leverage. Symbol={Symbol}",
-                    config.Symbol);
+                logger.LogWarning(ex, "Could not set leverage. Symbol={Symbol}", config.Symbol);
             }
         }
     }

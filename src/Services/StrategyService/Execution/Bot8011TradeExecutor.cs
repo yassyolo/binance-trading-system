@@ -18,7 +18,6 @@ public sealed class Bot8011TradeExecutor(
     public string BotName => options.BotName;
 
     public async Task OpenAsync(
-        string botName,
         string symbol,
         PositionSide side,
         string? source,
@@ -30,8 +29,8 @@ public sealed class Bot8011TradeExecutor(
             cancellationToken);
 
         position.Source = string.IsNullOrWhiteSpace(source)
-            ? "webhook"
-            : source;
+    ? "webhook"
+    : source;
 
         await positionStore.SaveAsync(position, cancellationToken);
 
@@ -43,7 +42,6 @@ public sealed class Bot8011TradeExecutor(
     }
 
     public async Task CloseAsync(
-        string botName,
         string shortId,
         string reason,
         CancellationToken cancellationToken)

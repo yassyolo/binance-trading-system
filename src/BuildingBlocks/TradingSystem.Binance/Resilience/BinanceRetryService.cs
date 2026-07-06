@@ -22,12 +22,7 @@ public sealed class BinanceRetryService(ILogger<BinanceRetryService> logger)
             {
                 lastException = ex;
 
-                logger.LogWarning(
-                    ex,
-                    "Binance operation failed. Operation={Operation}, Attempt={Attempt}/{Attempts}",
-                    operation,
-                    i,
-                    attempts);
+                logger.LogWarning(ex, "Binance operation failed. Operation={Operation}, Attempt={Attempt}/{Attempts}", operation, i, attempts);
 
                 await Task.Delay(TimeSpan.FromMilliseconds(250 * i), cancellationToken);
             }

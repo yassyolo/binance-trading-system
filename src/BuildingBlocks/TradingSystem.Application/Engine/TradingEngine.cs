@@ -39,7 +39,7 @@ public sealed class TradingEngine(
             context,
             cancellationToken);
 
-        if (decision.DecisionType != StrategyDecisionType.Open)
+        if (decision.DecisionType is not StrategyDecisionType.Open and not StrategyDecisionType.OpenAfterClosing)
             return false;
 
         foreach (var shortId in decision.PositionsToClose)

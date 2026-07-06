@@ -8,13 +8,9 @@ public sealed class BinanceFuturesMarketClient(
     HttpClient httpClient) 
     : IBinanceFuturesMarketClient
 {
-    public async Task<decimal> GetMarkPriceAsync(
-        string symbol,
-        CancellationToken cancellationToken = default)
+    public async Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken cancellationToken = default)
     {
-        using var response = await httpClient.GetAsync(
-            $"/fapi/v1/premiumIndex?symbol={symbol}",
-            cancellationToken);
+        using var response = await httpClient.GetAsync($"/fapi/v1/premiumIndex?symbol={symbol}", cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
@@ -22,9 +18,7 @@ public sealed class BinanceFuturesMarketClient(
 
         using var document = JsonDocument.Parse(json);
 
-        var value = document.RootElement
-            .GetProperty("markPrice")
-            .GetString();
+        var value = document.RootElement.GetProperty("markPrice").GetString();
 
         if (string.IsNullOrWhiteSpace(value))
             throw new InvalidOperationException($"Binance returned empty mark price for {symbol}.");
