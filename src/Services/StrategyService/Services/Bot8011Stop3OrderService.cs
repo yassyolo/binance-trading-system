@@ -29,6 +29,42 @@ public sealed class Bot8011Stop3OrderService
         _logger = logger;
     }
 
+    public async Task CreateStop3AfterTpAsync(
+   string botName,
+   BotPosition position,
+   decimal stop3EntryOffset,
+   CancellationToken cancellationToken)
+    {
+        if (position.RemainingQuantity <= 0)
+            return;
+
+        var stop3Price = position.Side == PositionSide.Long
+            ? position.EntryPrice + stop3EntryOffset
+            : position.EntryPrice - stop3EntryOffset;
+
+        var clientId = $"{botName}_STOP3_{position.ShortId}";
+
+        var order = await _orders.PlaceStopMarketAlgoOrderAsync(
+            position.Symbol,
+            ToCloseSide(position.Side),
+            ToPositionSide(position.Side),
+            position.RemainingQuantity,
+            stop3Price.Value,
+            clientId,
+            cancellationToken);
+
+        position.Stop3ClientId = order.ClientOrderId;
+        position.Stop3OrderId = order.AlgoOrderId;
+        position.Stop3Status = order.Status;
+        position.Stop3Initial = stop3Price;
+        position.Stop3Current = stop3Price;
+        position.Stop3Previous = stop3Price;
+        position.Stop3Created = true;
+        position.Stop3Pending = false;
+        position.ProtectiveActive = true;
+        position.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public async Task<CreatedStop3Order> CreateStop3WithFallbackAsync(
         BotPosition position,
         decimal quantity,

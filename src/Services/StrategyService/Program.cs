@@ -14,6 +14,7 @@ using StrategyService.Strategies.Bot8011;
 using StrategyService.Strategies.Bot8012;
 using StrategyService.Strategies.Bot8013;
 using StrategyService.Strategies.Bot8014;
+using StrategyService.Strategies.Bot8015;
 using StrategyService.Workers;
 using TradingSystem.Application.Engine;
 using TradingSystem.Application.Orders;
@@ -141,5 +142,17 @@ builder.Services.AddSingleton<IBotTradeExecutor, Bot8014TradeExecutor>();
 
 builder.Services.AddSingleton<Bot8014PositionEventService>();
 builder.Services.AddSingleton<IBotOrderEventHandler, Bot8014OrderEventHandler>();
+builder.Services.Configure<Bot8015Options>(
+    builder.Configuration.GetSection("Bot8015"));
+
+builder.Services.AddSingleton<ITradingStrategy, Bot8015Strategy>();
+builder.Services.AddSingleton<IBotActivePositionProvider, Bot8015ActivePositionProvider>();
+builder.Services.AddSingleton<IBotTradeExecutor, Bot8015TradeExecutor>();
+
+builder.Services.AddSingleton<Bot8015PositionEventService>();
+builder.Services.AddSingleton<IBotOrderEventHandler, Bot8015OrderEventHandler>();
+
+builder.Services.AddHostedService<Bot8015Stop3TrailingWorker>();
+
 var host = builder.Build();
 host.Run();
