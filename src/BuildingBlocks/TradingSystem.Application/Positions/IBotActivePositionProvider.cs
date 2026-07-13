@@ -1,6 +1,4 @@
-﻿using TradingSystem.Application.Strategies;
-
-namespace TradingSystem.Application.Positions;
+﻿namespace TradingSystem.Application.Positions;
 
 public interface IBotActivePositionProvider
 {

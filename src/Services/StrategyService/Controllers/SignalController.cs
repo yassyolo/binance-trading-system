@@ -11,7 +11,7 @@ public sealed class SignalController(ITradingSignalHandler signalHandler) : Cont
 {
     [HttpPost]
     public async Task<IActionResult> ReceiveAsync(
-        [FromBody] TradingSignal signal,
+        [FromBody] TradeSignal signal,
         CancellationToken cancellationToken)
     {
         var processed = await signalHandler.HandleAsync(
@@ -21,7 +21,6 @@ public sealed class SignalController(ITradingSignalHandler signalHandler) : Cont
         return Ok(new
         {
             status = processed ? "processed" : "ignored",
-            signal.Action,
             signal.Symbol,
             signal.Source,
             ts = DateTime.UtcNow

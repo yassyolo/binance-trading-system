@@ -61,6 +61,14 @@ public sealed class BotPosition
     public DateTime? Stop3TriggeredAtUtc { get; set; }
     public DateTime? ClosedAtUtc { get; set; }
 
+    public decimal? SignalCandleHigh { get; set; }
+
+    public decimal? SignalCandleLow { get; set; }
+
+    public long? SignalCandleCloseTime { get; set; }
+
+    public bool HighReached { get; set; }
+
     public void MarkParentFilled(decimal entryPrice, string orderId)
     {
         EntryPrice = entryPrice;

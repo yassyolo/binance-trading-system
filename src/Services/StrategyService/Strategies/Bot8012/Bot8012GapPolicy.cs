@@ -1,18 +1,15 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
+using TradingSystem.Application.Positions;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Strategies.Bot8012;
 
-public sealed class Bot8012GapPolicy
+public sealed class Bot8012GapPolicy(
+    IOptions<Bot8012Options> options)
 {
-    private readonly Bot8012Options _options;
-
-    public Bot8012GapPolicy(IOptions<Bot8012Options> options)
-    {
-        _options = options.Value;
-    }
+    private readonly Bot8012Options _options = options.Value;
 
     public StrategyDecision Validate(
         PositionSide side,
@@ -21,51 +18,71 @@ public sealed class Bot8012GapPolicy
     {
         var sameSidePositions = activePositions
             .Where(x => x.Side == side)
-            .ToList();
+            .ToArray();
 
-        if (sameSidePositions.Count >= _options.OrderSideLimit)
+        if (sameSidePositions.Length >= _options.OrderSideLimit)
         {
             return StrategyDecision.Block(
-                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Count}/{_options.OrderSideLimit})");
+                side,
+                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{_options.OrderSideLimit}).");
         }
 
-        if (sameSidePositions.Count == 0)
-            return StrategyDecision.Open(side, "OK no active TP positions");
+        if (sameSidePositions.Length == 0)
+        {
+            return StrategyDecision.Open(
+                side,
+                "No active TP positions for this side.");
+        }
 
         var newest = sameSidePositions
-            .Where(x => x.TpPrice.HasValue)
+            .Where(x => x.TpPrice is > 0)
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefault();
 
-        if (newest is null || newest.TpPrice is null)
-            return StrategyDecision.Open(side, "OK no valid newest TP");
+        if (newest?.TpPrice is null)
+        {
+            return StrategyDecision.Block(
+                side,
+                "Active positions exist, but no valid TP price was found.");
+        }
 
-        var newestTp = Math.Round(newest.TpPrice.Value, 0);
-        var mark = Math.Round(markPrice, 0);
+        var newestTp = RoundForLegacyParity(newest.TpPrice.Value);
+        var mark = RoundForLegacyParity(markPrice);
+        var profitDistance = RoundForLegacyParity(_options.ProfitDistance);
+        var priceDistance = RoundForLegacyParity(_options.PriceDistance);
 
         if (side == PositionSide.Long)
         {
-            var lastEntry = newestTp - Math.Round(_options.ProfitDistance, 0);
-            var requiredMax = lastEntry - Math.Round(_options.PriceDistance, 0);
+            var lastEntry = newestTp - profitDistance;
+            var requiredMaximum = lastEntry - priceDistance;
 
-            if (mark > requiredMax)
+            if (mark > requiredMaximum)
             {
                 return StrategyDecision.Block(
-                    $"GAP fail LONG: mark={mark}, newest_tp={newestTp}, last_entry={lastEntry}, required_max={requiredMax}");
+                    side,
+                    $"GAP fail LONG: mark={mark}, newestTp={newestTp}, lastEntry={lastEntry}, requiredMaximum={requiredMaximum}.");
             }
+
+            return StrategyDecision.Open(
+                side,
+                $"LONG spacing valid: mark={mark}, requiredMaximum={requiredMaximum}.");
         }
-        else
+
+        var shortLastEntry = newestTp + profitDistance;
+        var requiredMinimum = shortLastEntry + priceDistance;
+
+        if (mark < requiredMinimum)
         {
-            var lastEntry = newestTp + Math.Round(_options.ProfitDistance, 0);
-            var requiredMin = lastEntry + Math.Round(_options.PriceDistance, 0);
-
-            if (mark < requiredMin)
-            {
-                return StrategyDecision.Block(
-                    $"GAP fail SHORT: mark={mark}, newest_tp={newestTp}, last_entry={lastEntry}, required_min={requiredMin}");
-            }
+            return StrategyDecision.Block(
+                side,
+                $"GAP fail SHORT: mark={mark}, newestTp={newestTp}, lastEntry={shortLastEntry}, requiredMinimum={requiredMinimum}.");
         }
 
-        return StrategyDecision.Open(side, $"OK newest_tp={newestTp} mark={mark}");
+        return StrategyDecision.Open(
+            side,
+            $"SHORT spacing valid: mark={mark}, requiredMinimum={requiredMinimum}.");
     }
+
+    private static decimal RoundForLegacyParity(decimal value)
+        => Math.Round(value, 0, MidpointRounding.ToEven);
 }

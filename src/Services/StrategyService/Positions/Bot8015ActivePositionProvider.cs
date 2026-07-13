@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 
@@ -22,89 +21,163 @@ public sealed class Bot8015ActivePositionProvider(
         string symbol,
         CancellationToken cancellationToken)
     {
-        var result = new Dictionary<string, ActivePositionView>();
+        EnsureSupportedSymbol(symbol);
 
-        var openOrders = await orders.GetOpenOrdersAsync(symbol, cancellationToken);
+        var result = new Dictionary<string, ActivePositionView>(
+            StringComparer.OrdinalIgnoreCase);
 
-        foreach (var order in openOrders.Where(x =>
-                     x.ClientOrderId.StartsWith($"{_options.BotName}_TP_", StringComparison.OrdinalIgnoreCase) &&
-                     x.Type.Equals("LIMIT", StringComparison.OrdinalIgnoreCase) &&
-                     x.Price > 0))
+        var openOrders = await orders.GetOpenOrdersAsync(
+            symbol,
+            cancellationToken);
+
+        foreach (var order in openOrders)
         {
-            var shortId = ExtractShortId(order.ClientOrderId);
-            if (string.IsNullOrWhiteSpace(shortId))
+            if (!TryExtractShortId(
+                    order.ClientOrderId,
+                    $"{_options.BotName}_TP_",
+                    out var shortId))
+            {
                 continue;
+            }
+
+            if (!order.Type.Equals("LIMIT", StringComparison.OrdinalIgnoreCase)
+                || order.Price <= 0
+                || !TryParseSide(order.PositionSide, out var side))
+            {
+                continue;
+            }
 
             result[shortId] = new ActivePositionView
             {
                 ShortId = shortId,
                 BotName = _options.BotName,
                 Symbol = symbol,
-                Side = ParseSide(order.PositionSide),
+                Side = side,
                 TpPrice = order.Price,
                 CreatedAtUtc = order.UpdateTimeUtc
             };
         }
 
-        var algoOrders = await orders.GetOpenAlgoOrdersAsync(symbol, cancellationToken);
+        var algoOrders = await orders.GetOpenAlgoOrdersAsync(
+            symbol,
+            cancellationToken);
 
-        foreach (var algo in algoOrders.Where(x =>
-                     x.ClientAlgoId.StartsWith($"{_options.BotName}_STOP3_", StringComparison.OrdinalIgnoreCase)))
+        foreach (var algo in algoOrders)
         {
-            var shortId = ExtractShortId(algo.ClientAlgoId);
-            if (string.IsNullOrWhiteSpace(shortId) || result.ContainsKey(shortId))
+            if (!TryExtractShortId(
+                    algo.ClientAlgoId,
+                    $"{_options.BotName}_STOP3_",
+                    out var shortId))
+            {
                 continue;
+            }
+
+            if (result.ContainsKey(shortId)
+                || !TryParseSide(algo.PositionSide, out var side))
+            {
+                continue;
+            }
 
             result[shortId] = new ActivePositionView
             {
                 ShortId = shortId,
                 BotName = _options.BotName,
                 Symbol = symbol,
-                Side = ParseSide(algo.PositionSide),
+                Side = side,
                 CreatedAtUtc = DateTime.UtcNow
             };
         }
 
-        var redisPositions = await positionStore.GetAllAsync(_options.BotName, cancellationToken);
+        var storedPositions = await positionStore.GetAllAsync(
+            _options.BotName,
+            cancellationToken);
 
-        foreach (var position in redisPositions)
+        foreach (var position in storedPositions)
         {
-            if (result.ContainsKey(position.ShortId))
+            if (position.Closed
+                || result.ContainsKey(position.ShortId)
+                || !position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var isTransitioningToStop3 =
+                position.TpExecuted
+                && position.RemainingQuantity > 0
+                && position.Stop3Pending
+                && position.ProtectiveActive;
+
+            if (!isTransitioningToStop3)
                 continue;
 
-            if (position.TpExecuted &&
-                position.RemainingQuantity > 0 &&
-                position.Stop3Pending &&
-                position.ProtectiveActive)
+            result[position.ShortId] = new ActivePositionView
             {
-                result[position.ShortId] = new ActivePositionView
-                {
-                    ShortId = position.ShortId,
-                    BotName = _options.BotName,
-                    Symbol = position.Symbol,
-                    Side = position.Side,
-                    CreatedAtUtc = position.UpdatedAtUtc ?? position.CreatedAtUtc
-                };
-            }
+                ShortId = position.ShortId,
+                BotName = _options.BotName,
+                Symbol = position.Symbol,
+                Side = position.Side,
+                CreatedAtUtc = position.UpdatedAtUtc ?? position.CreatedAtUtc
+            };
         }
 
         logger.LogInformation(
-            "BOT8015 effective active positions loaded. Count={Count}",
+            "BOT8015 effective active positions loaded. Symbol={Symbol}, Count={Count}",
+            symbol,
             result.Count);
 
         return result.Values
             .OrderByDescending(x => x.CreatedAtUtc)
-            .ToList();
+            .ToArray();
     }
 
-    private static string ExtractShortId(string clientId)
+    private void EnsureSupportedSymbol(string symbol)
     {
-        var parts = clientId.Split('_', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 3 ? parts[2] : string.Empty;
+        if (!symbol.Equals(_options.Symbol, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"BOT8015 supports only '{_options.Symbol}', but received '{symbol}'.");
+        }
     }
 
-    private static PositionSide ParseSide(string value)
-        => value.Equals("SHORT", StringComparison.OrdinalIgnoreCase)
-            ? PositionSide.Short
-            : PositionSide.Long;
+    private static bool TryExtractShortId(
+        string? clientId,
+        string prefix,
+        out string shortId)
+    {
+        shortId = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(clientId)
+            || !clientId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var remainder = clientId[prefix.Length..];
+        shortId = remainder.Split(
+            '_',
+            StringSplitOptions.RemoveEmptyEntries)[0];
+
+        return !string.IsNullOrWhiteSpace(shortId);
+    }
+
+    private static bool TryParseSide(
+        string? value,
+        out PositionSide side)
+    {
+        side = default;
+
+        if (value?.Equals("LONG", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            side = PositionSide.Long;
+            return true;
+        }
+
+        if (value?.Equals("SHORT", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            side = PositionSide.Short;
+            return true;
+        }
+
+        return false;
+    }
 }

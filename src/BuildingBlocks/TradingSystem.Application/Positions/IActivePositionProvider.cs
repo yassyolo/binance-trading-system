@@ -1,6 +1,4 @@
-﻿using TradingSystem.Application.Strategies;
-
-namespace TradingSystem.Application.Engine;
+﻿namespace TradingSystem.Application.Positions;
 
 public interface IActivePositionProvider
 {

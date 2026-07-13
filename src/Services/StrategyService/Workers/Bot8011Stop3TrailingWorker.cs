@@ -1,204 +1,195 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
+using StrategyService.Infrastructure.Locking;
+using StrategyService.Market;
+using StrategyService.Services;
 using TradingSystem.Application.Positions;
 using TradingSystem.Binance.Market.Contracts;
-using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Orders;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Workers;
 
-public sealed class Bot8011Stop3TrailingWorker : BackgroundService
+public sealed class Bot8011Stop3TrailingWorker(
+    IOptions<Bot8011Options> options,
+    IPositionStore positionStore,
+    IBinanceFuturesMarketClient market,
+    SafeBinanceOrderService safeOrders,
+    Bot8011Stop3OrderService stop3Orders,
+    Bot8011TrailingPriceCache priceCache,
+    PositionLockService locks,
+    TelegramNotificationService telegram,
+    ILogger<Bot8011Stop3TrailingWorker> logger)
+    : BackgroundService
 {
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesMarketClient _marketClient;
-    private readonly IBinanceFuturesOrderClient _orderClient;
-    private readonly ILogger<Bot8011Stop3TrailingWorker> _logger;
-
-    public Bot8011Stop3TrailingWorker(
-        IOptions<Bot8011Options> options,
-        IPositionStore positionStore,
-        IBinanceFuturesMarketClient marketClient,
-        IBinanceFuturesOrderClient orderClient,
-        ILogger<Bot8011Stop3TrailingWorker> logger)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _marketClient = marketClient;
-        _orderClient = orderClient;
-        _logger = logger;
-    }
+    private readonly Bot8011Options _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                await ProcessAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "BOT8011 STOP3 trailing worker failed.");
-            }
+            await ProcessAsync(stoppingToken);
 
             await Task.Delay(
-                TimeSpan.FromSeconds(_options.Stop3TrailingIntervalSeconds),
+                TimeSpan.FromSeconds(_options.TrailingFallbackIntervalSeconds),
                 stoppingToken);
         }
     }
 
     private async Task ProcessAsync(CancellationToken cancellationToken)
     {
-        var positions = await _positionStore.GetAllAsync(
+        var positions = await positionStore.GetAllAsync(
             _options.BotName,
             cancellationToken);
 
-        var candidates = positions
-            .Where(x =>
-                !x.Closed &&
-                x.Stop3Created &&
-                !x.Stop3Pending &&
-                !x.TrailingInProgress &&
-                x.Stop3NewPending is null &&
-                !string.IsNullOrWhiteSpace(x.Stop3OrderId) &&
-                x.Stop3Current.HasValue &&
-                x.RemainingQuantity > 0)
-            .ToList();
-
-        foreach (var position in candidates)
+        foreach (var position in positions.Where(x =>
+                     !x.Closed
+                     && x.TpExecuted
+                     && x.ProtectiveActive
+                     && x.Stop3Created
+                     && !x.Stop3Pending
+                     && !x.TrailingInProgress
+                     && x.Stop3Current.HasValue
+                     && !string.IsNullOrWhiteSpace(x.Stop3OrderId)
+                     && x.RemainingQuantity > 0))
         {
-            var markPrice = await _marketClient.GetMarkPriceAsync(
-                position.Symbol,
-                cancellationToken);
+            var currentPrice = priceCache.TryGetFresh(
+                TimeSpan.FromSeconds(_options.TrailingPriceMaxAgeSeconds),
+                out var klinePrice)
+                ? klinePrice
+                : await market.GetMarkPriceAsync(
+                    position.Symbol,
+                    cancellationToken);
 
-            var newStop3Price = CalculateNewStop3Price(
+            var candidate = Calculate(
                 position.Side,
-                markPrice,
-                position.Stop3Current!.Value);
+                currentPrice,
+                position.Stop3Current.Value);
 
-            if (newStop3Price == position.Stop3Current.Value)
+            if (candidate == position.Stop3Current.Value)
                 continue;
 
-            await MoveStop3Async(
-                position,
-                markPrice,
-                newStop3Price,
+            await MoveAsync(
+                position.ShortId,
+                currentPrice,
+                candidate,
                 cancellationToken);
         }
     }
 
-    private async Task MoveStop3Async(
-        TradingSystem.Domain.Positions.BotPosition position,
-        decimal markPrice,
-        decimal newStop3Price,
+    private async Task MoveAsync(
+        string shortId,
+        decimal currentPrice,
+        decimal candidate,
         CancellationToken cancellationToken)
     {
-        var oldStop3Price = position.Stop3Current!.Value;
-        var oldStop3OrderId = position.Stop3OrderId!;
-
-        position.TrailingInProgress = true;
-        position.Stop3NewPending = newStop3Price;
-        position.UpdatedAtUtc = DateTime.UtcNow;
-
-        await _positionStore.SaveAsync(position, cancellationToken);
+        if (!await locks.TryAcquireAsync(
+                _options.BotName,
+                shortId,
+                TimeSpan.FromSeconds(20)))
+            return;
 
         try
         {
-            await _orderClient.CancelAlgoOrderAsync(
-                position.Symbol,
-                oldStop3OrderId,
-                cancellationToken);
-
-            var clientOrderId = CreateClientId(
+            var position = await positionStore.GetAsync(
                 _options.BotName,
-                "S3",
-                position.ShortId);
-
-            var newStop3 = await _orderClient.PlaceStopMarketAlgoOrderAsync(
-                position.Symbol,
-                ToCloseSide(position.Side),
-                ToPositionSide(position.Side),
-                position.RemainingQuantity,
-                newStop3Price,
-                clientOrderId,
+                shortId,
                 cancellationToken);
 
-            position.Stop3Previous = oldStop3Price;
-            position.Stop3Current = newStop3Price;
-            position.Stop3OrderId = newStop3.AlgoOrderId;
-            position.Stop3ClientId = clientOrderId;
-            position.Stop3Status = newStop3.Status;
-            position.Stop3NewPending = null;
-            position.TrailingInProgress = false;
-            position.TrailCount++;
-            position.Status = PositionStatus.Stop3Active;
+            if (position is null
+                || position.Closed
+                || !position.Stop3Current.HasValue
+                || string.IsNullOrWhiteSpace(position.Stop3OrderId))
+                return;
+
+            var oldStop = position.Stop3Current.Value;
+
+            position.TrailingInProgress = true;
+            position.Stop3NewPending = candidate;
+            position.Stop3Previous = oldStop;
             position.UpdatedAtUtc = DateTime.UtcNow;
+            await positionStore.SaveAsync(position, cancellationToken);
 
-            await _positionStore.SaveAsync(position, cancellationToken);
+            var canceled = await safeOrders.SafeCancelAlgoAsync(
+                position.Symbol,
+                position.Stop3OrderId,
+                position.Stop3ClientId,
+                cancellationToken);
 
-            _logger.LogInformation(
-                "BOT8011 STOP3 moved. Position={ShortId}, Mark={Mark}, Old={Old}, New={New}, TrailCount={TrailCount}",
-                position.ShortId,
-                markPrice,
-                oldStop3Price,
-                newStop3Price,
-                position.TrailCount);
+            if (!canceled)
+            {
+                position.TrailingInProgress = false;
+                position.Stop3NewPending = null;
+                await positionStore.SaveAsync(position, cancellationToken);
+                return;
+            }
+
+            try
+            {
+                var sequence = position.TrailCount + 1;
+
+                var newStop3 = await stop3Orders.CreateTrailingStop3Async(
+                    position,
+                    candidate,
+                    sequence,
+                    cancellationToken);
+
+                position.Stop3ClientId = newStop3.ClientAlgoId;
+                position.Stop3OrderId = newStop3.AlgoOrderId;
+                position.Stop3Status = newStop3.Status;
+                position.Stop3Current = newStop3.TriggerPrice;
+                position.Stop3NewPending = null;
+                position.TrailingInProgress = false;
+                position.TrailCount = sequence;
+                position.Status = PositionStatus.Stop3Active;
+                position.UpdatedAtUtc = DateTime.UtcNow;
+
+                await positionStore.SaveAsync(position, cancellationToken);
+
+                await telegram.SendAsync(
+                    $"🔄 {_options.BotName} STOP3 trailing\n" +
+                    $"ID: {position.ShortId}\n" +
+                    $"Old: {oldStop}\n" +
+                    $"New: {newStop3.TriggerPrice}\n" +
+                    $"Current: {currentPrice}",
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Old STOP3 is canceled and replacement failed.
+                position.TrailingInProgress = false;
+                position.Stop3Created = false;
+                position.Stop3Pending = true;
+                position.ProtectiveActive = false;
+                position.Status = PositionStatus.Stop3Pending;
+                position.UpdatedAtUtc = DateTime.UtcNow;
+
+                await positionStore.SaveAsync(position, cancellationToken);
+
+                logger.LogCritical(
+                    ex,
+                    "BOT8011 STOP3 replacement failed. Position={ShortId}",
+                    position.ShortId);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            position.TrailingInProgress = false;
-            position.Stop3NewPending = null;
-            position.UpdatedAtUtc = DateTime.UtcNow;
-
-            await _positionStore.SaveAsync(position, cancellationToken);
-
-            _logger.LogError(
-                ex,
-                "BOT8011 STOP3 move failed. Position={ShortId}, Mark={Mark}, Old={Old}, New={New}",
-                position.ShortId,
-                markPrice,
-                oldStop3Price,
-                newStop3Price);
-
-            throw;
+            await locks.ReleaseAsync(_options.BotName, shortId);
         }
     }
 
-    private decimal CalculateNewStop3Price(
+    private decimal Calculate(
         PositionSide side,
-        decimal markPrice,
-        decimal currentStop3)
+        decimal price,
+        decimal currentStop)
     {
         if (side == PositionSide.Long)
-        {
-            if (markPrice < currentStop3 + _options.Stop3TrailingStep)
-                return currentStop3;
+            return price >= currentStop + _options.Stop3TrailingStep
+                ? currentStop + _options.Stop3TrailingBuffer
+                : currentStop;
 
-            return currentStop3 + _options.Stop3TrailingBuffer;
-        }
-
-        if (markPrice > currentStop3 - _options.Stop3TrailingStep)
-            return currentStop3;
-
-        return currentStop3 - _options.Stop3TrailingBuffer;
+        return price <= currentStop - _options.Stop3TrailingStep
+            ? currentStop - _options.Stop3TrailingBuffer
+            : currentStop;
     }
-
-    private static string CreateClientId(string botName, string prefix, string shortId)
-    {
-        var shortBot = botName.Length > 8 ? botName[..8] : botName;
-        var value = $"{shortBot}_{prefix}_{shortId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000}";
-
-        return value[..Math.Min(32, value.Length)];
-    }
-
-    private static string ToCloseSide(PositionSide side)
-        => side == PositionSide.Long ? "SELL" : "BUY";
-
-    private static string ToPositionSide(PositionSide side)
-        => side == PositionSide.Long ? "LONG" : "SHORT";
 }

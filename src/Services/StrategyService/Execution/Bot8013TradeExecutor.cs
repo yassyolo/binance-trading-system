@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using StrategyService.Services;
+using TradingSystem.Application.Execution;
 using TradingSystem.Application.Positions;
 using TradingSystem.Domain.Enums;
 
@@ -17,35 +18,57 @@ public sealed class Bot8013TradeExecutor(
 
     public string BotName => _options.BotName;
 
-    public async Task OpenAsync(
+    public async Task<TradeExecutionResult> OpenAsync(
         string symbol,
         PositionSide side,
         string? source,
         CancellationToken cancellationToken)
     {
-        var position = await orders.OpenTpOnlyPositionAsync(
-            _options.BotName,
-            side,
-            _options.Symbol,
-            _options.Quantity,
-            _options.ProfitDistance,
-            cancellationToken);
+        EnsureSupportedSymbol(symbol);
 
-        position.Source = string.IsNullOrWhiteSpace(source)
-            ? "webhook"
-            : source;
+        try
+        {
+            var position = await orders.OpenTpOnlyPositionAsync(
+                _options.BotName,
+                side,
+                symbol,
+                _options.Quantity,
+                _options.ProfitDistance,
+                cancellationToken);
 
-        await positionStore.SaveAsync(position, cancellationToken);
+            position.Source = string.IsNullOrWhiteSpace(source)
+                ? "webhook"
+                : source.Trim();
 
-        logger.LogInformation(
-            "BOT8013 opened position. ShortId={ShortId}, Side={Side}, Symbol={Symbol}, Source={Source}",
-            position.ShortId,
-            position.Side,
-            position.Symbol,
-            position.Source);
+            await positionStore.SaveAsync(
+                position,
+                cancellationToken);
+
+            logger.LogInformation(
+                "BOT8013 position opened. ShortId={ShortId}, Side={Side}, Symbol={Symbol}, Source={Source}",
+                position.ShortId,
+                position.Side,
+                position.Symbol,
+                position.Source);
+
+            return TradeExecutionResult.Success(
+                position.ShortId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "BOT8013 failed to open position. Side={Side}, Symbol={Symbol}",
+                side,
+                symbol);
+
+            return TradeExecutionResult.Failure(
+                $"BOT8013 failed to open {side} position.",
+                ex);
+        }
     }
 
-    public async Task CloseAsync(
+    public async Task<TradeExecutionResult> CloseAsync(
         string shortId,
         string reason,
         CancellationToken cancellationToken)
@@ -55,16 +78,58 @@ public sealed class Bot8013TradeExecutor(
             shortId,
             cancellationToken);
 
-        if (position is null || position.Closed)
-            return;
+        if (position is null)
+        {
+            return TradeExecutionResult.Failure(
+                $"BOT8013 position '{shortId}' was not found.");
+        }
 
-        await orders.ClosePositionAsync(
-            _options.BotName,
-            position,
-            cancellationToken);
+        if (position.Closed)
+        {
+            return TradeExecutionResult.Success(
+                shortId,
+                "Position is already closed.");
+        }
 
-        position.MarkClosed(reason);
+        try
+        {
+            await orders.ClosePositionAsync(
+                _options.BotName,
+                position,
+                cancellationToken);
 
-        await positionStore.SaveAsync(position, cancellationToken);
+            position.MarkClosed(reason);
+
+            await positionStore.SaveAsync(
+                position,
+                cancellationToken);
+
+            return TradeExecutionResult.Success(
+                shortId,
+                reason);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "BOT8013 failed to close position. ShortId={ShortId}, Reason={Reason}",
+                shortId,
+                reason);
+
+            return TradeExecutionResult.Failure(
+                $"BOT8013 failed to close position '{shortId}'.",
+                ex);
+        }
+    }
+
+    private void EnsureSupportedSymbol(string symbol)
+    {
+        if (!symbol.Equals(
+                _options.Symbol,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"BOT8013 supports only '{_options.Symbol}', but received '{symbol}'.");
+        }
     }
 }

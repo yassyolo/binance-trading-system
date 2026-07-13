@@ -1,56 +1,80 @@
 ﻿using TradingSystem.Application.Engine;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Contracts.Signals;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Signals;
 
 public sealed class SignalProcessor(
-        TradingEngine engine,
-        ILogger<SignalProcessor> logger) : ITradingSignalHandler
+    TradingEngine engine,
+    ILogger<SignalProcessor> logger)
 {
     public async Task<bool> HandleAsync(
-        TradingSignal signal,
+        TradingSignalMessage message,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseSide(signal.Action, out var side))
+        if (!TryParseSide(message.Action, out var side))
         {
             logger.LogWarning(
-                "Invalid signal action. Action={Action}",
-                signal.Action);
+                "Invalid signal action. SignalId={SignalId}, Action={Action}",
+                message.SignalId,
+                message.Action);
 
             return false;
         }
 
-        var botName = string.IsNullOrWhiteSpace(signal.Source)
-            ? "BOT8012"
-            : signal.Source.Trim();
-
-        var tradeSignal = new TradeSignal
+        if (string.IsNullOrWhiteSpace(message.BotName))
         {
-            BotName = botName,
-            Symbol = signal.Symbol,
+            logger.LogWarning(
+                "Trading signal has no target bot. SignalId={SignalId}, Source={Source}",
+                message.SignalId,
+                message.Source);
+
+            return false;
+        }
+
+        var signal = new TradeSignal
+        {
+            SignalId = message.SignalId.Trim(),
+            BotName = message.BotName.Trim(),
+            Symbol = message.Symbol.Trim().ToUpperInvariant(),
             Side = side,
-            Source = signal.Source
+            Source = message.Source?.Trim(),
+            GeneratedAtUtc = message.GeneratedAtUtc ?? DateTime.UtcNow
         };
 
-        return await engine.ProcessSignalAsync(
-            tradeSignal,
+        var result = await engine.ProcessSignalAsync(
+            signal,
             cancellationToken);
+
+        logger.LogInformation(
+            "Trading signal processed. SignalId={SignalId}, Bot={Bot}, Opened={Opened}, Duplicate={Duplicate}, Reason={Reason}",
+            signal.SignalId,
+            signal.BotName,
+            result.OpenedPosition,
+            result.Duplicate,
+            result.Reason);
+
+        return result.Succeeded;
     }
 
-    private static bool TryParseSide(string action, out PositionSide side)
+    private static bool TryParseSide(
+        string? action,
+        out PositionSide side)
     {
         side = default;
 
-        if (action.Equals("long", StringComparison.OrdinalIgnoreCase))
+        if (action?.Equals(
+                "LONG",
+                StringComparison.OrdinalIgnoreCase) == true)
         {
             side = PositionSide.Long;
             return true;
         }
 
-        if (action.Equals("short", StringComparison.OrdinalIgnoreCase))
+        if (action?.Equals(
+                "SHORT",
+                StringComparison.OrdinalIgnoreCase) == true)
         {
             side = PositionSide.Short;
             return true;

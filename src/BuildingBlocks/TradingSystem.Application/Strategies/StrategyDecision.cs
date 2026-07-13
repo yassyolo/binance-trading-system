@@ -2,41 +2,68 @@
 
 namespace TradingSystem.Application.Strategies;
 
-public sealed class StrategyDecision
+public sealed record StrategyDecision
 {
-    public required StrategyDecisionType DecisionType { get; init; }
-    public PositionSide? Side { get; init; }
-    public string? Reason { get; init; }
+    private StrategyDecision(
+        bool shouldOpen,
+        PositionSide side,
+        string reason,
+        IReadOnlyCollection<string>? positionsToClose = null)
+    {
+        ShouldOpen = shouldOpen;
+        Side = side;
+        Reason = reason;
+        PositionsToClose = positionsToClose ?? [];
+    }
 
-    public IReadOnlyCollection<string> PositionsToClose { get; init; } = [];
+    public bool ShouldOpen { get; }
 
-    public bool ShouldOpen => DecisionType == StrategyDecisionType.Open;
-    public bool ShouldCloseOpposite => PositionsToClose.Count > 0;
+    public PositionSide Side { get; }
 
-    public static StrategyDecision Open(PositionSide side, string reason)
-        => new()
-        {
-            DecisionType = StrategyDecisionType.Open,
-            Side = side,
-            Reason = reason
-        };
+    public string Reason { get; }
+
+    public IReadOnlyCollection<string> PositionsToClose { get; }
+
+    public bool ShouldClosePositions => PositionsToClose.Count > 0;
+
+    public static StrategyDecision Open(
+        PositionSide side,
+        string reason)
+    {
+        return new StrategyDecision(
+            shouldOpen: true,
+            side,
+            reason);
+    }
 
     public static StrategyDecision OpenAfterClosing(
         PositionSide side,
         IReadOnlyCollection<string> positionsToClose,
         string reason)
-        => new()
-        {
-            DecisionType = StrategyDecisionType.Open,
-            Side = side,
-            PositionsToClose = positionsToClose,
-            Reason = reason
-        };
+    {
+        ArgumentNullException.ThrowIfNull(positionsToClose);
 
-    public static StrategyDecision Block(string reason)
-        => new()
+        if (positionsToClose.Count == 0)
         {
-            DecisionType = StrategyDecisionType.Ignore,
-            Reason = reason
-        };
+            throw new ArgumentException(
+                "At least one position must be provided.",
+                nameof(positionsToClose));
+        }
+
+        return new StrategyDecision(
+            shouldOpen: true,
+            side,
+            reason,
+            positionsToClose);
+    }
+
+    public static StrategyDecision Block(
+        PositionSide side,
+        string reason)
+    {
+        return new StrategyDecision(
+            shouldOpen: false,
+            side,
+            reason);
+    }
 }

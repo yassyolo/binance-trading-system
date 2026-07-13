@@ -5,6 +5,6 @@ namespace TradingSystem.Application.Execution;
 public interface ITradingSignalHandler
 {
     Task<bool> HandleAsync(
-        TradingSignal signal,
+        TradeSignal signal,
         CancellationToken cancellationToken);
 }

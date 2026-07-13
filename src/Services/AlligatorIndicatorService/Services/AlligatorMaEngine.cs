@@ -8,29 +8,33 @@ namespace AlligatorIndicatorService.Services;
 
 public sealed class AlligatorMaEngine(IOptions<AlligatorOptions> options)
 {
-    private readonly AlligatorOptions options = options.Value;
+    private readonly AlligatorOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, IndicatorState> _states = new();
 
-    public void InitializeHistory(string symbol, string interval, IEnumerable<Candle> candles)
+    public void InitializeHistory(
+        string symbol,
+        string interval,
+        IEnumerable<Candle> candles)
     {
-        var key = CreateKey(symbol, interval);
-
         var state = CreateState();
         state.Initialize(candles);
 
-        _states[key] = state;
+        _states[CreateKey(symbol, interval)] = state;
     }
 
-    public AlligatorMaPayload? Process(string symbol, string interval, Candle candle)
+    public AlligatorMaPayload? Process(
+        string symbol,
+        string interval,
+        Candle candle)
     {
-        var key = CreateKey(symbol, interval);
+        if (_options.PublishOnlyClosedCandles && !candle.IsClosed)
+            return null;
 
-        if (!_states.TryGetValue(key, out var state))
+        if (!_states.TryGetValue(CreateKey(symbol, interval), out var state))
             return null;
 
         var result = state.Update(candle);
-
-        if (result.Sma is null)
+        if (result is null)
             return null;
 
         return new AlligatorMaPayload
@@ -44,23 +48,19 @@ public sealed class AlligatorMaEngine(IOptions<AlligatorOptions> options)
                 AlligatorJaw = new IndicatorValue { Value = result.Values.Jaw },
                 AlligatorTeeth = new IndicatorValue { Value = result.Values.Teeth },
                 AlligatorLips = new IndicatorValue { Value = result.Values.Lips },
-                Sma200 = new IndicatorValue { Value = result.Sma.Value }
+                Sma200 = new IndicatorValue { Value = result.Sma }
             }
         };
     }
 
     private IndicatorState CreateState()
-    {
-        var calculator = new AlligatorCalculator(
-            options.JawLength,
-            options.TeethLength,
-            options.LipsLength);
-
-        return new IndicatorState(
-            options.HistoryLimit,
-            options.SmaLength,
-            calculator);
-    }
+        => new(
+            _options.HistoryLimit,
+            _options.SmaLength,
+            new AlligatorCalculator(
+                _options.JawLength,
+                _options.TeethLength,
+                _options.LipsLength));
 
     private static string CreateKey(string symbol, string interval)
         => $"{symbol.ToUpperInvariant()}:{interval.ToLowerInvariant()}";

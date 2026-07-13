@@ -1,7 +1,7 @@
 ﻿using TradingSystem.Application.Engine;
 using TradingSystem.Domain.Enums;
 
-namespace StrategyService.Execution;
+namespace TradingSystem.Application.Execution;
 
 public sealed class CompositeTradeExecutor : ITradeExecutor
 {
@@ -15,40 +15,35 @@ public sealed class CompositeTradeExecutor : ITradeExecutor
             StringComparer.OrdinalIgnoreCase);
     }
 
-    public Task OpenAsync(
+    public Task<TradeExecutionResult> OpenAsync(
         string botName,
         string symbol,
         PositionSide side,
         string? source,
         CancellationToken cancellationToken)
-    {
-        var executor = GetExecutor(botName);
-
-        return executor.OpenAsync(
+        => GetRequired(botName).OpenAsync(
             symbol,
             side,
             source,
             cancellationToken);
-    }
 
-    public Task CloseAsync(
+    public Task<TradeExecutionResult> CloseAsync(
         string botName,
         string shortId,
         string reason,
         CancellationToken cancellationToken)
-    {
-        var executor = GetExecutor(botName);
-
-        return executor.CloseAsync(
+        => GetRequired(botName).CloseAsync(
             shortId,
             reason,
             cancellationToken);
-    }
 
-    private IBotTradeExecutor GetExecutor(string botName)
+    private IBotTradeExecutor GetRequired(string botName)
     {
         if (!_executors.TryGetValue(botName, out var executor))
-            throw new InvalidOperationException($"Trade executor not found for bot: {botName}");
+        {
+            throw new InvalidOperationException(
+                $"Trade executor is not registered for bot '{botName}'.");
+        }
 
         return executor;
     }

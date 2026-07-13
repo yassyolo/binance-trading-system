@@ -40,7 +40,7 @@ public sealed class OrderExecutionService
         var entryPrice = entry.AveragePrice ?? 0;
 
         var tpPrice = CalculatePercentPrice(side, entryPrice, options.TakeProfitPercent, true);
-        var slPrice = CalculatePercentPrice(side, entryPrice, options.StopLossPercent, false);
+        var slPrice = CalculatePercentPrice(side, entryPrice, options.InitialStopLossDistance, false);
 
         var tpQuantity = options.Quantity / 2m;
 

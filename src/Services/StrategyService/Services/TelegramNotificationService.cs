@@ -3,44 +3,35 @@ using StrategyService.Configuration;
 
 namespace StrategyService.Services;
 
-public sealed class TelegramNotificationService
-{
-    private readonly HttpClient _httpClient;
-    private readonly TelegramOptions _options;
-    private readonly ILogger<TelegramNotificationService> _logger;
-
-    public TelegramNotificationService(
+public sealed class TelegramNotificationService(
         HttpClient httpClient,
         IOptions<TelegramOptions> options,
         ILogger<TelegramNotificationService> logger)
-    {
-        _httpClient = httpClient;
-        _options = options.Value;
-        _logger = logger;
-    }
+{
+    private readonly TelegramOptions options = options.Value;
 
     public async Task SendAsync(
         string message,
         CancellationToken cancellationToken)
     {
-        if (!_options.Enabled ||
-            string.IsNullOrWhiteSpace(_options.BotToken) ||
-            string.IsNullOrWhiteSpace(_options.ChatId))
+        if (!options.Enabled ||
+            string.IsNullOrWhiteSpace(options.BotToken) ||
+            string.IsNullOrWhiteSpace(options.ChatId))
         {
             return;
         }
 
         try
         {
-            var url = $"https://api.telegram.org/bot{_options.BotToken}/sendMessage";
+            var url = $"https://api.telegram.org/bot{options.BotToken}/sendMessage";
 
             using var content = new FormUrlEncodedContent(
             [
-                new KeyValuePair<string, string>("chat_id", _options.ChatId),
+                new KeyValuePair<string, string>("chat_id", options.ChatId),
                 new KeyValuePair<string, string>("text", message)
             ]);
 
-            using var response = await _httpClient.PostAsync(
+            using var response = await httpClient.PostAsync(
                 url,
                 content,
                 cancellationToken);
@@ -49,7 +40,7 @@ public sealed class TelegramNotificationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Telegram notification failed.");
+            logger.LogWarning(ex, "Telegram notification failed.");
         }
     }
 }

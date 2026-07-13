@@ -77,7 +77,7 @@ public sealed class Bot8011ActivePositionProvider(
                 Side = x.Side,
                 Quantity = x.Quantity,
                 RemainingQuantity = x.RemainingQuantity,
-                EntryPrice = x.EntryPrice,
+                EntryPrice = x.EntryPrice.Value,
                 CreatedAtUtc = x.ParentFilledAtUtc ?? x.CreatedAtUtc
             })
             .ToList();

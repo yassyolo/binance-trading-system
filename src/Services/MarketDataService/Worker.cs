@@ -13,16 +13,16 @@ public sealed class Worker(
     KlinePublisher klinePublisher)
     : BackgroundService
 {
-    private readonly MarketDataOptions _options = options.Value;
+    private readonly MarketDataOptions options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var symbols = _options.Symbols.Where(x => !string.IsNullOrWhiteSpace(x))
+        var symbols = options.Symbols.Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim().ToUpperInvariant())
             .Distinct()
             .ToArray();
 
-        var intervals = _options.Intervals.Where(x => !string.IsNullOrWhiteSpace(x))
+        var intervals = options.Intervals.Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim().ToLowerInvariant())
             .Distinct()
             .ToArray();
@@ -64,9 +64,9 @@ public sealed class Worker(
                 logger.LogError(ex, "WebSocket loop failed. Interval={Interval}", interval);
             }
 
-            logger.LogWarning("Reconnecting websocket. Interval={Interval}, DelaySeconds={Delay}", interval, _options.ReconnectDelaySeconds);
+            logger.LogWarning("Reconnecting websocket. Interval={Interval}, DelaySeconds={Delay}", interval, options.ReconnectDelaySeconds);
 
-            await Task.Delay(TimeSpan.FromSeconds(_options.ReconnectDelaySeconds), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(options.ReconnectDelaySeconds), stoppingToken);
         }
     }
 
@@ -74,7 +74,7 @@ public sealed class Worker(
     {
         var streams = string.Join("/", symbols.Select(symbol => $"{symbol.ToLowerInvariant()}@kline_{interval.ToLowerInvariant()}"));
 
-        return $"{_options.BinanceWebSocketBaseUrl}?streams={streams}";
+        return $"{options.BinanceWebSocketBaseUrl}?streams={streams}";
     }
 
     private async Task ReceiveLoopAsync(

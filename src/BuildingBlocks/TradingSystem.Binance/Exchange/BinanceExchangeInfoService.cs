@@ -9,7 +9,7 @@ namespace StrategyService.Services;
 public sealed class BinanceExchangeInfoService
 {
     private readonly HttpClient _httpClient;
-    private readonly BinanceFuturesOptions _options;
+    private readonly BinanceFuturesOptions options;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     private DateTime _expiresAtUtc;
@@ -17,11 +17,11 @@ public sealed class BinanceExchangeInfoService
 
     public BinanceExchangeInfoService(
         HttpClient httpClient,
-        IOptions<BinanceFuturesOptions> options)
+        IOptions<BinanceFuturesOptions> _options)
     {
         _httpClient = httpClient;
-        _options = options.Value;
-        _httpClient.BaseAddress = new Uri(_options.BaseUrl);
+        options = _options.Value;
+        _httpClient.BaseAddress = new Uri(options.BaseUrl);
     }
 
     public async Task<decimal> RoundPriceAsync(string symbol, decimal price,  CancellationToken cancellationToken)

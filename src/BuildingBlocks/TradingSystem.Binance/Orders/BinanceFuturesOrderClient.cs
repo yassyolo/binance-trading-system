@@ -13,18 +13,18 @@ namespace TradingSystem.Binance.Orders;
 public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 {
     private readonly HttpClient _httpClient;
-    private readonly BinanceFuturesOptions _options;
+    private readonly BinanceFuturesOptions options;
 
     public BinanceFuturesOrderClient(
         HttpClient httpClient,
-        IOptions<BinanceFuturesOptions> options)
+        IOptions<BinanceFuturesOptions> _options)
     {
         _httpClient = httpClient;
-        _options = options.Value;
+        options = _options.Value;
 
-        _httpClient.BaseAddress = new Uri(_options.BaseUrl);
+        _httpClient.BaseAddress = new Uri(options.BaseUrl);
         _httpClient.DefaultRequestHeaders.Remove("X-MBX-APIKEY");
-        _httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _options.ApiKey);
+        _httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", options.ApiKey);
     }
 
     public async Task<BinanceOrderResult> PlaceMarketOrderAsync(
@@ -156,7 +156,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         Dictionary<string, string> parameters,
         CancellationToken cancellationToken)
     {
-        parameters["recvWindow"] = _options.ReceiveWindow.ToString(CultureInfo.InvariantCulture);
+        parameters["recvWindow"] = options.ReceiveWindow.ToString(CultureInfo.InvariantCulture);
         parameters["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
 
         var query = BuildQueryString(parameters);
@@ -177,7 +177,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
     private string Sign(string query)
     {
-        var keyBytes = Encoding.UTF8.GetBytes(_options.SecretKey);
+        var keyBytes = Encoding.UTF8.GetBytes(options.SecretKey);
         var queryBytes = Encoding.UTF8.GetBytes(query);
 
         using var hmac = new HMACSHA256(keyBytes);

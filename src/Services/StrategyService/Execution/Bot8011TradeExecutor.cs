@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using StrategyService.Services;
+using TradingSystem.Application.Execution;
 using TradingSystem.Application.Positions;
 using TradingSystem.Domain.Enums;
 

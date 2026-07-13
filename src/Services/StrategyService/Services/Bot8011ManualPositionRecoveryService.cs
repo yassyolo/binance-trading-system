@@ -16,16 +16,16 @@ public sealed class Bot8011ManualPositionRecoveryService(
         BinanceRetryService retry,
         ILogger<Bot8011ManualPositionRecoveryService> logger)
 {
-    private readonly Bot8011Options _options = options.Value;
+    private readonly Bot8011Options options = options.Value;
 
     public async Task<int> RecoverAsync(CancellationToken cancellationToken)
     {
         var existing = await positionStore.GetAllAsync(
-            _options.BotName,
+            options.BotName,
             cancellationToken);
 
         var risks = await orders.GetPositionRiskAsync(
-            _options.Symbol,
+            options.Symbol,
             cancellationToken);
 
         var recovered = 0;
@@ -55,18 +55,18 @@ public sealed class Bot8011ManualPositionRecoveryService(
                 continue;
 
             var shortId = CreateShortId();
-            var botPrefix = ShortBot(_options.BotName);
+            var botPrefix = ShortBot(options.BotName);
 
             var tpClientId = $"{botPrefix}_TP_{shortId}";
             var slClientId = $"{botPrefix}_SL_{shortId}";
 
             var tpPrice = side == PositionSide.Long
-                ? risk.EntryPrice * (1 + _options.TakeProfitPercent / 100m)
-                : risk.EntryPrice * (1 - _options.TakeProfitPercent / 100m);
+                ? risk.EntryPrice * (1 + options.TakeProfitPercent / 100m)
+                : risk.EntryPrice * (1 - options.TakeProfitPercent / 100m);
 
             var slPrice = side == PositionSide.Long
-                ? risk.EntryPrice * (1 - _options.StopLossPercent / 100m)
-                : risk.EntryPrice * (1 + _options.StopLossPercent / 100m);
+    ? risk.EntryPrice - options.InitialStopLossDistance
+    : risk.EntryPrice + options.InitialStopLossDistance;
 
             tpPrice = await exchangeInfo.RoundPriceAsync(risk.Symbol, tpPrice, cancellationToken);
             slPrice = await exchangeInfo.RoundPriceAsync(risk.Symbol, slPrice, cancellationToken);
@@ -105,7 +105,7 @@ public sealed class Bot8011ManualPositionRecoveryService(
 
             var position = new BotPosition
             {
-                BotName = _options.BotName,
+                BotName = options.BotName,
                 ShortId = shortId,
                 Symbol = risk.Symbol,
                 Side = side,

@@ -15,16 +15,13 @@ public sealed class AlligatorCalculator
 
     public AlligatorValues Update(decimal high, decimal low)
     {
-        var hl2 = (high + low) / 2;
+        var hl2 = (high + low) / 2m;
 
         return new AlligatorValues(
-            Jaw: _jaw.Update(hl2),
-            Teeth: _teeth.Update(hl2),
-            Lips: _lips.Update(hl2));
+            _jaw.Update(hl2),
+            _teeth.Update(hl2),
+            _lips.Update(hl2));
     }
 }
 
-public sealed record AlligatorValues(
-    decimal Jaw,
-    decimal Teeth,
-    decimal Lips);
+public sealed record AlligatorValues(decimal Jaw, decimal Teeth, decimal Lips);

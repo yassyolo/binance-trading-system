@@ -13,15 +13,15 @@ public sealed class RedisPositionStore : IPositionStore
 {
     private readonly IDatabase _database;
     private readonly IServer _server;
-    private readonly RedisPositionStoreOptions _options;
+    private readonly RedisPositionStoreOptions options;
 
     public RedisPositionStore(
         IConnectionMultiplexer connectionMultiplexer,
-        IOptions<RedisPositionStoreOptions> options)
+        IOptions<RedisPositionStoreOptions> _options)
     {
         _database = connectionMultiplexer.GetDatabase();
         _server = connectionMultiplexer.GetServer(connectionMultiplexer.GetEndPoints().First());
-        _options = options.Value;
+        options = _options.Value;
     }
 
     public async Task SaveAsync(BotPosition position, CancellationToken cancellationToken)
@@ -88,9 +88,9 @@ public sealed class RedisPositionStore : IPositionStore
     {
         var key = $"{botName}:position:{shortId}";
 
-        return string.IsNullOrWhiteSpace(_options.Prefix)
+        return string.IsNullOrWhiteSpace(options.Prefix)
             ? key
-            : $"{_options.Prefix}:{key}";
+            : $"{options.Prefix}:{key}";
     }
 
     private static HashEntry[] ToHashEntries(BotPosition position)

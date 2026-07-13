@@ -11,19 +11,19 @@ public sealed class Bot8011RedisCleanupService(
         IBinanceFuturesOrderClient orders,
         ILogger<Bot8011RedisCleanupService> logger)
 {
-    private readonly Bot8011Options _options = options.Value;
+    private readonly Bot8011Options options = options.Value;
     public async Task<int> CleanupGhostPositionsAsync(CancellationToken cancellationToken)
     {
         var positions = await positionStore.GetAllAsync(
-            _options.BotName,
+            options.BotName,
             cancellationToken);
 
         var openOrders = await orders.GetOpenOrdersAsync(
-            _options.Symbol,
+            options.Symbol,
             cancellationToken);
 
         var openAlgoOrders = await orders.GetOpenAlgoOrdersAsync(
-            _options.Symbol,
+            options.Symbol,
             cancellationToken);
 
         var cleaned = 0;
@@ -52,7 +52,7 @@ public sealed class Bot8011RedisCleanupService(
                 continue;
 
             await positionStore.DeleteAsync(
-                _options.BotName,
+                options.BotName,
                 position.ShortId,
                 cancellationToken);
 

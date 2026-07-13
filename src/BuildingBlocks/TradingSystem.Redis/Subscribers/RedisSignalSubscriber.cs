@@ -27,7 +27,7 @@ public sealed class RedisSignalSubscriber(
 
                 try
                 {
-                    var signal = JsonSerializer.Deserialize<TradingSignal>(
+                    var signal = JsonSerializer.Deserialize<TradeSignal>(
                         message.ToString(),
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 

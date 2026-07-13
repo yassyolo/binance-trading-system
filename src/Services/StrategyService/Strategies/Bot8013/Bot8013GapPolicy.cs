@@ -1,11 +1,13 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
+using TradingSystem.Application.Positions;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Strategies.Bot8013;
 
-public sealed class Bot8013GapPolicy(IOptions<Bot8013Options> options)
+public sealed class Bot8013GapPolicy(
+    IOptions<Bot8013Options> options)
 {
     private readonly Bot8013Options _options = options.Value;
 
@@ -16,45 +18,76 @@ public sealed class Bot8013GapPolicy(IOptions<Bot8013Options> options)
     {
         var sameSidePositions = activePositions
             .Where(x => x.Side == side)
-            .ToList();
+            .ToArray();
 
-        if (sameSidePositions.Count >= _options.OrderSideLimit)
+        if (sameSidePositions.Length >= _options.OrderSideLimit)
+        {
             return StrategyDecision.Block(
-                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Count}/{_options.OrderSideLimit})");
+                side,
+                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{_options.OrderSideLimit}).");
+        }
 
-        if (sameSidePositions.Count == 0)
-            return StrategyDecision.Open(side, "OK no active TP");
+        if (sameSidePositions.Length == 0)
+        {
+            return StrategyDecision.Open(
+                side,
+                "No active TP positions for this side.");
+        }
 
         var newest = sameSidePositions
-            .Where(x => x.TpPrice.HasValue)
+            .Where(x => x.TpPrice is > 0)
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefault();
 
         if (newest?.TpPrice is null)
-            return StrategyDecision.Open(side, "OK no valid newest TP");
+        {
+            return StrategyDecision.Block(
+                side,
+                "Active positions exist, but no valid TP price was found.");
+        }
 
-        var newestTp = Math.Round(newest.TpPrice.Value, 0);
-        var mark = Math.Round(markPrice, 0);
+        // Python round(float(x)) uses banker's rounding, matching ToEven.
+        var newestTp = RoundForPythonParity(newest.TpPrice.Value);
+        var mark = RoundForPythonParity(markPrice);
+        var profitDistance = RoundForPythonParity(_options.ProfitDistance);
+        var priceDistance = RoundForPythonParity(_options.PriceDistance);
 
         if (side == PositionSide.Long)
         {
-            var lastEntry = newestTp - Math.Round(_options.ProfitDistance, 0);
-            var requiredMax = lastEntry - Math.Round(_options.PriceDistance, 0);
+            var lastEntry = RoundForPythonParity(newestTp - profitDistance);
+            var requiredMaximum = lastEntry - priceDistance;
 
-            if (mark > requiredMax)
+            if (mark > requiredMaximum)
+            {
                 return StrategyDecision.Block(
-                    $"GAP fail LONG: mark={mark}, newest_tp={newestTp}, last_entry={lastEntry}, required_max={requiredMax}, gap={Math.Round(_options.PriceDistance, 0)}");
+                    side,
+                    $"GAP fail LONG: mark={mark}, newestTp={newestTp}, " +
+                    $"lastEntry={lastEntry}, requiredMaximum={requiredMaximum}, gap={priceDistance}.");
+            }
+
+            return StrategyDecision.Open(
+                side,
+                $"LONG spacing valid: mark={mark}, newestTp={newestTp}, " +
+                $"lastEntry={lastEntry}, requiredMaximum={requiredMaximum}.");
         }
-        else
+
+        var shortLastEntry = RoundForPythonParity(newestTp + profitDistance);
+        var requiredMinimum = shortLastEntry + priceDistance;
+
+        if (mark < requiredMinimum)
         {
-            var lastEntry = newestTp + Math.Round(_options.ProfitDistance, 0);
-            var requiredMin = lastEntry + Math.Round(_options.PriceDistance, 0);
-
-            if (mark < requiredMin)
-                return StrategyDecision.Block(
-                    $"GAP fail SHORT: mark={mark}, newest_tp={newestTp}, last_entry={lastEntry}, required_min={requiredMin}, gap={Math.Round(_options.PriceDistance, 0)}");
+            return StrategyDecision.Block(
+                side,
+                $"GAP fail SHORT: mark={mark}, newestTp={newestTp}, " +
+                $"lastEntry={shortLastEntry}, requiredMinimum={requiredMinimum}, gap={priceDistance}.");
         }
 
-        return StrategyDecision.Open(side, $"OK newest_tp={newestTp} mark={mark}");
+        return StrategyDecision.Open(
+            side,
+            $"SHORT spacing valid: mark={mark}, newestTp={newestTp}, " +
+            $"lastEntry={shortLastEntry}, requiredMinimum={requiredMinimum}.");
     }
+
+    private static decimal RoundForPythonParity(decimal value)
+        => Math.Round(value, 0, MidpointRounding.ToEven);
 }

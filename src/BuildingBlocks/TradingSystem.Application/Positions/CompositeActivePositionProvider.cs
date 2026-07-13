@@ -1,5 +1,4 @@
 ﻿using TradingSystem.Application.Engine;
-using TradingSystem.Application.Strategies;
 
 namespace TradingSystem.Application.Positions;
 
@@ -7,7 +6,8 @@ public sealed class CompositeActivePositionProvider : IActivePositionProvider
 {
     private readonly IReadOnlyDictionary<string, IBotActivePositionProvider> _providers;
 
-    public CompositeActivePositionProvider(IEnumerable<IBotActivePositionProvider> providers)
+    public CompositeActivePositionProvider(
+        IEnumerable<IBotActivePositionProvider> providers)
     {
         _providers = providers.ToDictionary(
             x => x.BotName,
@@ -21,8 +21,13 @@ public sealed class CompositeActivePositionProvider : IActivePositionProvider
         CancellationToken cancellationToken)
     {
         if (!_providers.TryGetValue(botName, out var provider))
-            return Task.FromResult<IReadOnlyCollection<ActivePositionView>>([]);
+        {
+            throw new InvalidOperationException(
+                $"Active position provider is not registered for bot '{botName}'.");
+        }
 
-        return provider.GetActivePositionsAsync(symbol, cancellationToken);
+        return provider.GetActivePositionsAsync(
+            symbol,
+            cancellationToken);
     }
 }

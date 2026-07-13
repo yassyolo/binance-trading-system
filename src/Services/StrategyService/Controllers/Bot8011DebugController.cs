@@ -9,21 +9,12 @@ namespace StrategyService.Controllers;
 
 [ApiController]
 [Route("api/bot8011")]
-public sealed class Bot8011DebugController : ControllerBase
-{
-    private readonly Bot8011Options _options;
-    private readonly IPositionStore _positionStore;
-    private readonly IBinanceFuturesOrderClient _orders;
-
-    public Bot8011DebugController(
+public sealed class Bot8011DebugController(
         IOptions<Bot8011Options> options,
         IPositionStore positionStore,
-        IBinanceFuturesOrderClient orders)
-    {
-        _options = options.Value;
-        _positionStore = positionStore;
-        _orders = orders;
-    }
+        IBinanceFuturesOrderClient orders) : ControllerBase
+{
+    private readonly Bot8011Options options = options.Value;
 
     [HttpGet("health")]
     public IActionResult Health()
@@ -31,8 +22,8 @@ public sealed class Bot8011DebugController : ControllerBase
         return Ok(new
         {
             status = "ok",
-            bot = _options.BotName,
-            symbol = _options.Symbol,
+            bot = options.BotName,
+            symbol = options.Symbol,
             timeUtc = DateTime.UtcNow
         });
     }
@@ -40,20 +31,20 @@ public sealed class Bot8011DebugController : ControllerBase
     [HttpGet("positions")]
     public async Task<IActionResult> Positions(CancellationToken cancellationToken)
     {
-        var redisPositions = await _positionStore.GetAllAsync(
-            _options.BotName,
+        var redisPositions = await positionStore.GetAllAsync(
+            options.BotName,
             cancellationToken);
 
-        var binancePositions = await _orders.GetPositionRiskAsync(
-            _options.Symbol,
+        var binancePositions = await orders.GetPositionRiskAsync(
+            options.Symbol,
             cancellationToken);
 
-        var openOrders = await _orders.GetOpenOrdersAsync(
-            _options.Symbol,
+        var openOrders = await orders.GetOpenOrdersAsync(
+            options.Symbol,
             cancellationToken);
 
-        var openAlgoOrders = await _orders.GetOpenAlgoOrdersAsync(
-            _options.Symbol,
+        var openAlgoOrders = await orders.GetOpenAlgoOrdersAsync(
+            options.Symbol,
             cancellationToken);
 
         return Ok(new

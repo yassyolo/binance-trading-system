@@ -7,14 +7,23 @@ using TradingSystem.Domain.Enums;
 namespace StrategyService.Strategies.Bot8011;
 
 public sealed class Bot8011Strategy(
-        IOptions<Bot8011Options> options,
-        TelegramNotificationService telegram,
-        ILogger<Bot8011Strategy> logger) : ITradingStrategy
+    IOptions<Bot8011Options> options,
+    TelegramNotificationService telegram,
+    ILogger<Bot8011Strategy> logger)
+    : ITradingStrategy, IHasSignalCooldown
 {
-    private readonly Bot8011Options options = options.Value;
-    private readonly Dictionary<PositionSide, DateTime> _lastSignalAt = [];
+    private readonly Bot8011Options _options = options.Value;
 
-    public string BotName => options.BotName;
+    public string BotName => _options.BotName;
+
+    public StrategyMetadata Metadata => new(
+        Name: _options.BotName,
+        Version: _options.StrategyVersion,
+        PositionMode: PositionMode.Hedge,
+        SupportedSymbols: [_options.Symbol]);
+
+    public TimeSpan SignalCooldown =>
+        TimeSpan.FromSeconds(_options.CooldownSeconds);
 
     public async Task<StrategyDecision> DecideAsync(
         StrategyContext context,
@@ -22,24 +31,21 @@ public sealed class Bot8011Strategy(
     {
         var side = context.Signal.Side;
 
-        if (side == PositionSide.Long && !options.EnableLong)
-            return StrategyDecision.Block("LONG disabled");
-
-        if (side == PositionSide.Short && !options.EnableShort)
-            return StrategyDecision.Block("SHORT disabled");
-
-        if (IsInCooldown(side, out var remainingSeconds))
+        if (side == PositionSide.Long && !_options.EnableLong)
         {
-            await telegram.SendAsync(
-                $"⏸️ BOT8011 {side} signal ignored. Cooldown: {remainingSeconds}s",
-                cancellationToken);
-
-            return StrategyDecision.Block($"{side} cooldown active: {remainingSeconds}s remaining");
+            return StrategyDecision.Block(
+                side,
+                "LONG disabled");
         }
 
-        var effectiveActive = context.ActivePositions;
+        if (side == PositionSide.Short && !_options.EnableShort)
+        {
+            return StrategyDecision.Block(
+                side,
+                "SHORT disabled");
+        }
 
-        var sameSide = effectiveActive
+        var sameSidePositions = context.ActivePositions
             .Where(x => x.Side == side)
             .ToList();
 
@@ -47,58 +53,48 @@ public sealed class Bot8011Strategy(
             ? PositionSide.Short
             : PositionSide.Long;
 
-        var opposite = effectiveActive
+        var oppositePositions = context.ActivePositions
             .Where(x => x.Side == oppositeSide)
             .ToList();
 
-        if (opposite.Count > 0)
+        if (oppositePositions.Count > 0)
         {
-            _lastSignalAt[side] = DateTime.UtcNow;
-
-            var idsToClose = opposite.Select(x => x.ShortId).ToList();
+            var positionIdsToClose = oppositePositions
+                .Select(x => x.ShortId)
+                .ToArray();
 
             logger.LogInformation(
-                "BOT8011 opposite positions found. Side={Side}, OppositeCount={Count}",
+                "BOT8011 reverse signal. NewSide={NewSide}, OppositeSide={OppositeSide}, OppositeCount={OppositeCount}",
                 side,
-                opposite.Count);
+                oppositeSide,
+                oppositePositions.Count);
 
             return StrategyDecision.OpenAfterClosing(
                 side,
-                idsToClose,
-                $"Close {opposite.Count} opposite {oppositeSide} position(s), then open {side}");
+                positionIdsToClose,
+                $"Close {oppositePositions.Count} opposite {oppositeSide} position(s), then open {side}");
         }
 
-        if (sameSide.Count >= options.OrderSideLimit)
+        if (sameSidePositions.Count >= _options.OrderSideLimit)
         {
             await telegram.SendAsync(
-                $"⏸️ BOT8011 {side} signal ignored. Limit reached: {sameSide.Count}/{options.OrderSideLimit}",
+                $"⏸️ {_options.BotName} {side} ignored. " +
+                $"Limit: {sameSidePositions.Count}/{_options.OrderSideLimit}",
                 cancellationToken);
 
             return StrategyDecision.Block(
-                $"ORDER_SIDE_LIMIT reached ({sameSide.Count}/{options.OrderSideLimit})");
+                side,
+                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Count}/{_options.OrderSideLimit})");
         }
 
-        _lastSignalAt[side] = DateTime.UtcNow;
+        logger.LogInformation(
+            "BOT8011 signal accepted. Side={Side}, MarkPrice={MarkPrice}, ActiveSameSide={ActiveSameSide}",
+            side,
+            context.MarkPrice,
+            sameSidePositions.Count);
 
         return StrategyDecision.Open(
             side,
-            $"OK BOT8011 open {side}. Mark={context.MarkPrice}");
-    }
-
-    private bool IsInCooldown(PositionSide side, out int remainingSeconds)
-    {
-        remainingSeconds = 0;
-
-        if (!_lastSignalAt.TryGetValue(side, out var lastSignalAt))
-            return false;
-
-        var elapsed = DateTime.UtcNow - lastSignalAt;
-        var cooldown = TimeSpan.FromSeconds(options.CooldownSeconds);
-
-        if (elapsed >= cooldown)
-            return false;
-
-        remainingSeconds = (int)(cooldown - elapsed).TotalSeconds;
-        return true;
+            $"BOT8011 open {side}. Mark={context.MarkPrice}");
     }
 }

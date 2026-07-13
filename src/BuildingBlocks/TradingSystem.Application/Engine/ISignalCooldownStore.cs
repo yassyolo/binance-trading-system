@@ -2,18 +2,19 @@
 
 namespace TradingSystem.Application.Engine;
 
-public interface ITradeExecutor
+public interface ISignalCooldownStore
 {
-    Task OpenAsync(
+    Task<TimeSpan?> GetRemainingAsync(
         string botName,
         string symbol,
         PositionSide side,
-        string? source,
+        DateTime nowUtc,
         CancellationToken cancellationToken);
 
-    Task CloseAsync(
+    Task SetAsync(
         string botName,
-        string shortId,
-        string reason,
+        string symbol,
+        PositionSide side,
+        DateTime expiresAtUtc,
         CancellationToken cancellationToken);
 }

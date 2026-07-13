@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Domain.Enums;
 
@@ -21,41 +20,123 @@ public sealed class Bot8013ActivePositionProvider(
         string symbol,
         CancellationToken cancellationToken)
     {
-        var openOrders = await orders.GetOpenOrdersAsync(symbol, cancellationToken);
+        EnsureSupportedSymbol(symbol);
 
-        var positions = openOrders
-            .Where(x => x.ClientOrderId.StartsWith($"{_options.BotName}_TP_", StringComparison.OrdinalIgnoreCase))
-            .Where(x => x.Type.Equals("LIMIT", StringComparison.OrdinalIgnoreCase))
-            .Where(x => x.Price > 0)
-            .Select(x => new ActivePositionView
+        var openOrders = await orders.GetOpenOrdersAsync(
+            symbol,
+            cancellationToken);
+
+        var positions = new List<ActivePositionView>();
+
+        foreach (var order in openOrders)
+        {
+            if (!TryParseTpClientId(
+                    order.ClientOrderId,
+                    _options.BotName,
+                    out var shortId))
             {
-                ShortId = ExtractShortId(x.ClientOrderId),
+                continue;
+            }
+
+            if (!order.Type.Equals(
+                    "LIMIT",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (order.Price <= 0)
+                continue;
+
+            if (!TryParsePositionSide(
+                    order.PositionSide,
+                    out var side))
+            {
+                logger.LogWarning(
+                    "Ignoring BOT8013 order with invalid position side. ClientOrderId={ClientOrderId}, PositionSide={PositionSide}",
+                    order.ClientOrderId,
+                    order.PositionSide);
+
+                continue;
+            }
+
+            positions.Add(new ActivePositionView
+            {
+                ShortId = shortId,
                 BotName = _options.BotName,
                 Symbol = symbol,
-                Side = ParseSide(x.PositionSide),
-                TpPrice = x.Price,
-                CreatedAtUtc = x.UpdateTimeUtc
-            })
-            .Where(x => !string.IsNullOrWhiteSpace(x.ShortId))
-            .OrderByDescending(x => x.CreatedAtUtc)
-            .ToList();
+                Side = side,
+                TpPrice = order.Price,
+                CreatedAtUtc = order.UpdateTimeUtc
+            });
+        }
 
         logger.LogInformation(
             "BOT8013 active TP positions loaded. Symbol={Symbol}, Count={Count}",
             symbol,
             positions.Count);
 
-        return positions;
+        return positions
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToArray();
     }
 
-    private static string ExtractShortId(string clientOrderId)
+    private void EnsureSupportedSymbol(string symbol)
     {
-        var parts = clientOrderId.Split('_', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 3 ? parts[2] : string.Empty;
+        if (!symbol.Equals(
+                _options.Symbol,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"BOT8013 supports only '{_options.Symbol}', but received '{symbol}'.");
+        }
     }
 
-    private static PositionSide ParseSide(string positionSide)
-        => positionSide.Equals("SHORT", StringComparison.OrdinalIgnoreCase)
-            ? PositionSide.Short
-            : PositionSide.Long;
+    private static bool TryParseTpClientId(
+        string? clientOrderId,
+        string botName,
+        out string shortId)
+    {
+        shortId = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(clientOrderId))
+            return false;
+
+        var prefix = $"{botName}_TP_";
+
+        if (!clientOrderId.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        shortId = clientOrderId[prefix.Length..].Trim();
+        return !string.IsNullOrWhiteSpace(shortId);
+    }
+
+    private static bool TryParsePositionSide(
+        string? value,
+        out PositionSide side)
+    {
+        side = default;
+
+        if (value?.Equals(
+                "LONG",
+                StringComparison.OrdinalIgnoreCase) == true)
+        {
+            side = PositionSide.Long;
+            return true;
+        }
+
+        if (value?.Equals(
+                "SHORT",
+                StringComparison.OrdinalIgnoreCase) == true)
+        {
+            side = PositionSide.Short;
+            return true;
+        }
+
+        return false;
+    }
 }

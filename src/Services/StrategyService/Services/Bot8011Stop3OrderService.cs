@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
+using StrategyService.Execution;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Resilience;
 using TradingSystem.Domain.Enums;
@@ -7,63 +8,14 @@ using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Services;
 
-public sealed class Bot8011Stop3OrderService
+public sealed class Bot8011Stop3OrderService(
+    IOptions<Bot8011Options> options,
+    IBinanceFuturesOrderClient orders,
+    BinanceExchangeInfoService exchangeInfo,
+    BinanceRetryService retry,
+    ILogger<Bot8011Stop3OrderService> logger)
 {
-    private readonly Bot8011Options _options;
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly BinanceExchangeInfoService _exchangeInfo;
-    private readonly BinanceRetryService _retry;
-    private readonly ILogger<Bot8011Stop3OrderService> _logger;
-
-    public Bot8011Stop3OrderService(
-        IOptions<Bot8011Options> options,
-        IBinanceFuturesOrderClient orders,
-        BinanceExchangeInfoService exchangeInfo,
-        BinanceRetryService retry,
-        ILogger<Bot8011Stop3OrderService> logger)
-    {
-        _options = options.Value;
-        _orders = orders;
-        _exchangeInfo = exchangeInfo;
-        _retry = retry;
-        _logger = logger;
-    }
-
-    public async Task CreateStop3AfterTpAsync(
-   string botName,
-   BotPosition position,
-   decimal stop3EntryOffset,
-   CancellationToken cancellationToken)
-    {
-        if (position.RemainingQuantity <= 0)
-            return;
-
-        var stop3Price = position.Side == PositionSide.Long
-            ? position.EntryPrice + stop3EntryOffset
-            : position.EntryPrice - stop3EntryOffset;
-
-        var clientId = $"{botName}_STOP3_{position.ShortId}";
-
-        var order = await _orders.PlaceStopMarketAlgoOrderAsync(
-            position.Symbol,
-            ToCloseSide(position.Side),
-            ToPositionSide(position.Side),
-            position.RemainingQuantity,
-            stop3Price.Value,
-            clientId,
-            cancellationToken);
-
-        position.Stop3ClientId = order.ClientOrderId;
-        position.Stop3OrderId = order.AlgoOrderId;
-        position.Stop3Status = order.Status;
-        position.Stop3Initial = stop3Price;
-        position.Stop3Current = stop3Price;
-        position.Stop3Previous = stop3Price;
-        position.Stop3Created = true;
-        position.Stop3Pending = false;
-        position.ProtectiveActive = true;
-        position.UpdatedAtUtc = DateTime.UtcNow;
-    }
+    private readonly Bot8011Options _options = options.Value;
 
     public async Task<CreatedStop3Order> CreateStop3WithFallbackAsync(
         BotPosition position,
@@ -72,81 +24,117 @@ public sealed class Bot8011Stop3OrderService
         CancellationToken cancellationToken)
     {
         if (!position.EntryPrice.HasValue)
-            throw new InvalidOperationException($"Position {position.ShortId} has no entry price.");
+            throw new InvalidOperationException(
+                $"Position {position.ShortId} has no entry price.");
 
-        var firstPrice = position.Side == PositionSide.Long
-            ? position.EntryPrice.Value + _options.Stop3EntryOffset
-            : position.EntryPrice.Value - _options.Stop3EntryOffset;
-
-        firstPrice = await _exchangeInfo.RoundPriceAsync(
-            position.Symbol,
-            firstPrice,
-            cancellationToken);
-
-        quantity = await _exchangeInfo.RoundQuantityAsync(
+        quantity = await exchangeInfo.RoundQuantityAsync(
             position.Symbol,
             quantity,
             cancellationToken);
 
         if (quantity <= 0)
-            throw new InvalidOperationException($"Invalid STOP3 quantity for {position.ShortId}.");
+            throw new InvalidOperationException(
+                $"Invalid STOP3 quantity for {position.ShortId}.");
+
+        var primary = position.Side == PositionSide.Long
+            ? position.EntryPrice.Value + _options.Stop3EntryOffset
+            : position.EntryPrice.Value - _options.Stop3EntryOffset;
+
+        primary = await exchangeInfo.RoundPriceAsync(
+            position.Symbol,
+            primary,
+            cancellationToken);
 
         try
         {
-            var order = await _retry.ExecuteAsync(
-                "CREATE_STOP3",
-                ct => _orders.PlaceStopMarketAlgoOrderAsync(
-                    position.Symbol,
-                    ToCloseSide(position.Side),
-                    ToPositionSide(position.Side),
-                    quantity,
-                    firstPrice,
-                    clientId,
-                    ct),
+            return await CreateAsync(
+                position,
+                quantity,
+                primary,
+                clientId,
                 cancellationToken);
-
-            return new CreatedStop3Order(order.AlgoOrderId, order.Status, firstPrice);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
+            logger.LogWarning(
                 ex,
-                "STOP3 first price rejected. Position={ShortId}, Price={Price}. Trying entry fallback.",
+                "BOT8011 STOP3 primary trigger rejected. Position={ShortId}, Trigger={Trigger}",
                 position.ShortId,
-                firstPrice);
+                primary);
         }
 
-        var fallbackPrice = await _exchangeInfo.RoundPriceAsync(
+        var fallback = await exchangeInfo.RoundPriceAsync(
             position.Symbol,
             position.EntryPrice.Value,
             cancellationToken);
 
-        var fallbackOrder = await _retry.ExecuteAsync(
-            "CREATE_STOP3_ENTRY_FALLBACK",
-            ct => _orders.PlaceStopMarketAlgoOrderAsync(
+        return await CreateAsync(
+            position,
+            quantity,
+            fallback,
+            clientId,
+            cancellationToken);
+    }
+
+    public async Task<CreatedStop3Order> CreateTrailingStop3Async(
+        BotPosition position,
+        decimal triggerPrice,
+        int sequence,
+        CancellationToken cancellationToken)
+    {
+        triggerPrice = await exchangeInfo.RoundPriceAsync(
+            position.Symbol,
+            triggerPrice,
+            cancellationToken);
+
+        var quantity = await exchangeInfo.RoundQuantityAsync(
+            position.Symbol,
+            position.RemainingQuantity,
+            cancellationToken);
+
+        var clientId = BinanceClientOrderIdFactory.Create(
+            _options.BotName,
+            "STOP3",
+            position.ShortId,
+            sequence);
+
+        return await CreateAsync(
+            position,
+            quantity,
+            triggerPrice,
+            clientId,
+            cancellationToken);
+    }
+
+    private async Task<CreatedStop3Order> CreateAsync(
+        BotPosition position,
+        decimal quantity,
+        decimal triggerPrice,
+        string clientId,
+        CancellationToken cancellationToken)
+    {
+        var order = await retry.ExecuteAsync(
+            "BOT8011_CREATE_STOP3",
+            ct => orders.PlaceStopMarketAlgoOrderAsync(
                 position.Symbol,
-                ToCloseSide(position.Side),
-                ToPositionSide(position.Side),
+                BinanceOrderSideMapper.ToCloseSide(position.Side),
+                BinanceOrderSideMapper.ToPositionSide(position.Side),
                 quantity,
-                fallbackPrice,
+                triggerPrice,
                 clientId,
                 ct),
             cancellationToken);
 
         return new CreatedStop3Order(
-            fallbackOrder.AlgoOrderId,
-            fallbackOrder.Status,
-            fallbackPrice);
+            order.AlgoOrderId,
+            clientId,
+            order.Status,
+            triggerPrice);
     }
-
-    private static string ToCloseSide(PositionSide side)
-        => side == PositionSide.Long ? "SELL" : "BUY";
-
-    private static string ToPositionSide(PositionSide side)
-        => side == PositionSide.Long ? "LONG" : "SHORT";
 }
 
 public sealed record CreatedStop3Order(
     string AlgoOrderId,
+    string ClientAlgoId,
     string Status,
     decimal TriggerPrice);

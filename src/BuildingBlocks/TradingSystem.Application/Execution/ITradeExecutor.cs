@@ -1,18 +1,18 @@
 ﻿using TradingSystem.Domain.Enums;
 
-namespace StrategyService.Execution;
+namespace TradingSystem.Application.Execution;
 
-public interface IBotTradeExecutor
+public interface ITradeExecutor
 {
-    string BotName { get; }
-
-    Task OpenAsync(
+    Task<TradeExecutionResult> OpenAsync(
+        string botName,
         string symbol,
         PositionSide side,
         string? source,
         CancellationToken cancellationToken);
 
-    Task CloseAsync(
+    Task<TradeExecutionResult> CloseAsync(
+        string botName,
         string shortId,
         string reason,
         CancellationToken cancellationToken);

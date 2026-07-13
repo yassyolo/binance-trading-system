@@ -2,7 +2,7 @@
 
 public interface ITradingStrategy
 {
-    string BotName { get; }
+    StrategyMetadata Metadata { get; }
 
     Task<StrategyDecision> DecideAsync(
         StrategyContext context,

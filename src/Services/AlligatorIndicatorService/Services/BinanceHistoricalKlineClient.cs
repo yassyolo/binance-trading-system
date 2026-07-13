@@ -10,37 +10,43 @@ public sealed class BinanceHistoricalKlineClient(
     HttpClient httpClient,
     IOptions<AlligatorOptions> options)
 {
-    public async Task<List<Candle>> GetHistoricalCandlesAsync(string symbol, string interval, int limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Candle>> GetHistoricalCandlesAsync(
+        string symbol,
+        string interval,
+        int limit,
+        CancellationToken cancellationToken = default)
     {
         var url =
             $"{options.Value.BinanceKlinesUrl}?symbol={symbol}&interval={interval}&limit={limit}";
 
         using var response = await httpClient.GetAsync(url, cancellationToken);
-
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: cancellationToken);
 
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-
-        var candles = new List<Candle>();
-
-        foreach (var kline in document.RootElement.EnumerateArray())
-        {
-            candles.Add(new Candle
+        return document.RootElement
+            .EnumerateArray()
+            .Select(kline => new Candle
             {
-                Time = kline[0].GetInt64(),
+                Symbol = symbol.ToUpperInvariant(),
+                Interval = interval.ToLowerInvariant(),
+                OpenTime = kline[0].GetInt64(),
                 Open = ParseDecimal(kline[1]),
                 High = ParseDecimal(kline[2]),
                 Low = ParseDecimal(kline[3]),
                 Close = ParseDecimal(kline[4]),
-                CloseTime = kline[6].GetInt64()
-            });
-        }
-
-        return candles;
+                CloseTime = kline[6].GetInt64(),
+                IsClosed = true
+            })
+            .ToArray();
     }
 
     private static decimal ParseDecimal(JsonElement element)
-        => decimal.Parse(element.GetString()!, NumberStyles.Any, CultureInfo.InvariantCulture);
+        => decimal.Parse(
+            element.GetString()!,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture);
 }

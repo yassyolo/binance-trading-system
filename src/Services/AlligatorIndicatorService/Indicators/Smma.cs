@@ -3,6 +3,7 @@
 public sealed class Smma
 {
     private readonly int _length;
+    private decimal _sum;
     private decimal? _value;
     private int _count;
 
@@ -16,23 +17,16 @@ public sealed class Smma
 
     public decimal Update(decimal source)
     {
-        if (_value is null)
+        if (_count < _length)
         {
-            _value = source;
-            _count = 1;
+            _sum += source;
+            _count++;
+
+            _value = _sum / _count;
             return _value.Value;
         }
 
-        if (_count < _length)
-        {
-            _value = (_value.Value * _count + source) / (_count + 1);
-            _count++;
-        }
-        else
-        {
-            _value = (_value.Value * (_length - 1) + source) / _length;
-        }
-
+        _value = ((_value ?? source) * (_length - 1) + source) / _length;
         return _value.Value;
     }
 }

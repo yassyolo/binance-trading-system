@@ -2,6 +2,8 @@
 
 public sealed class AlligatorOptions
 {
+    public const string SectionName = "Alligator";
+
     public string[] Symbols { get; set; } = ["BTCUSDC"];
     public string[] Intervals { get; set; } = ["5m"];
 
@@ -12,5 +14,11 @@ public sealed class AlligatorOptions
     public int TeethLength { get; set; } = 8;
     public int LipsLength { get; set; } = 5;
 
-    public string BinanceKlinesUrl { get; set; } = "https://fapi.binance.com/fapi/v1/klines";
+    public string BinanceKlinesUrl { get; set; }
+        = "https://fapi.binance.com/fapi/v1/klines";
+
+    public string RedisOutputChannel { get; set; }
+        = "indicator_channel:alligator_ma";
+
+    public bool PublishOnlyClosedCandles { get; set; } = true;
 }

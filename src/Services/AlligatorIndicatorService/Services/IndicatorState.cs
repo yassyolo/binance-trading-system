@@ -8,27 +8,37 @@ internal sealed class IndicatorState(
     int smaLength,
     AlligatorCalculator alligator)
 {
-    private Queue<Candle> _candles = new(historyLimit);
-    private readonly object _lock = new();
+    private readonly Queue<Candle> _candles = new(historyLimit);
+    private readonly object _sync = new();
+    private long _lastCloseTime;
 
     public void Initialize(IEnumerable<Candle> candles)
     {
-        lock (_lock)
+        lock (_sync)
         {
             _candles.Clear();
+            _lastCloseTime = 0;
 
-            foreach (var candle in candles.TakeLast(historyLimit))
+            foreach (var candle in candles
+                         .Where(x => x.IsClosed)
+                         .OrderBy(x => x.CloseTime)
+                         .TakeLast(historyLimit))
             {
                 _candles.Enqueue(candle);
                 alligator.Update(candle.High, candle.Low);
+                _lastCloseTime = candle.CloseTime;
             }
         }
     }
 
-    public (AlligatorValues Values, decimal? Sma) Update(Candle candle)
+    public IndicatorUpdateResult? Update(Candle candle)
     {
-        lock (_lock)
+        lock (_sync)
         {
+            if (!candle.IsClosed || candle.CloseTime <= _lastCloseTime)
+                return null;
+
+            _lastCloseTime = candle.CloseTime;
             _candles.Enqueue(candle);
 
             while (_candles.Count > historyLimit)
@@ -37,11 +47,17 @@ internal sealed class IndicatorState(
             var values = alligator.Update(candle.High, candle.Low);
 
             if (_candles.Count < smaLength)
-                return (values, null);
+                return null;
 
-            var sma = _candles.TakeLast(smaLength).Average(x => x.Close);
+            var sma = _candles
+                .TakeLast(smaLength)
+                .Average(x => x.Close);
 
-            return (values, sma);
+            return new IndicatorUpdateResult(values, sma);
         }
     }
 }
+
+internal sealed record IndicatorUpdateResult(
+    AlligatorValues Values,
+    decimal Sma);
