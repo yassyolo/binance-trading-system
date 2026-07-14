@@ -12,6 +12,10 @@ public static class RedisChannels
     public const string AlligatorMa = "indicator_channel:alligator_ma";
     public const string Bollinger = "indicator_channel:bb";
 
-    public static string Kline(string interval, string symbol)
-        => $"futures_kline_channel:{interval}:{symbol.ToUpperInvariant()}";
+    public static string Kline(
+        string interval,
+        string symbol)
+    {
+        return $"futures_kline_channel:{interval.ToLowerInvariant()}:{symbol.ToUpperInvariant()}";
+    }
 }

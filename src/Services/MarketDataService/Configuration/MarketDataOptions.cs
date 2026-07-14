@@ -2,8 +2,12 @@
 
 public sealed class MarketDataOptions
 {
+    public const string SectionName = "MarketData";
+
     public string[] Symbols { get; set; } = ["BTCUSDC"];
     public string[] Intervals { get; set; } = ["1m"];
     public string BinanceWebSocketBaseUrl { get; set; } = "wss://fstream.binance.com/market/stream";
     public int ReconnectDelaySeconds { get; set; } = 5;
+    public int KeepAliveIntervalSeconds { get; set; } = 30;
+    public int ReceiveBufferSizeBytes { get; set; } = 16 * 1024;
 }

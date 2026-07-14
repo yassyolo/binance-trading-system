@@ -6,11 +6,11 @@ namespace UserStreamService.Models;
 public sealed record UserStreamEnvelope
 {
     [JsonPropertyName("hub_ts")]
-    public string HubTimestamp { get; init; } = string.Empty;
+    public required string HubTimestamp { get; init; }
 
     [JsonPropertyName("hub_seq")]
-    public long HubSequence { get; init; }
+    public required long HubSequence { get; init; }
 
     [JsonPropertyName("binance")]
-    public JsonElement Binance { get; init; }
+    public required JsonElement Binance { get; init; }
 }

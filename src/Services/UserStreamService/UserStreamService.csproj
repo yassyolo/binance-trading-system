@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Infrastructure\TradingSystem.Infrastructure.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Application\TradingSystem.Application.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Domain\TradingSystem.Domain.csproj" />

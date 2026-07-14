@@ -1,71 +1,62 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.Options;
+using UserStreamService.Configuration;
 
 namespace UserStreamService.Clients;
 
 public sealed class BinanceListenKeyClient(
     HttpClient httpClient,
-    IConfiguration configuration,
+    IOptions<BinanceUserStreamOptions> options,
     ILogger<BinanceListenKeyClient> logger)
 {
-    public async Task<string> CreateListenKeyAsync(CancellationToken cancellationToken)
+    private readonly BinanceUserStreamOptions _options = options.Value;
+
+    public async Task<string> CreateAsync(CancellationToken cancellationToken)
     {
-        var apiKey = GetApiKey();
-        var baseUrl = GetBaseUrl();
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/fapi/v1/listenKey");
-
-        request.Headers.Add("X-MBX-APIKEY", apiKey);
-
+        using var request = CreateRequest(HttpMethod.Post, "/fapi/v1/listenKey");
         using var response = await httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, body, "create listen key");
 
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Failed to create listenKey. Status={response.StatusCode}, Body={responseBody}");
-
-        using var document = JsonDocument.Parse(responseBody);
-
-        var listenKey = document.RootElement.GetProperty("listenKey").GetString();
+        using var document = JsonDocument.Parse(body);
+        var listenKey = document.RootElement.TryGetProperty("listenKey", out var property)
+            ? property.GetString()
+            : null;
 
         if (string.IsNullOrWhiteSpace(listenKey))
-            throw new InvalidOperationException("Binance returned empty listenKey.");
+            throw new InvalidOperationException("Binance returned an empty listen key.");
 
-        logger.LogInformation("ListenKey created: {Prefix}...", listenKey[..Math.Min(12, listenKey.Length)]);
-
+        logger.LogInformation("Binance listen key created. Prefix={Prefix}", listenKey[..Math.Min(12, listenKey.Length)]);
         return listenKey;
     }
 
     public async Task KeepAliveAsync(string listenKey, CancellationToken cancellationToken)
     {
-        var apiKey = GetApiKey();
-        var baseUrl = GetBaseUrl();
-
-        using var request = new HttpRequestMessage(
+        using var request = CreateRequest(
             HttpMethod.Put,
-            $"{baseUrl}/fapi/v1/listenKey?listenKey={Uri.EscapeDataString(listenKey)}");
-
-        request.Headers.Add("X-MBX-APIKEY", apiKey);
+            $"/fapi/v1/listenKey?listenKey={Uri.EscapeDataString(listenKey)}");
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, body, "keep listen key alive");
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"ListenKey keepalive failed. Status={response.StatusCode}, Body={responseBody}");
-
-        logger.LogDebug("ListenKey keepalive sent.");
+        logger.LogDebug("Binance listen key keepalive sent.");
     }
 
-    private string GetApiKey()
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path)
     {
-        var apiKey = configuration["Binance:ApiKey"];
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+            throw new InvalidOperationException("Binance:ApiKey is missing.");
 
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException("Binance API key is missing.");
-
-        return apiKey;
+        var request = new HttpRequestMessage(method, $"{_options.BaseUrl.TrimEnd('/')}{path}");
+        request.Headers.Add("X-MBX-APIKEY", _options.ApiKey);
+        return request;
     }
 
-    private string GetBaseUrl()
-        => configuration["Binance:BaseUrl"] ?? "https://fapi.binance.com";
+    private static void EnsureSuccess(HttpResponseMessage response, string body, string operation)
+    {
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Failed to {operation}. Status={(int)response.StatusCode}, Body={body}");
+    }
 }

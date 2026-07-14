@@ -2,6 +2,7 @@
 using StackExchange.Redis;
 using TradingSystem.Contracts.Klines;
 using TradingSystem.Contracts.Redis;
+using TradingSystem.Infrastructure.Serialization;
 
 namespace MarketDataService.Services;
 
@@ -10,45 +11,73 @@ public sealed class KlinePublisher(
     ILogger<KlinePublisher> logger)
 {
     private readonly IDatabase _database = redis.GetDatabase();
+    private readonly ISubscriber _subscriber = redis.GetSubscriber();
 
-    public async Task PublishClosedKlineAsync(JsonElement kline)
+    public async Task PublishClosedKlineAsync(
+        JsonElement kline,
+        CancellationToken cancellationToken)
     {
-        var symbol = kline.GetProperty("s").GetString()?.ToUpperInvariant();
-        var interval = kline.GetProperty("i").GetString()?.ToLowerInvariant();
+        cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(interval))
+        if (!TryGetRequiredString(kline, "s", out var symbol) ||
+            !TryGetRequiredString(kline, "i", out var interval) ||
+            !TryGetInt64(kline, "t", out var openTime) ||
+            !TryGetInt64(kline, "T", out var closeTime))
         {
-            logger.LogWarning("Invalid kline payload: {Payload}", kline.ToString());
+            logger.LogWarning("Invalid Binance kline payload. Payload={Payload}", kline.GetRawText());
             return;
         }
 
-        var key = RedisKeys.Kline(symbol, interval);
-        var channel = RedisChannels.Kline(interval, symbol);
+        symbol = symbol.ToUpperInvariant();
+        interval = interval.ToLowerInvariant();
 
-        var rawBinancePayload = kline.GetRawText();
-
-        var cleanPayload = new ClosedKlineMessage(
+        var message = new ClosedKlineMessage(
             Symbol: symbol,
-            Time: kline.GetProperty("t").GetInt64(),
-            Open: kline.GetProperty("o").GetString(),
-            High: kline.GetProperty("h").GetString(),
-            Low: kline.GetProperty("l").GetString(),
-            Close: kline.GetProperty("c").GetString(),
-            Volume: kline.GetProperty("v").GetString(),
-            CloseTime: kline.GetProperty("T").GetInt64(),
+            Time: openTime,
+            Open: GetOptionalString(kline, "o"),
+            High: GetOptionalString(kline, "h"),
+            Low: GetOptionalString(kline, "l"),
+            Close: GetOptionalString(kline, "c"),
+            Volume: GetOptionalString(kline, "v"),
+            CloseTime: closeTime,
             Interval: interval);
 
-        var cleanJson = JsonSerializer.Serialize(cleanPayload);
+        var key = RedisKeys.Kline(symbol, interval);
+        var channel = RedisChannels.Kline(interval, symbol);
+        var rawPayload = kline.GetRawText();
+        var cleanPayload = JsonSerializer.Serialize(message, JsonDefaults.SnakeCase);
 
-        await _database.StringSetAsync(key, rawBinancePayload);
-        await _database.PublishAsync(RedisChannel.Literal(channel), cleanJson);
+        await _database.StringSetAsync(key, rawPayload);
+        await _subscriber.PublishAsync(RedisChannel.Literal(channel), cleanPayload);
 
         logger.LogInformation(
             "Closed kline published. Symbol={Symbol}, Interval={Interval}, Close={Close}, Key={Key}, Channel={Channel}",
             symbol,
             interval,
-            cleanPayload.Close,
+            message.Close,
             key,
             channel);
+    }
+
+    private static bool TryGetRequiredString(JsonElement element, string name, out string value)
+    {
+        value = string.Empty;
+
+        if (!element.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String)
+            return false;
+
+        value = property.GetString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static string? GetOptionalString(JsonElement element, string name)
+        => element.TryGetProperty(name, out var property)
+            ? property.ValueKind == JsonValueKind.String ? property.GetString() : property.ToString()
+            : null;
+
+    private static bool TryGetInt64(JsonElement element, string name, out long value)
+    {
+        value = default;
+        return element.TryGetProperty(name, out var property) && property.TryGetInt64(out value);
     }
 }

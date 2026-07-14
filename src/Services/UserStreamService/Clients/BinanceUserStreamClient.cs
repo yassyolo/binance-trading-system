@@ -1,81 +1,76 @@
 ﻿using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using TradingSystem.Infrastructure.WebSockets;
+using UserStreamService.Configuration;
 using UserStreamService.Services;
 
 namespace UserStreamService.Clients;
 
 public sealed class BinanceUserStreamClient(
-    IConfiguration configuration,
+    IOptions<BinanceUserStreamOptions> binanceOptions,
+    IOptions<UserStreamOptions> userStreamOptions,
     UserStreamProcessor processor,
     ILogger<BinanceUserStreamClient> logger)
 {
-    public async Task RunAsync(string listenKey, Func<Task>? onConnected, CancellationToken cancellationToken)
+    private readonly BinanceUserStreamOptions _binance = binanceOptions.Value;
+    private readonly UserStreamOptions _stream = userStreamOptions.Value;
+
+    public async Task RunAsync(
+        string listenKey,
+        Func<CancellationToken, Task>? connected,
+        CancellationToken cancellationToken)
     {
-        var baseUrl = configuration["Binance:UserStreamWebSocketUrl"] ?? "wss://fstream.binance.com/private/ws";
+        var url = $"{_binance.UserStreamWebSocketUrl.TrimEnd('?', '/')}?listenKey={Uri.EscapeDataString(listenKey)}";
+        var socketOptions = new WebSocketOptions
+        {
+            KeepAliveIntervalSeconds = _stream.KeepAliveIntervalSeconds,
+            ReceiveBufferSizeBytes = _stream.ReceiveBufferSizeBytes
+        };
 
-        var url = $"{baseUrl}?listenKey={Uri.EscapeDataString(listenKey)}";
+        using var socket = ClientWebSocketFactory.Create(socketOptions);
 
-        using var socket = new ClientWebSocket();
-
-        logger.LogInformation("Connecting to Binance user stream websocket.");
-
+        logger.LogInformation("Connecting to Binance user stream.");
         await socket.ConnectAsync(new Uri(url), cancellationToken);
-
-        logger.LogInformation("Connected to Binance user stream websocket.");
+        logger.LogInformation("Connected to Binance user stream.");
 
         await SubscribeAsync(socket, cancellationToken);
 
-        if (onConnected is not null)
-            await onConnected();
+        if (connected is not null)
+            await connected(cancellationToken);
 
-        await ReceiveLoopAsync(socket, cancellationToken);
+        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        {
+            var message = await WebSocketMessageReader.ReadTextMessageAsync(
+                socket,
+                socketOptions.ReceiveBufferSizeBytes,
+                cancellationToken);
+
+            if (message is null)
+            {
+                logger.LogWarning("Binance user stream closed remotely.");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(message))
+                await processor.ProcessAsync(message, cancellationToken);
+        }
     }
 
-    private async Task SubscribeAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    private static async Task SubscribeAsync(ClientWebSocket socket, CancellationToken cancellationToken)
     {
-        var subscribeMessage = JsonSerializer.Serialize(new
+        var payload = JsonSerializer.Serialize(new
         {
             method = "SUBSCRIBE",
             @params = new[] { "!userDataStream" },
             id = 1
         });
 
-        var bytes = Encoding.UTF8.GetBytes(subscribeMessage);
-
         await socket.SendAsync(
-            bytes,
+            Encoding.UTF8.GetBytes(payload),
             WebSocketMessageType.Text,
-            true,
+            endOfMessage: true,
             cancellationToken);
-
-        logger.LogInformation("Sent SUBSCRIBE for !userDataStream.");
-    }
-
-    private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken cancellationToken)
-    {
-        var buffer = new byte[1024 * 32];
-
-        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-        {
-            var message = new StringBuilder();
-            WebSocketReceiveResult result;
-
-            do
-            {
-                result = await socket.ReceiveAsync(buffer, cancellationToken);
-
-                if (result.MessageType == WebSocketMessageType.Close)
-                {
-                    logger.LogWarning("Binance user stream websocket closed by remote server.");
-                    return;
-                }
-
-                message.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-            }
-            while (!result.EndOfMessage);
-
-            await processor.ProcessAsync(message.ToString());
-        }
     }
 }

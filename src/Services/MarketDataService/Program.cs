@@ -5,15 +5,23 @@ using StackExchange.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.Configure<MarketDataOptions>(builder.Configuration.GetSection("MarketData"));
+builder.Services
+    .AddOptions<MarketDataOptions>()
+    .Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName))
+    .Validate(options => options.Symbols.Length > 0, "At least one symbol is required.")
+    .Validate(options => options.Intervals.Length > 0, "At least one interval is required.")
+    .ValidateOnStart();
 
-var redisConnectionString = builder.Configuration.GetSection("Redis")["ConnectionString"] ?? "localhost:6379";
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+{
+    var connection = ConnectionMultiplexer.Connect(redisConnectionString);
+    connection.GetDatabase().Ping();
+    return connection;
+});
 
 builder.Services.AddSingleton<KlinePublisher>();
-
 builder.Services.AddHostedService<Worker>();
 
-var host = builder.Build();
-host.Run();
+await builder.Build().RunAsync();

@@ -5,12 +5,15 @@ namespace UserStreamService.Services;
 
 public sealed class UserStreamProcessor(
     RedisPublisher publisher,
+    TimeProvider timeProvider,
     ILogger<UserStreamProcessor> logger)
 {
     private long _sequence;
 
-    public async Task ProcessAsync(string rawMessage)
+    public async Task ProcessAsync(string rawMessage, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             using var document = JsonDocument.Parse(rawMessage);
@@ -18,21 +21,17 @@ public sealed class UserStreamProcessor(
 
             if (root.TryGetProperty("id", out _))
             {
-                logger.LogInformation("User stream control message received: {Message}", rawMessage);
+                logger.LogInformation("User stream control response received. Message={Message}", rawMessage);
                 return;
             }
 
-            if (!root.TryGetProperty("e", out var eventTypeElement))
-            {
-                logger.LogDebug("Ignored non-event user stream message.");
+            if (!root.TryGetProperty("e", out var eventTypeProperty))
                 return;
-            }
 
-            var eventType = eventTypeElement.GetString() ?? "unknown";
-
+            var eventType = eventTypeProperty.GetString() ?? "unknown";
             var envelope = new UserStreamEnvelope
             {
-                HubTimestamp = DateTime.Now.ToString("HH:mm:ss"),
+                HubTimestamp = timeProvider.GetLocalNow().ToString("HH:mm:ss"),
                 HubSequence = Interlocked.Increment(ref _sequence),
                 Binance = root.Clone()
             };
@@ -42,32 +41,22 @@ public sealed class UserStreamProcessor(
             switch (eventType)
             {
                 case "ORDER_TRADE_UPDATE":
-                    await publisher.PublishOrderAsync(envelope);
-                    logger.LogInformation("ORDER_TRADE_UPDATE published.");
-                    break;
-
                 case "ALGO_UPDATE":
                     await publisher.PublishOrderAsync(envelope);
-                    logger.LogInformation("ALGO_UPDATE published.");
                     break;
 
                 case "ACCOUNT_UPDATE":
                     await publisher.PublishAccountAsync(envelope);
-                    logger.LogInformation("ACCOUNT_UPDATE published.");
                     break;
 
                 default:
-                    logger.LogInformation("Unsupported user stream event received. Type={EventType}", eventType);
+                    logger.LogInformation("Unsupported Binance user event. EventType={EventType}", eventType);
                     break;
             }
         }
         catch (JsonException ex)
         {
-            logger.LogWarning(ex, "Invalid user stream JSON message.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Error processing user stream message.");
+            logger.LogWarning(ex, "Invalid Binance user stream JSON.");
         }
     }
 }

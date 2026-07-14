@@ -1,51 +1,62 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
-using System.Text.Json;
 using TradingSystem.Application.Execution;
 using TradingSystem.Contracts.Redis;
 using TradingSystem.Domain.Signals;
+using TradingSystem.Infrastructure.Serialization;
 
 namespace TradingSystem.Redis.Subscribers;
 
 public sealed class RedisSignalSubscriber(
-        IConnectionMultiplexer redis,
-        ITradingSignalHandler signalHandler,
-        ILogger<RedisSignalSubscriber> logger)
+    IConnectionMultiplexer redis,
+    ITradingSignalHandler signalHandler,
+    ILogger<RedisSignalSubscriber> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var subscriber = redis.GetSubscriber();
+        var channel = RedisChannel.Literal(RedisChannels.StrategySignals);
 
-        await subscriber.SubscribeAsync(
-            RedisChannel.Literal(RedisChannels.StrategySignals),
-            async (_, message) =>
-            {
-                if (!message.HasValue)
-                    return;
+        await subscriber.SubscribeAsync(channel, async (_, message) =>
+        {
+            if (!message.HasValue || stoppingToken.IsCancellationRequested)
+                return;
 
-                try
-                {
-                    var signal = JsonSerializer.Deserialize<TradeSignal>(
-                        message.ToString(),
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            await ProcessAsync(message.ToString(), stoppingToken);
+        });
 
-                    if (signal is null)
-                        return;
+        logger.LogInformation("Subscribed to strategy signals. Channel={Channel}", channel);
 
-                    await signalHandler.HandleAsync(signal, stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Trading signal processing failed. Raw={Raw}", message.ToString());
-                }
-            });
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            await subscriber.UnsubscribeAsync(channel);
+        }
+    }
 
-        logger.LogInformation(
-            "Subscribed to strategy signal channel {Channel}",
-            RedisChannels.StrategySignals);
-
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+    private async Task ProcessAsync(string raw, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var signal = JsonSerializer.Deserialize<TradeSignal>(raw, JsonDefaults.CaseInsensitive);
+            if (signal is not null)
+                await signalHandler.HandleAsync(signal, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Trading signal processing failed. Raw={Raw}", raw);
+        }
     }
 }

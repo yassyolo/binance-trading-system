@@ -5,11 +5,10 @@ using TradingSystem.Domain.Enums;
 
 namespace TradingSystem.Redis.Engine;
 
-public sealed class RedisSignalCooldownStore(
-    IConnectionMultiplexer connectionMultiplexer)
+public sealed class RedisSignalCooldownStore(IConnectionMultiplexer redis)
     : ISignalCooldownStore
 {
-    private readonly IDatabase _database = connectionMultiplexer.GetDatabase();
+    private readonly IDatabase _database = redis.GetDatabase();
 
     public async Task<TimeSpan?> GetRemainingAsync(
         string botName,
@@ -18,33 +17,25 @@ public sealed class RedisSignalCooldownStore(
         DateTime nowUtc,
         CancellationToken cancellationToken)
     {
-        var value = await _database.StringGetAsync(
-            GetKey(botName, symbol, side));
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = RedisKeyFactory.Cooldown(botName, symbol, side);
+        var value = await _database.StringGetAsync(key);
 
         if (!value.HasValue)
             return null;
 
-        if (!long.TryParse(
-                value.ToString(),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var unixMilliseconds))
+        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unixMilliseconds))
         {
-            await _database.KeyDeleteAsync(
-                GetKey(botName, symbol, side));
-
+            await _database.KeyDeleteAsync(key);
             return null;
         }
 
-        var expiresAtUtc = DateTimeOffset
-            .FromUnixTimeMilliseconds(unixMilliseconds)
-            .UtcDateTime;
+        var remaining = DateTimeOffset.FromUnixTimeMilliseconds(unixMilliseconds).UtcDateTime - nowUtc;
+        if (remaining > TimeSpan.Zero)
+            return remaining;
 
-        var remaining = expiresAtUtc - nowUtc;
-
-        return remaining > TimeSpan.Zero
-            ? remaining
-            : null;
+        await _database.KeyDeleteAsync(key);
+        return null;
     }
 
     public Task SetAsync(
@@ -54,6 +45,7 @@ public sealed class RedisSignalCooldownStore(
         DateTime expiresAtUtc,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var ttl = expiresAtUtc - DateTime.UtcNow;
 
         if (ttl <= TimeSpan.Zero)
@@ -64,14 +56,8 @@ public sealed class RedisSignalCooldownStore(
             .ToString(CultureInfo.InvariantCulture);
 
         return _database.StringSetAsync(
-            GetKey(botName, symbol, side),
+            RedisKeyFactory.Cooldown(botName, symbol, side),
             value,
             ttl);
     }
-
-    private static RedisKey GetKey(
-        string botName,
-        string symbol,
-        PositionSide side)
-        => $"trading:cooldown:{botName.ToUpperInvariant()}:{symbol.ToUpperInvariant()}:{side.ToString().ToUpperInvariant()}";
 }

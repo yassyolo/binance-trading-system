@@ -1,28 +1,22 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TradingSystem.Contracts.Redis;
+using TradingSystem.Infrastructure.Serialization;
+using UserStreamService.Configuration;
 
 namespace UserStreamService.Services;
 
 public sealed class RedisPublisher(
     IConnectionMultiplexer redis,
-    IConfiguration configuration,
+    IOptions<UserStreamOptions> options,
     ILogger<RedisPublisher> logger)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
+    private readonly ISubscriber _subscriber = redis.GetSubscriber();
+    private readonly UserStreamOptions _options = options.Value;
 
-    public async Task PublishRawAsync(object payload)
-    {
-        var publishRaw = configuration.GetValue<bool>("UserStream:PublishRaw", true);
-
-        if (!publishRaw)
-            return;
-
-        await PublishAsync(RedisChannels.UserStreamRaw, payload);
-    }
+    public Task PublishRawAsync(object payload)
+        => _options.PublishRaw ? PublishAsync(RedisChannels.UserStreamRaw, payload) : Task.CompletedTask;
 
     public Task PublishOrderAsync(object payload)
         => PublishAsync(RedisChannels.UserStreamOrder, payload);
@@ -35,10 +29,8 @@ public sealed class RedisPublisher(
 
     private async Task PublishAsync(string channel, object payload)
     {
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
-
-        await redis.GetSubscriber().PublishAsync(RedisChannel.Literal(channel), json);
-
-        logger.LogInformation("Redis publish. Channel={Channel}", channel);
+        var json = JsonSerializer.Serialize(payload, JsonDefaults.SnakeCase);
+        await _subscriber.PublishAsync(RedisChannel.Literal(channel), json);
+        logger.LogDebug("Redis message published. Channel={Channel}", channel);
     }
 }

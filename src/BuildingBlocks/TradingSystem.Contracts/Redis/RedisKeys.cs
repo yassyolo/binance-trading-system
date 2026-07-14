@@ -2,8 +2,12 @@
 
 public static class RedisKeys
 {
-    public static string Kline(string symbol, string interval)
-        => $"kline:{symbol.ToLowerInvariant()}:{interval}";
+    public static string Kline(
+        string symbol,
+        string interval)
+    {
+        return $"kline:{symbol.ToLowerInvariant()}:{interval.ToLowerInvariant()}";
+    }
 
     public static string Position(string botName, string shortId)
         => $"{botName}:position:{shortId}";

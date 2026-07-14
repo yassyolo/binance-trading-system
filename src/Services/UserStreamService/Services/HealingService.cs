@@ -1,92 +1,106 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.Options;
 using UserStreamService.Clients;
+using UserStreamService.Configuration;
 using UserStreamService.Models;
 
 namespace UserStreamService.Services;
 
 public sealed class HealingService(
-    BinanceFuturesOrdersSnapshotClient snapshotClient,
+    BinanceOrdersSnapshotClient snapshotClient,
     RedisPublisher publisher,
-    IConfiguration configuration,
+    IOptions<UserStreamOptions> options,
+    TimeProvider timeProvider,
     ILogger<HealingService> logger)
 {
-    private DateTime? _lastHealingSentAtUtc;
+    private readonly UserStreamOptions _options = options.Value;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private DateTimeOffset? _lastPublishedAt;
 
-    public async Task PublishHealingSnapshotAsync(double downtimeSeconds, CancellationToken cancellationToken)
+    public async Task PublishAfterReconnectAsync(
+        TimeSpan downtime,
+        CancellationToken cancellationToken)
     {
-        var minDowntimeSeconds = configuration.GetValue<int>("UserStream:MinDowntimeForHealingSeconds", 30);
-
-        if (downtimeSeconds < minDowntimeSeconds)
+        if (downtime.TotalSeconds < _options.MinDowntimeForHealingSeconds)
         {
-            logger.LogInformation("Downtime {DowntimeSeconds}s is below healing threshold {Threshold}s. Skipping healing.", downtimeSeconds, minDowntimeSeconds);
-
+            logger.LogInformation(
+                "Healing skipped. DowntimeSeconds={DowntimeSeconds:F1}, ThresholdSeconds={ThresholdSeconds}",
+                downtime.TotalSeconds,
+                _options.MinDowntimeForHealingSeconds);
             return;
         }
 
-        var cooldownSeconds = configuration.GetValue<int>("UserStream:HealingCooldownSeconds", 60);
-
-        if (_lastHealingSentAtUtc is not null &&
-            DateTime.UtcNow - _lastHealingSentAtUtc.Value < TimeSpan.FromSeconds(cooldownSeconds))
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            logger.LogDebug("Healing snapshot skipped because cooldown is active.");
-            return;
+            var now = timeProvider.GetUtcNow();
+            if (_lastPublishedAt is not null &&
+                now - _lastPublishedAt.Value < TimeSpan.FromSeconds(_options.HealingCooldownSeconds))
+            {
+                logger.LogDebug("Healing skipped because cooldown is active.");
+                return;
+            }
+
+            var symbol = _options.HealingSymbol.Trim().ToUpperInvariant();
+            var normalOrdersTask = snapshotClient.GetOpenNormalOrdersAsync(symbol, cancellationToken);
+            var algoOrdersTask = snapshotClient.GetOpenAlgoOrdersAsync(symbol, cancellationToken);
+            await Task.WhenAll(normalOrdersTask, algoOrdersTask);
+
+            var normalOrders = await normalOrdersTask;
+            var algoOrders = await algoOrdersTask;
+            var clientIds = CollectClientIds(normalOrders, algoOrders);
+
+            var snapshot = new HealingSnapshot
+            {
+                HubTimestamp = timeProvider.GetLocalNow().ToString("HH:mm:ss"),
+                SnapshotTimestamp = now.ToString("O"),
+                DowntimeSeconds = Math.Round(downtime.TotalSeconds, 1),
+                Symbol = symbol,
+                NormalOrdersCount = normalOrders.Length,
+                AlgoOrdersCount = algoOrders.Length,
+                TotalOrdersCount = clientIds.Count,
+                ActiveClientIds = clientIds,
+                NormalOrders = normalOrders,
+                AlgoOrders = algoOrders
+            };
+
+            await publisher.PublishHealingAsync(snapshot);
+            _lastPublishedAt = now;
+
+            logger.LogInformation(
+                "Healing snapshot published. Normal={Normal}, Algo={Algo}, ActiveClientIds={Count}",
+                normalOrders.Length,
+                algoOrders.Length,
+                clientIds.Count);
         }
-
-        var symbol = configuration["UserStream:HealingSymbol"] ?? "BTCUSDC";
-
-        logger.LogInformation("Publishing healing snapshot. Symbol={Symbol}, DowntimeSeconds={DowntimeSeconds}", symbol, downtimeSeconds);
-
-        var normalOrders = await snapshotClient.GetOpenNormalOrdersAsync(symbol, cancellationToken);
-
-        var algoOrders = await snapshotClient.GetOpenAlgoOrdersAsync(symbol, cancellationToken);
-
-        var activeClientIds = new HashSet<string>();
-
-        foreach (var order in normalOrders)
+        finally
         {
-            if (TryGetString(order, "clientOrderId", out var clientOrderId))
-                activeClientIds.Add(clientOrderId);
+            _gate.Release();
         }
-
-        foreach (var order in algoOrders)
-        {
-            if (TryGetString(order, "clientAlgoId", out var clientAlgoId))
-                activeClientIds.Add(clientAlgoId);
-        }
-
-        var snapshot = new HealingSnapshot
-        {
-            HubTimestamp = DateTime.Now.ToString("HH:mm:ss"),
-            SnapshotTimestamp = DateTime.UtcNow.ToString("O"),
-            DowntimeSeconds = Math.Round(downtimeSeconds, 1),
-            Symbol = symbol,
-            NormalOrdersCount = normalOrders.Length,
-            AlgoOrdersCount = algoOrders.Length,
-            TotalOrdersCount = activeClientIds.Count,
-            ActiveClientIds = activeClientIds.ToList(),
-            NormalOrders = normalOrders,
-            AlgoOrders = algoOrders
-        };
-
-        await publisher.PublishHealingAsync(snapshot);
-
-        _lastHealingSentAtUtc = DateTime.UtcNow;
-
-        logger.LogInformation("Healing snapshot published. NormalOrders={NormalOrders}, AlgoOrders={AlgoOrders}, ActiveClientIds={ActiveClientIds}",
-            normalOrders.Length,
-            algoOrders.Length,
-            activeClientIds.Count);
     }
 
-    private static bool TryGetString(JsonElement element, string propertyName, out string value)
+    private static IReadOnlyCollection<string> CollectClientIds(
+        IEnumerable<JsonElement> normalOrders,
+        IEnumerable<JsonElement> algoOrders)
     {
-        value = string.Empty;
+        var result = new HashSet<string>(StringComparer.Ordinal);
 
-        if (!element.TryGetProperty(propertyName, out var property))
-            return false;
+        foreach (var order in normalOrders)
+            Add(order, "clientOrderId", result);
 
-        value = property.GetString() ?? string.Empty;
+        foreach (var order in algoOrders)
+            Add(order, "clientAlgoId", result);
 
-        return !string.IsNullOrWhiteSpace(value);
+        return result.ToArray();
+    }
+
+    private static void Add(JsonElement element, string propertyName, ISet<string> target)
+    {
+        if (element.TryGetProperty(propertyName, out var property))
+        {
+            var value = property.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+                target.Add(value);
+        }
     }
 }

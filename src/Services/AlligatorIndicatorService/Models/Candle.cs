@@ -14,4 +14,6 @@ public sealed record Candle
     public decimal Close { get; init; }
 
     public bool IsClosed { get; init; }
+
+    public decimal Volume { get; init; }
 }

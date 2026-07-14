@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Options;
 using UserStreamService.Clients;
+using UserStreamService.Configuration;
 using UserStreamService.Services;
 
 namespace UserStreamService;
@@ -7,87 +9,126 @@ public sealed class Worker(
     BinanceListenKeyClient listenKeyClient,
     BinanceUserStreamClient userStreamClient,
     HealingService healingService,
-    ILogger<Worker> logger,
-    IConfiguration configuration)
+    IOptions<UserStreamOptions> options,
+    TimeProvider timeProvider,
+    ILogger<Worker> logger)
     : BackgroundService
 {
+    private readonly UserStreamOptions _options = options.Value;
+    private readonly object _stateLock = new();
     private string? _listenKey;
-    private DateTime? _disconnectedAtUtc;
+    private DateTimeOffset? _disconnectedAt;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var keepAliveTask = RunKeepAliveLoopAsync(stoppingToken);
-        var streamTask = RunUserStreamLoopAsync(stoppingToken);
-
-        await Task.WhenAll(keepAliveTask, streamTask);
+        await Task.WhenAll(
+            RunStreamLoopAsync(stoppingToken),
+            RunKeepAliveLoopAsync(stoppingToken));
     }
 
-    private async Task RunUserStreamLoopAsync(CancellationToken stoppingToken)
+    private async Task RunStreamLoopAsync(CancellationToken stoppingToken)
     {
-        var reconnectDelaySeconds = configuration.GetValue<int>("UserStream:ReconnectDelaySeconds", 5);
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                _listenKey = await listenKeyClient.CreateListenKeyAsync(stoppingToken);
+                var listenKey = await listenKeyClient.CreateAsync(stoppingToken);
+                SetListenKey(listenKey);
 
                 await userStreamClient.RunAsync(
-                    _listenKey,
-                    onConnected: async () =>
-                    {
-                        if (_disconnectedAtUtc is null)
-                            return;
-
-                        var downtimeSeconds = (DateTime.UtcNow - _disconnectedAtUtc.Value).TotalSeconds;
-
-                        _disconnectedAtUtc = null;
-
-                        await healingService.PublishHealingSnapshotAsync(downtimeSeconds, stoppingToken);
-                    },
+                    listenKey,
+                    OnConnectedAsync,
                     stoppingToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "User stream loop failed.");
+                logger.LogError(ex, "Binance user stream loop failed.");
+            }
+            finally
+            {
+                ClearListenKeyAndMarkDisconnected();
             }
 
-            _listenKey = null;
-            _disconnectedAtUtc = DateTime.UtcNow;
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                logger.LogWarning(
+                    "Reconnecting user stream. DelaySeconds={DelaySeconds}",
+                    _options.ReconnectDelaySeconds);
 
-            logger.LogWarning("Reconnecting user stream in {DelaySeconds}s...", reconnectDelaySeconds);
-
-            await Task.Delay(TimeSpan.FromSeconds(reconnectDelaySeconds), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(_options.ReconnectDelaySeconds), stoppingToken);
+            }
         }
     }
 
     private async Task RunKeepAliveLoopAsync(CancellationToken stoppingToken)
     {
-        var keepAliveSeconds = configuration.GetValue<int>("UserStream:ListenKeyKeepAliveSeconds", 1800);
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_options.ListenKeyKeepAliveSeconds));
 
-        while (!stoppingToken.IsCancellationRequested)
+        while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            await Task.Delay(TimeSpan.FromSeconds(keepAliveSeconds), stoppingToken);
-
-            if (string.IsNullOrWhiteSpace(_listenKey))
+            var listenKey = GetListenKey();
+            if (string.IsNullOrWhiteSpace(listenKey))
                 continue;
 
             try
             {
-                await listenKeyClient.KeepAliveAsync(_listenKey, stoppingToken);
+                await listenKeyClient.KeepAliveAsync(listenKey, stoppingToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "ListenKey keepalive failed.");
+                logger.LogWarning(ex, "Binance listen key keepalive failed.");
             }
+        }
+    }
+
+    private async Task OnConnectedAsync(CancellationToken cancellationToken)
+    {
+        DateTimeOffset? disconnectedAt;
+
+        lock (_stateLock)
+        {
+            disconnectedAt = _disconnectedAt;
+            _disconnectedAt = null;
+        }
+
+        if (disconnectedAt is null)
+        {
+            logger.LogInformation("Binance user stream connected for the first time.");
+            return;
+        }
+
+        var downtime = timeProvider.GetUtcNow() - disconnectedAt.Value;
+        logger.LogInformation("Binance user stream reconnected. DowntimeSeconds={DowntimeSeconds:F1}", downtime.TotalSeconds);
+        await healingService.PublishAfterReconnectAsync(downtime, cancellationToken);
+    }
+
+    private void SetListenKey(string listenKey)
+    {
+        lock (_stateLock)
+            _listenKey = listenKey;
+    }
+
+    private string? GetListenKey()
+    {
+        lock (_stateLock)
+            return _listenKey;
+    }
+
+    private void ClearListenKeyAndMarkDisconnected()
+    {
+        lock (_stateLock)
+        {
+            _listenKey = null;
+            _disconnectedAt ??= timeProvider.GetUtcNow();
         }
     }
 }

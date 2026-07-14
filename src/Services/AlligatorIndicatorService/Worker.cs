@@ -113,26 +113,30 @@ public sealed class Worker(
         }
     }
 
-    private static bool TryBuildCandle(ClosedKlineMessage message, out Candle candle)
+    private static bool TryBuildCandle(
+    ClosedKlineMessage message,
+    out Candle candle)
     {
         candle = default!;
 
         if (!TryParseDecimal(message.Open, out var open) ||
             !TryParseDecimal(message.High, out var high) ||
             !TryParseDecimal(message.Low, out var low) ||
-            !TryParseDecimal(message.Close, out var close))
+            !TryParseDecimal(message.Close, out var close) ||
+            !TryParseDecimal(message.Volume, out var volume))
         {
             return false;
         }
 
         candle = new Candle
         {
-            Time = message.Time,
+            OpenTime = message.Time,
             CloseTime = message.CloseTime,
             Open = open,
             High = high,
             Low = low,
-            Close = close
+            Close = close,
+            Volume = volume
         };
 
         return true;
