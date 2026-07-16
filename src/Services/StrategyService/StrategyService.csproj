@@ -17,6 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\TradingSystem.Observability\TradingSystem.Observability.csproj" />
+    <ProjectReference Include="..\..\..\TradingSystem.Signals\TradingSystem.Signals.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Contracts\TradingSystem.Contracts.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Infrastructure\TradingSystem.Infrastructure.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\TradingSystem.Redis\TradingSystem.Redis.csproj" />

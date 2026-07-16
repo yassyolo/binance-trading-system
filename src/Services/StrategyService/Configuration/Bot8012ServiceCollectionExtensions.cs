@@ -9,6 +9,9 @@ using TradingSystem.Application.Execution;
 using TradingSystem.Application.Orders;
 using TradingSystem.Application.Positions;
 using TradingSystem.Application.Strategies;
+using TradingSystem.Observability.Abstractions;
+using TradingSystem.Observability.Services;
+using TradingSystem.Observability.Storage;
 
 namespace StrategyService.Configuration;
 
@@ -53,4 +56,12 @@ public static class Bot8012ServiceCollectionExtensions
 
         return services;
     }
+
+    
+
+}
+
+public static class TradingHistoryServiceCollectionExtensions
+{
+    public static IServiceCollection AddTradingHistory(this IServiceCollection services, IConfiguration configuration) { var path = configuration["TradingHistory:Directory"] ?? "data/trading-history"; services.AddSingleton<ITradingHistoryStore>(_ => new JsonLinesTradingHistoryStore(path)); services.AddSingleton<TradingHistoryRecorder>(); services.AddSingleton<DashboardHistoryQueryService>(); return services; }
 }

@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Options;
 using StrategyService.Configuration;
 using TradingSystem.Application.Positions;
+using TradingSystem.Signals.Abstractions;
+using TradingSystem.Signals.History;
 
 namespace StrategyService.Services;
 
@@ -64,5 +66,42 @@ public sealed class Bot8012PositionEventService(
             "BOT8012 TP terminal status. Position={ShortId}, Status={Status}",
             shortId,
             status);
+    }
+
+    public static async Task RecordTpFilledAsync(
+        ITradingPipelineRecorder recorder,
+        dynamic position,
+        decimal executedQuantity,
+        string strategyVersion,
+        string environment,
+        CancellationToken ct)
+    {
+        await recorder.RecordPositionEventAsync(new PositionEventRecord(
+            position.ShortId,
+            position.BotName,
+            "TakeProfitFilled",
+            "Filled",
+            DateTime.UtcNow,
+            position.TpPrice,
+            executedQuantity), ct);
+
+        await recorder.UpsertPositionAsync(new PositionHistoryRecord(
+            position.ShortId,
+            null,
+            position.BotName,
+            strategyVersion,
+            position.Symbol,
+            position.Side.ToString(),
+            position.Source,
+            environment,
+            "Closed",
+            position.Quantity,
+            position.EntryPrice,
+            position.TpPrice,
+            position.CreatedAtUtc,
+            DateTime.UtcNow,
+            null,
+            null,
+            "TakeProfitFilled"), ct);
     }
 }

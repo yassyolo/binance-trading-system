@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Text.Json;
 using TradingSystem.Application.Orders;
 using TradingSystem.Contracts.Redis;
+using TradingSystem.Signals.Abstractions;
+using TradingSystem.Signals.History;
 
 namespace StrategyService.Services;
 
@@ -265,4 +267,26 @@ public sealed class UserStreamOrderSubscriber : BackgroundService
 
         return 0;
     }
+
+    public static Task RecordAsync(
+       ITradingPipelineRecorder recorder,
+       string eventKey,
+       string botName,
+       string? positionId,
+       string? clientOrderId,
+       string? exchangeOrderId,
+       string? orderType,
+       string? status,
+       string? side,
+       string? symbol,
+       string environment,
+       decimal? price,
+       decimal? quantity,
+       decimal? executedQuantity,
+       string rawPayload,
+       CancellationToken ct)
+       => recorder.RecordOrderEventAsync(new OrderEventRecord(
+           eventKey, botName, positionId, clientOrderId, exchangeOrderId,
+           orderType, status, side, symbol, environment, DateTime.UtcNow,
+           price, quantity, executedQuantity, rawPayload), ct);
 }
