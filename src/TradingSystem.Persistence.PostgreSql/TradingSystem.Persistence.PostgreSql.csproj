@@ -1,0 +1,11 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+ <ItemGroup><PackageReference Include = "Dapper" Version = "2.1.35"/><PackageReference Include = "Npgsql" Version = "8.0.4"/><PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "8.0.0"/><ProjectReference Include = "../TradingSystem.RiskManagement/TradingSystem.RiskManagement.csproj" /><ProjectReference Include = "../TradingSystem.Reconciliation/TradingSystem.Reconciliation.csproj" />  <ProjectReference Include = "../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
+  </ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.Observability/TradingSystem.Observability.csproj"/><ProjectReference Include = "../TradingSystem.Analytics/TradingSystem.Analytics.csproj"/></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj" /><ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.JobOrchestration/TradingSystem.JobOrchestration.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
+</Project>

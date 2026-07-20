@@ -1,0 +1,28 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using TradingSystem.Application.Engine;
+using TradingSystem.Application.Execution;
+using TradingSystem.Application.Healing;
+using TradingSystem.Application.Positions;
+using TradingSystem.Application.Risk;
+using TradingSystem.Application.Strategies;
+namespace TradingSystem.Application.DependencyInjection;
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddTradingApplication(this IServiceCollection services,  IConfiguration configuration)
+    {
+        services.Configure<TradingEngineOptions>(configuration.GetSection(TradingEngineOptions.SectionName));
+        services.AddOptions<TradingEngineOptions>().ValidateOnStart();
+        services.AddSingleton<TradingStrategyRegistry>();
+        services.AddSingleton<TradeExecutorRegistry>();
+        services.AddSingleton<ITradeExecutor>(sp => sp.GetRequiredService<TradeExecutorRegistry>());
+        services.AddSingleton<ActivePositionProviderRegistry>();
+        services.AddSingleton<IActivePositionProvider>(sp => sp.GetRequiredService<ActivePositionProviderRegistry>());
+        services.AddSingleton<HealingServiceRegistry>();
+        services.TryAddSingleton<ITradingEngineNotifier, NullTradingEngineNotifier>();
+        services.TryAddSingleton<ICentralRiskManager,  NullCentralRiskManager>();
+        services.AddSingleton<TradingEngine>();
+        return services;
+    }
+}

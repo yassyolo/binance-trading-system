@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../TradingSystem.Domain/TradingSystem.Domain.csproj" />
+    <ProjectReference Include="../TradingSystem.Contracts/TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="../TradingSystem.Observability/TradingSystem.Observability.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
+</Project>

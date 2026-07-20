@@ -1,0 +1,6 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+    <ProjectReference Include = "../TradingSystem.Analytics/TradingSystem.Analytics.csproj" />
+  </ItemGroup>
+</Project>

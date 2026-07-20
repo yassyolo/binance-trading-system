@@ -1,0 +1,7 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Binance\TradingSystem.Binance.csproj" />
+  </ItemGroup>
+</Project>

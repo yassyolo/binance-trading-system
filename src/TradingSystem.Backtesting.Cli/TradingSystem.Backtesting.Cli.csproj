@@ -1,0 +1,11 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Reporting\TradingSystem.Backtesting.Reporting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Binance\TradingSystem.Binance.csproj" />
+    <ProjectReference Include = "..\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection" Version = "8.0.1" />
+  </ItemGroup>
+</Project>

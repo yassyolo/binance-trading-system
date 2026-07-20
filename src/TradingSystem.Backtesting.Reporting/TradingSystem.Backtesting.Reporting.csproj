@@ -1,0 +1,7 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Bots\TradingSystem.Backtesting.Bots.csproj" />
+    <PackageReference Include = "ClosedXML" Version = "0.104.2" />
+  </ItemGroup>
+</Project>

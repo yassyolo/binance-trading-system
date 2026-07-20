@@ -1,0 +1,9 @@
+<Project Sdk = "Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Optimization/TradingSystem.Optimization.csproj" />
+    <ProjectReference Include = "../TradingSystem.HistoricalData/TradingSystem.HistoricalData.csproj" />
+    <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+  </ItemGroup>
+  <ItemGroup><PackageReference Include = "Microsoft.Extensions.DependencyInjection" Version = "8.0.1" /></ItemGroup>
+</Project>
