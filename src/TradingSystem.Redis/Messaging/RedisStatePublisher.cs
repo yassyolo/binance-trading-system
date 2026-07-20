@@ -9,7 +9,7 @@ public sealed class RedisStatePublisher(IConnectionMultiplexer redis) : IRedisSt
     public async Task SetAndPublishAsync(string key,  string channel,  object payload,  CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var json  =  JsonSerializer.Serialize(payload,  JsonDefaults.SnakeCase);
+        var json  =  JsonSerializer.Serialize(payload,  JsonDefaults.Messaging);
         await _database.StringSetAsync(key,  json);
         await _subscriber.PublishAsync(RedisChannel.Literal(channel),  json);
     }

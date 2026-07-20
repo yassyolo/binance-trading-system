@@ -1,6 +1,6 @@
 using System.Text.Json;using TradingSystem.Analytics.Abstractions;using TradingSystem.Analytics.Models;using TradingSystem.Backtesting.Bots.Bot8012;using TradingSystem.Backtesting.Bots.Signals;using TradingSystem.Dashboard.Contracts;using TradingSystem.JobOrchestration;using TradingSystem.Optimization.Engine;using TradingSystem.Optimization.Models;using TradingSystem.Optimization.Scoring;
 namespace TradingSystem.Jobs.Worker.Execution;
-public sealed class OptimizationExecutionService(IHistoricalMarketDataStore market, IHistoricalSignalStore signalStore, Bot8012BacktestEngine engine, ParameterTuningEngine tuning, WalkForwardOptimizationEngine walkForward, IPerformanceAnalyticsStore analytics, PerformanceScoreCalculator scores)
+public sealed class OptimizationExecutionService(IHistoricalMarketDataStore market, IHistoricalSignalStore signalStore, Bot8012BacktestEngine engine, ParameterTuningEngine tuning, WalkForwardOptimizationEngine walkForward, IPerformanceAnalyticsStore analytics)
 {
  public async Task<Guid> ExecuteAsync(OptimizationRequest request, string interval, CancellationToken ct)
  {

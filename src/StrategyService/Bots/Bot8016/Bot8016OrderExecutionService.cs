@@ -10,8 +10,7 @@ namespace StrategyService.Bots.Bot8016;
 
 public sealed class Bot8016OrderExecutionService(
     IOptions<Bot8016Options> options, 
-    IBinanceFuturesOrderClient orders, 
-    ILogger<Bot8016OrderExecutionService> logger)
+    IBinanceFuturesOrderClient orders)
 {
     private readonly Bot8016Options _options  =  options.Value;
 
@@ -147,7 +146,7 @@ public sealed class Bot8016OrderExecutionService(
             ? position.EntryPrice + _options.Stop3EntryOffset
             : position.EntryPrice - _options.Stop3EntryOffset;
 
-        var trigger  =  QuantizeDown(rawTrigger,  filters.TickSize);
+        var trigger  =  QuantizeDown(rawTrigger!.Value,  filters.TickSize);
         var clientId  =  CreateClientId("STOP3",  position.ShortId);
 
         var stop3  =  await orders.PlaceStopMarketAlgoOrderAsync(

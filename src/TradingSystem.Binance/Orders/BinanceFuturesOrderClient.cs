@@ -114,7 +114,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     {
         using var response  =  await _httpClient.GetAsync($"{endpoint}?{Q(p)}",  ct);
         var body  =  await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new BinanceApiException((int)response.StatusCode,  body);
+        if (!response.IsSuccessStatusCode) throw new BinanceApiException(response.StatusCode,  body);
         return body;
     }
 
@@ -127,7 +127,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response  =  await _httpClient.SendAsync(request,  ct);
         var body  =  await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new BinanceApiException((int)response.StatusCode,  body);
+        if (!response.IsSuccessStatusCode) throw new BinanceApiException(response.StatusCode,  body);
         return body;
     }
 

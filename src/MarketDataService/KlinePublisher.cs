@@ -21,7 +21,7 @@ public sealed class KlinePublisher(
         symbol = symbol.ToUpperInvariant();
         interval = interval.ToLowerInvariant();
         var m = new ClosedKlineMessage(symbol, ot, O(k, "o"), O(k, "h"), O(k, "l"), O(k, "c"), O(k, "v"), ctms, interval);
-        var json = JsonSerializer.Serialize(m, JsonDefaults.SnakeCase);
+        var json = JsonSerializer.Serialize(m, JsonDefaults.Messaging);
         await db.StringSetAsync($"kline:{symbol.ToLowerInvariant()}:{interval}", json);
         await sub.PublishAsync(RedisChannel.Literal(RedisChannels.Kline(interval, symbol)), json);
         logger.LogInformation("Closed kline published. Symbol = {Symbol},  Interval = {Interval}", symbol, interval);

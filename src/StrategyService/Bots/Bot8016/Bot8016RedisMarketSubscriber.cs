@@ -40,6 +40,7 @@ public sealed class Bot8016RedisMarketSubscriber(
                 {
                     logger.LogWarning(ex,  "BOT8016 indicator message failed.");
                 }
+                await Task.CompletedTask;
             });
 
         foreach (var interval in new[] { _options.EntryTimeframe,  _options.ExitTimeframe }
@@ -102,6 +103,7 @@ public sealed class Bot8016RedisMarketSubscriber(
                     {
                         logger.LogError(ex,  "BOT8016 kline message failed.");
                     }
+                    await Task.CompletedTask;
                 });
 
             logger.LogInformation("BOT8016 subscribed to {Channel}",  channel);
@@ -135,7 +137,7 @@ public sealed class Bot8016RedisMarketSubscriber(
         using var doc  =  JsonDocument.Parse(json);
         var root  =  doc.RootElement;
 
-        if ((GetString(root,  "type") ?? "") ! =  "alligator_ma")
+        if ((GetString(root, "type") ?? "") != "alligator_ma")
             return null;
 
         if (!root.TryGetProperty("indicators",  out var indicators))

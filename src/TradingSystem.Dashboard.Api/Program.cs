@@ -170,7 +170,7 @@ if (app.Environment.IsDevelopment()  ||  builder.Configuration.GetValue("Swagger
         {
             branch.Use(async (context,  next)  => 
             {
-                if (context.User.Identity?.IsAuthenticated ! =  true  ||  !context.User.IsInRole("Administrator"))
+                if (context.User.Identity?.IsAuthenticated !=  true  ||  !context.User.IsInRole("Administrator"))
                 {
                     context.Response.StatusCode  =  StatusCodes.Status404NotFound;
                     return;

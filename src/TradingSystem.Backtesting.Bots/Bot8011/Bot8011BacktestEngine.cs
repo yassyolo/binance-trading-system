@@ -34,7 +34,7 @@ public sealed class Bot8011BacktestEngine
 
             if (pending is not null)
             {
-                active ?? =  TryOpen(pending,  candle.Open,  candle.OpenTimeUtc);
+                active ??=  TryOpen(pending,  candle.Open,  candle.OpenTimeUtc);
                 pending  =  null;
             }
 
@@ -65,9 +65,9 @@ public sealed class Bot8011BacktestEngine
                     continue;
                 }
 
-                if (active is not null  &&  active.Side ! =  signal.Side)
+                if (active is not null && active.Side != signal.Side)
                 {
-                    CloseRemaining(active,  BotBacktestMath.ExitSlippage(candle.Close,  active.Side,  options.SlippageBasisPoints),  candle.CloseTimeUtc,  "REVERSE_SIGNAL");
+                    CloseRemaining(active!,  BotBacktestMath.ExitSlippage(candle.Close,  active!.Side,  options.SlippageBasisPoints),  candle.CloseTimeUtc,  "REVERSE_SIGNAL");
                     active  =  null;
                 }
                 else if (active is not null)

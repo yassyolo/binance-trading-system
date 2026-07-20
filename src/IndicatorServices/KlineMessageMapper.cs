@@ -15,6 +15,5 @@ internal static class KlineMessageMapper
         return true;
     }
     
-    static bool D(string? x, out decimal d)
-         => decimal.TryParse(x, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
+    static bool D(string? x, out decimal d) => decimal.TryParse(x, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
 }

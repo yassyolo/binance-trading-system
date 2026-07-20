@@ -63,7 +63,7 @@ public static class DependencyInjection
         services.AddSingleton<IReplayJobStore>(s  =>  s.GetRequiredService<PostgresReplayStore>());
         services.AddSingleton<IReplayEventSource>(s  =>  s.GetRequiredService<PostgresReplayStore>());
         services.AddSingleton<IReplayStrategyEvaluator,  RecordedStrategyEvaluator>();
-        services.AddSingleton<ReplayEngine>();
+        services.AddSingleton<TradingSystem.ReplayEngine.ReplayEngine>();
 
         return services;
     }

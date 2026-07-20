@@ -10,6 +10,6 @@ internal static class TradingSignalMessageMapper
     {
         if (!Enum.TryParse<PositionSide>(message.Action,  true,  out var side))
             throw new InvalidOperationException($"Unsupported signal action '{message.Action}'. Expected LONG or SHORT.");
-        return new TradeSignal{SignalId = message.SignalId, BotName = message.BotName.Trim(), Symbol = message.Symbol.Trim().ToUpperInvariant(), Side = side, Source = message.Source, GeneratedAtUtc = message.GeneratedAtUtc?.ToUniversalTime()??nowUtc};
+        return new TradeSignal{SignalId = message.SignalId, BotName = message.BotName.Trim(), Symbol = message.Symbol.Trim().ToUpperInvariant(), Side = side, Source = message.Source!, GeneratedAtUtc = message.GeneratedAtUtc?.ToUniversalTime()??nowUtc};
     }
 }

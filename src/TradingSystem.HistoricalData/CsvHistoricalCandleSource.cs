@@ -20,7 +20,7 @@ public sealed class CsvHistoricalCandleSource(string filePath) : IHistoricalCand
         if (lines.Length < 2)
             return [];
 
-        var separator  =  lines[0].Contains(';') ? ';' : ', ';
+        var separator  =  lines[0].Contains(';') ? ';' : ',';
         var headers  =  lines[0].Split(separator)
             .Select(static value  =>  value.Trim().ToLowerInvariant())
             .ToArray();

@@ -4,5 +4,7 @@ public enum PositionMode
 {
     TpOnly  =  1, 
     TpSl  =  2, 
-    AdvancedProtection  =  3
+    AdvancedProtection  =  3,
+    Stop3  =  4,
+    Hedge  =  5
 }

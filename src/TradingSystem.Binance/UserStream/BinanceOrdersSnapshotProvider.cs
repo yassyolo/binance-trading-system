@@ -1,13 +1,31 @@
 using System.Text.Json;
+using TradingSystem.Binance.Orders;
 using TradingSystem.Binance.Orders.Contracts;
 
 namespace TradingSystem.Binance.UserStream;
 
-public sealed class BinanceOrdersSnapshotProvider(IBinanceFuturesOrderClient orders):IBinanceOrdersSnapshotProvider
+public sealed class BinanceOrdersSnapshotProvider(
+    IBinanceFuturesOrderClient orders)
+    : IBinanceOrdersSnapshotProvider
 {
-    public async Task<BinanceOrdersSnapshot> GetAsync(string symbol, CancellationToken ct)
+    public async Task<BinanceOrdersSnapshot> GetAsync(
+        string symbol,
+        CancellationToken ct)
     {
-        var normalTask = orders.GetOpenOrdersAsync(symbol, ct);var algoTask = orders.GetOpenAlgoOrdersAsync(symbol, ct);await Task.WhenAll(normalTask, algoTask);
-        return new BinanceOrdersSnapshot(normalTask.Result.Select(JsonSerializer.SerializeToElement).ToArray(), algoTask.Result.Select(JsonSerializer.SerializeToElement).ToArray());
+        var normalOrdersTask = orders.GetOpenOrdersAsync(symbol, ct);
+        var algoOrdersTask = orders.GetOpenAlgoOrdersAsync(symbol, ct);
+
+        await Task.WhenAll(normalOrdersTask, algoOrdersTask);
+
+        var normalOrders = await normalOrdersTask;
+        var algoOrders = await algoOrdersTask;
+
+        return new BinanceOrdersSnapshot(
+            normalOrders
+                .Select(order => JsonSerializer.SerializeToElement(order))
+                .ToArray(),
+            algoOrders
+                .Select(order => JsonSerializer.SerializeToElement(order))
+                .ToArray());
     }
 }

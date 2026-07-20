@@ -5,7 +5,7 @@ namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class ReplayJobWorker(
     IReplayJobStore jobs, 
-    ReplayEngine engine, 
+    TradingSystem.ReplayEngine.ReplayEngine engine, 
     IOptions<JobWorkerOptions> options, 
     ILogger<ReplayJobWorker> logger) : BackgroundService
 {

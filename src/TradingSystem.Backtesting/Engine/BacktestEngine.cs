@@ -108,7 +108,7 @@ public sealed class BacktestEngine(
             if (portfolio.ActivePosition is not null) return false;
             var price  =  Round(costModel.ApplyEntrySlippage(rawPrice,  entry.Side,  request.SlippageBasisPoints),  rules.TickSize);
             var sl  =  Round(entry.StopLoss,  rules.TickSize);
-            var tp  =  entry.TakeProfit.HasValue ? Round(entry.TakeProfit.Value,  rules.TickSize) : null;
+            var tp  =  entry.TakeProfit.HasValue ? Round(entry.TakeProfit.Value,  rules.TickSize) : (decimal?)null;
             var size  =  sizeCalculator.Calculate(portfolio.Balance,  request.RiskPerTradePercent,  price,  sl,  rules);
             if (!size.Succeeded) return false;
             var risk  =  Math.Abs(price - sl) * size.Quantity * rules.ContractMultiplier;

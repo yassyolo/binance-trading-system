@@ -31,10 +31,10 @@ public sealed class SignalGenerationCoordinator(
             var s = await g.GenerateAsync(snapshot, ct);
             if(s is null)
                 continue;
-            if(!await throttle.TryAcquireAsync(s.BotName, s.Symbol, s.Side, s.SignalTimeUtc, TimeSpan.FromSeconds(Math.Max(0, b.MinimumSecondsBetweenGeneratedSignals)), ct))
+            if(!await throttle.TryAcquireAsync(s.BotName, s.Symbol, s.Action, s.GeneratedAtUtc, TimeSpan.FromSeconds(Math.Max(0, b.MinimumSecondsBetweenGeneratedSignals)), ct))
                 continue;
             await history.RecordSignalAsync(new(s.SignalId, s.BotName, s.StrategyVersion, s.Symbol, s.Action, s.Source, environment.EnvironmentName, s.GeneratedAtUtc, s.Price, s.CandleOpenTimeUtc, s.Interval, s.Reason, null, s.Metadata), ct);
             if(b.Mode is SignalGenerationMode.InternalLive or SignalGenerationMode.Compare)
                 await publisher.PublishAsync(s, ct);
-            else logger.LogInformation("Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}", s.BotName, s.Side, s.Symbol);}}
+            else logger.LogInformation("Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}", s.BotName, s.Action, s.Symbol);}}
 }

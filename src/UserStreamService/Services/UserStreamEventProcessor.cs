@@ -17,24 +17,39 @@ public sealed class UserStreamEventProcessor(IRedisMessagePublisher publisher, T
         {
             using var d = JsonDocument.Parse(raw);
             var root = d.RootElement;
+            
             if(!root.TryGetProperty("e", out var ep))
                 return;
+            
             var type = ep.GetString()??"unknown";
-            var envelope = new UserStreamEnvelope{HubTimestampUtc = time.GetUtcNow().UtcDateTime, HubSequence = Interlocked.Increment(ref _sequence), Binance = root.Clone()};
+            var envelope = new UserStreamEnvelope
+            {
+                HubTimestampUtc = time.GetUtcNow().UtcDateTime, 
+                HubSequence = Interlocked.Increment(ref _sequence), 
+                Binance = root.Clone()
+            };
+            
             if(_o.PublishRaw)
                 await publisher.PublishAsync(RedisChannels.UserStreamRaw, envelope, ct);
+            
             switch(type)
             {
                 case "ORDER_TRADE_UPDATE":
+                
                 case "ALGO_UPDATE":
+                
                 case "TRADE_LITE":
                     await publisher.PublishAsync(RedisChannels.UserStreamOrder, envelope, ct);
                     break;
+                
                 case "ACCOUNT_UPDATE":
                     await publisher.PublishAsync(RedisChannels.UserStreamAccount, envelope, ct);
                     break;
-                case "listenKeyExpired":logger.LogWarning("Binance listen key expired event received.");
+               
+                case "listenKeyExpired":
+                    logger.LogWarning("Binance listen key expired event received.");
                     break;
+                
                 default:logger.LogDebug("Ignored Binance user event {EventType}", type);
                     break;
             }

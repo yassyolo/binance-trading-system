@@ -34,7 +34,7 @@ public sealed class BinanceHistoricalCandleRangeSource(HttpClient httpClient) : 
             using var response  =  await httpClient.GetAsync(url,  cancellationToken);
             var body  =  await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
-                throw new BinanceApiException((int)response.StatusCode,  body);
+                throw new BinanceApiException(response.StatusCode,  body);
 
             using var document  =  JsonDocument.Parse(body);
             var rows  =  document.RootElement.EnumerateArray().ToArray();

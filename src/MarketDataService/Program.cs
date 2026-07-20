@@ -3,6 +3,7 @@ using TradingSystem.Operations;
 using MarketDataService;
 using TradingSystem.Infrastructure.DependencyInjection;
 using TradingSystem.Redis.DependencyInjection;
+using MarketDataService.Configuration;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddEnvironmentVariables();

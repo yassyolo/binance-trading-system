@@ -16,7 +16,7 @@ await using var writer  =  new StreamWriter(output,  false);
 await writer.WriteLineAsync("open_time_utc, close_time_utc, open, high, low, close, volume");
 foreach (var candle in candles)
 {
-    await writer.WriteLineAsync(string.Join(', ', 
+    await writer.WriteLineAsync(string.Join(',', 
         candle.OpenTimeUtc.ToString("O",  CultureInfo.InvariantCulture), 
         candle.CloseTimeUtc.ToString("O",  CultureInfo.InvariantCulture), 
         F(candle.Open),  F(candle.High),  F(candle.Low),  F(candle.Close),  F(candle.Volume)));

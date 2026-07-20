@@ -1,14 +1,16 @@
+using System.Net;
+
 namespace TradingSystem.Binance;
 
 public sealed class BinanceApiException : Exception
 {
-    public BinanceApiException(int statusCode,  string responseBody)
-        : base($"Binance request failed. Status = {statusCode},  Body = {responseBody}")
+    public BinanceApiException(HttpStatusCode statusCode,  string responseBody, string? operation = null)
+        : base($"Binance request failed. Operation: {operation}, Status = {statusCode},  Body = {responseBody}")
     {
         StatusCode  =  statusCode;
         ResponseBody  =  responseBody;
     }
 
-    public int StatusCode {  get;  }
+    public HttpStatusCode StatusCode {  get;  }
     public string ResponseBody {  get;  }
 }

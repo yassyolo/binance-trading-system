@@ -11,7 +11,7 @@ public sealed class CsvHistoricalBotSignalSource(string filePath)
         if (!File.Exists(filePath)) throw new FileNotFoundException("Signal CSV was not found.",  filePath);
         var lines  =  await File.ReadAllLinesAsync(filePath,  cancellationToken);
         if (lines.Length == 0) return [];
-        var separator  =  lines[0].Contains(';') ? ';' : ', ';
+        var separator  =  lines[0].Contains(';') ? ';' : ',';
         var result  =  new List<HistoricalBotSignal>();
         foreach (var raw in lines.Skip(1))
         {

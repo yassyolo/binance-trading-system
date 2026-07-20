@@ -14,10 +14,23 @@ public sealed class RedisTradingSignalSubscriber(IConnectionMultiplexer redis, I
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var subscriber = redis.GetSubscriber();var channel = RedisChannel.Literal(RedisChannels.StrategySignals);
-        await subscriber.SubscribeAsync(channel, (_, value) => {if(value.HasValue && !stoppingToken.IsCancellationRequested)_ = ProcessSafelyAsync(value.ToString(), stoppingToken);});
+        var subscriber = redis.GetSubscriber();
+        var channel = RedisChannel.Literal(RedisChannels.StrategySignals);
+        await subscriber.SubscribeAsync(channel, async (_, value) =>
+        {
+            if (value.HasValue && !stoppingToken.IsCancellationRequested)
+                await ProcessSafelyAsync(value.ToString(), stoppingToken);
+        });
         logger.LogInformation("Subscribed to trading signals. Channel = {Channel}", channel);
-        try{await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);}catch(OperationCanceledException)when(stoppingToken.IsCancellationRequested){}finally{await subscriber.UnsubscribeAsync(channel);}
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally
+        {
+            await subscriber.UnsubscribeAsync(channel);
+        }
     }
     private async Task ProcessSafelyAsync(string raw, CancellationToken ct)
     {

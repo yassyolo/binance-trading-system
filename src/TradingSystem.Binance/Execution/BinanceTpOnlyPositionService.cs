@@ -1,4 +1,9 @@
-using Microsoft.Extensions.Logging; using TradingSystem.Application.Time; using TradingSystem.Binance.Orders.Contracts; using TradingSystem.Domain.Enums; using TradingSystem.Domain.Positions;
+using Microsoft.Extensions.Logging;
+using TradingSystem.Application.Time;
+using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Positions;
 namespace TradingSystem.Binance.Execution;
 public sealed class BinanceTpOnlyPositionService(IBinanceFuturesOrderClient orders, IClock clock, ILogger<BinanceTpOnlyPositionService> logger)
 {

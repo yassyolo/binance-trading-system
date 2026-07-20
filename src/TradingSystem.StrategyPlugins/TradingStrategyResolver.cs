@@ -10,7 +10,7 @@ public sealed class TradingStrategyResolver(
     public async Task<ITradingStrategy> ResolveAsync(string botName,  CancellationToken cancellationToken)
     {
         var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
-        if (!string.IsNullOrWhiteSpace(configuration?.StrategyType)  &&  registry.TryGet(configuration.StrategyType,  out var configured))
+        if (!string.IsNullOrWhiteSpace(configuration?.StrategyType) && registry.TryGet(configuration.StrategyType,  out var configured))
             return configured;
 
         return registry.GetRequired(botName);

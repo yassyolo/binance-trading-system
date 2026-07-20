@@ -12,7 +12,7 @@ public sealed class PostgresBotRuntimeStateStore(ITradingDbConnectionFactory fac
 {
     public async Task<BotRuntimeState?> GetAsync(string botName,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         return await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
             """
             select bot_name BotName,  runtime_status Status,  runtime_version Version, 
@@ -25,7 +25,7 @@ public sealed class PostgresBotRuntimeStateStore(ITradingDbConnectionFactory fac
 
     public async Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
             """
             select bot_name BotName,  runtime_status Status,  runtime_version Version, 
@@ -38,7 +38,7 @@ public sealed class PostgresBotRuntimeStateStore(ITradingDbConnectionFactory fac
 
     public async Task<BotRuntimeState> TransitionAsync(string botName,  BotRuntimeStatus status,  long expectedVersion,  string user,  string reason,  bool executionEnabled,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         var updated  =  await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
             """
             update trading_dashboard.bot_configurations
@@ -71,14 +71,14 @@ public sealed class PostgresBotRuntimeConfigurationStore(ITradingDbConnectionFac
 
     public async Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         return await connection.QuerySingleOrDefaultAsync<BotRuntimeConfiguration>(new CommandDefinition(
             Projection + " where bot_name  =  @botName",  new { botName },  cancellationToken: cancellationToken));
     }
 
     public async Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         return (await connection.QueryAsync<BotRuntimeConfiguration>(new CommandDefinition(
             Projection + " where updated_at_utc > @changedSinceUtc order by updated_at_utc",  new { changedSinceUtc },  cancellationToken: cancellationToken))).AsList();
     }
@@ -88,7 +88,7 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
 {
     public async Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId,  int batchSize,  TimeSpan processingTimeout,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         await using var transaction  =  await connection.BeginTransactionAsync(cancellationToken);
         var rows  =  (await connection.QueryAsync<CommandRow>(new CommandDefinition(
             """
@@ -120,7 +120,7 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
 
     public async Task FailAsync(Guid commandId,  string workerId,  string error,  bool retryable,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         var status  =  retryable ? "Pending" : "Failed";
         await connection.ExecuteAsync(new CommandDefinition(
             """
@@ -138,7 +138,7 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
 
     private async Task UpdateTerminalAsync(Guid commandId,  string workerId,  string status,  string? error,  CancellationToken cancellationToken)
     {
-        await using var connection  =  await factory.OpenConnectionAsync(cancellationToken);
+        await using var connection  =  await factory.OpenAsync(cancellationToken);
         await connection.ExecuteAsync(new CommandDefinition(
             """
             update trading_dashboard.bot_commands

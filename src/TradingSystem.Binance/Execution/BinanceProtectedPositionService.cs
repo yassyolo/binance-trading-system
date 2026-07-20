@@ -25,7 +25,18 @@ public sealed class BinanceProtectedPositionService(
         var entry = Price(filled);
         if(entry<=0)
             throw new InvalidOperationException("Entry order has no fill price.");
-        var tpRaw = side==PositionSide.Long?entry*(1+tpPercent/100m):entry*(1-tpPercent/100m);var slRaw = side==PositionSide.Long?entry-stopDistance:entry+stopDistance;var tp = await exchange.RoundPriceAsync(symbol, tpRaw, ct);var sl = await exchange.RoundPriceAsync(symbol, slRaw, ct);var tpQty = await exchange.RoundQuantityAsync(symbol, quantity/2m, ct);if(tpQty<=0)throw new InvalidOperationException("Partial TP quantity is below Binance minimum.");var tpOrder = await orders.PlaceLimitOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), tpQty, tp, tpId, ct);try{var slOrder = await orders.PlaceStopMarketAlgoOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), quantity, sl, slId, ct);var now = clock.UtcNow;return new BotPosition{ShortId = id, BotName = bot, Symbol = symbol, Side = side, Mode = PositionMode.Stop3, Quantity = quantity, RemainingQuantity = quantity, EntryPrice = entry, ParentClientId = pId, ParentOrderId = filled.OrderId, ParentFilledAtUtc = now, TpClientId = tpId, TpOrderId = tpOrder.OrderId, TpPrice = tp, TpStatus = tpOrder.Status, SlClientId = slId, SlOrderId = slOrder.AlgoOrderId, SlPrice = sl, SlStatus = slOrder.Status, ProtectiveActive = true, Status = PositionStatus.Open, Source = "binance", CreatedAtUtc = now, UpdatedAtUtc = now};}catch{await orders.CancelOrderAsync(symbol, tpOrder.OrderId, ct);throw;}}
+        var tpRaw = side==PositionSide.Long?entry*(1+tpPercent/100m):entry*(1-tpPercent/100m);
+        var slRaw = side==PositionSide.Long?entry-stopDistance:entry+stopDistance;
+        var tp = await exchange.RoundPriceAsync(symbol, tpRaw, ct);
+        var sl = await exchange.RoundPriceAsync(symbol, slRaw, ct);
+        var tpQty = await exchange.RoundQuantityAsync(symbol, quantity/2m, ct);
+        if(tpQty<=0)
+            throw new InvalidOperationException("Partial TP quantity is below Binance minimum.");
+        var tpOrder = await orders.PlaceLimitOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), tpQty, tp, tpId, ct);
+        try{
+            var slOrder = await orders.PlaceStopMarketAlgoOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), quantity, sl, slId, ct);
+            var now = clock.UtcNow;
+            return new BotPosition{ShortId = id, BotName = bot, Symbol = symbol, Side = side, Mode = PositionMode.Stop3, Quantity = quantity, RemainingQuantity = quantity, EntryPrice = entry, ParentClientId = pId, ParentOrderId = filled.OrderId, ParentFilledAtUtc = now, TpClientId = tpId, TpOrderId = tpOrder.OrderId, TpPrice = tp, TpStatus = tpOrder.Status, SlClientId = slId, SlOrderId = slOrder.AlgoOrderId, SlPrice = sl, SlStatus = slOrder.Status, ProtectiveActive = true, Status = PositionStatus.Open, Source = "binance", CreatedAtUtc = now, UpdatedAtUtc = now};}catch{await orders.CancelOrderAsync(symbol, tpOrder.OrderId, ct);throw;}}
  public async Task CloseAsync(BotPosition p, CancellationToken ct)
     {
         p.MarkClosing(clock.UtcNow);
@@ -33,8 +44,8 @@ public sealed class BinanceProtectedPositionService(
             await orders.CancelOrderAsync(p.Symbol, p.TpOrderId, ct);
         if(!p.SlExecuted && !string.IsNullOrWhiteSpace(p.SlOrderId))
             await orders.CancelAlgoOrderAsync(p.Symbol, p.SlOrderId, ct);
-        if(!string.IsNullOrWhiteSpace(p.Stop3OrderId) && p.Stop3OrderId! = p.SlOrderId)
-            await orders.CancelAlgoOrderAsync(p.Symbol, p.Stop3OrderId, ct);
+        if(!string.IsNullOrWhiteSpace(p.Stop3OrderId) && p.Stop3OrderId != p.SlOrderId)
+            await orders.CancelAlgoOrderAsync(p.Symbol, p.Stop3OrderId!, ct);
         if(p.RemainingQuantity<=0)
             return;
         var cid = BinanceClientOrderId.Create(p.BotName, "CL", p.ShortId);

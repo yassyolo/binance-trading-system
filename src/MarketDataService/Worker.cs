@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using MarketDataService.Configuration;
 using Microsoft.Extensions.Options;
 using TradingSystem.Infrastructure.WebSockets;
 

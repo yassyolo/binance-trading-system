@@ -12,7 +12,6 @@ using TradingSystem.Redis.Events;
 using TradingSystem.Application.Events;
 using TradingSystem.Signals.Abstractions;
 using TradingSystem.Redis.Messaging;
-using TradingSystem.Redis.Positions;
 using TradingSystem.Redis.Signals;
 
 namespace TradingSystem.Redis.DependencyInjection;

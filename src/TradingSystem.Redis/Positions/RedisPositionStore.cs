@@ -38,9 +38,92 @@ public sealed class RedisPositionStore(IConnectionMultiplexer redis,  RedisKeyFa
     ];
     private static BotPosition FromEntries(HashEntry[] entries)
     {
-        var m = entries.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
-        var p = new BotPosition{ShortId = G(m, "short_id"), BotName = G(m, "bot_name"), Symbol = G(m, "symbol"), Side = E(m, "side", PositionSide.Long), Mode = E(m, "mode", PositionMode.TpOnly), Quantity = Dec(m, "quantity")??0, RemainingQuantity = Dec(m, "remaining_quantity")??0, EntryPrice = Dec(m, "entry_price"), ParentClientId = N(m, "parent_client_id"), ParentOrderId = N(m, "parent_order_id"), TpClientId = N(m, "tp_client_id"), TpOrderId = N(m, "tp_order_id"), TpPrice = Dec(m, "tp_price"), TpStatus = N(m, "tp_status"), TpExecuted = Bool(m, "tp_executed"), SlClientId = N(m, "sl_client_id"), SlOrderId = N(m, "sl_order_id"), SlPrice = Dec(m, "sl_price"), SlStatus = N(m, "sl_status"), SlExecuted = Bool(m, "sl_executed"), Stop3ClientId = N(m, "stop3_client_id"), Stop3OrderId = N(m, "stop3_order_id"), Stop3Current = Dec(m, "stop3_current"), Stop3Initial = Dec(m, "stop3_initial"), Stop3Previous = Dec(m, "stop3_previous"), Stop3NewPending = Dec(m, "stop3_new_pending"), Stop3Status = N(m, "stop3_status"), Stop3Created = Bool(m, "stop3_created"), Stop3Pending = Bool(m, "stop3_pending"), TrailCount = Int(m, "trail_count"), TrailingInProgress = Bool(m, "trailing_in_progress"), CloseClientId = N(m, "close_client_id"), CloseOrderId = N(m, "close_order_id"), CloseStatus = N(m, "close_status"), ProtectiveActive = Bool(m, "protective_active"), ManualPosition = Bool(m, "manual_position"), Source = N(m, "source"), CreatedAtUtc = Dt(m, "created_at")??DateTime.UtcNow, SignalCandleHigh = Dec(m, "signal_candle_high"), SignalCandleLow = Dec(m, "signal_candle_low"), SignalCandleCloseTime = Long(m, "signal_candle_close_time"), HighReached = Bool(m, "high_reached")};
-        p.RestoreStatus(E(m, "status", PositionStatus.New), Dt(m, "updated_at"), Dt(m, "parent_filled_at"), Dt(m, "tp_filled_at"), Dt(m, "sl_triggered_at"), Dt(m, "stop3_triggered_at"), Dt(m, "closed_at")); return p;
+        var values = entries.ToDictionary(
+            x => x.Name.ToString(),
+            x => x.Value.ToString());
+
+        var status = E(
+            values,
+            "status",
+            PositionStatus.New);
+
+        return new BotPosition
+        {
+            ShortId = G(values, "short_id"),
+            BotName = G(values, "bot_name"),
+            Symbol = G(values, "symbol"),
+
+            Side = E(
+                values,
+                "side",
+                PositionSide.Long),
+
+            Mode = E(
+                values,
+                "mode",
+                PositionMode.TpOnly),
+
+            Quantity = Dec(values, "quantity") ?? 0,
+            RemainingQuantity = Dec(values, "remaining_quantity") ?? 0,
+            EntryPrice = Dec(values, "entry_price"),
+
+            ParentClientId = N(values, "parent_client_id"),
+            ParentOrderId = N(values, "parent_order_id"),
+
+            TpClientId = N(values, "tp_client_id"),
+            TpOrderId = N(values, "tp_order_id"),
+            TpPrice = Dec(values, "tp_price"),
+            TpStatus = N(values, "tp_status"),
+            TpExecuted = Bool(values, "tp_executed"),
+
+            SlClientId = N(values, "sl_client_id"),
+            SlOrderId = N(values, "sl_order_id"),
+            SlPrice = Dec(values, "sl_price"),
+            SlStatus = N(values, "sl_status"),
+            SlExecuted = Bool(values, "sl_executed"),
+
+            Stop3ClientId = N(values, "stop3_client_id"),
+            Stop3OrderId = N(values, "stop3_order_id"),
+            Stop3Current = Dec(values, "stop3_current"),
+            Stop3Initial = Dec(values, "stop3_initial"),
+            Stop3Previous = Dec(values, "stop3_previous"),
+            Stop3NewPending = Dec(values, "stop3_new_pending"),
+            Stop3Status = N(values, "stop3_status"),
+            Stop3Created = Bool(values, "stop3_created"),
+            Stop3Pending = Bool(values, "stop3_pending"),
+            TrailCount = Int(values, "trail_count"),
+            TrailingInProgress = Bool(values, "trailing_in_progress"),
+
+            CloseClientId = N(values, "close_client_id"),
+            CloseOrderId = N(values, "close_order_id"),
+            CloseStatus = N(values, "close_status"),
+
+            ProtectiveActive = Bool(values, "protective_active"),
+            ManualPosition = Bool(values, "manual_position"),
+
+            Status = status,
+            Closed =
+                status == PositionStatus.Closed ||
+                Dt(values, "closed_at").HasValue,
+
+            Source = N(values, "source"),
+
+            CreatedAtUtc =
+                Dt(values, "created_at") ??
+                DateTime.UtcNow,
+
+            UpdatedAtUtc = Dt(values, "updated_at"),
+            ParentFilledAtUtc = Dt(values, "parent_filled_at"),
+            TpFilledAtUtc = Dt(values, "tp_filled_at"),
+            SlTriggeredAtUtc = Dt(values, "sl_triggered_at"),
+            Stop3TriggeredAtUtc = Dt(values, "stop3_triggered_at"),
+            ClosedAtUtc = Dt(values, "closed_at"),
+
+            SignalCandleHigh = Dec(values, "signal_candle_high"),
+            SignalCandleLow = Dec(values, "signal_candle_low"),
+            SignalCandleCloseTime = Long(values, "signal_candle_close_time"),
+            HighReached = Bool(values, "high_reached")
+        };
     }
     static string S(string? v) => v??""; static string D(decimal? v) => v?.ToString(CultureInfo.InvariantCulture)??"";static string D(decimal v) => v.ToString(CultureInfo.InvariantCulture);static string B(bool v) => v?"true":"false";static string T(DateTime? v) => v?.ToString("O", CultureInfo.InvariantCulture)??"";static string T(DateTime v) => v.ToString("O", CultureInfo.InvariantCulture);
     static string G(Dictionary<string, string>m, string k, string d = "") => m.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)?v:d;static string? N(Dictionary<string, string>m, string k) => m.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)?v:null;
