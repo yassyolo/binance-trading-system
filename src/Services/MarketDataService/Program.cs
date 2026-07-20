@@ -1,27 +1,7 @@
 using MarketDataService;
-using MarketDataService.Configuration;
-using MarketDataService.Services;
-using StackExchange.Redis;
-
-var builder = Host.CreateApplicationBuilder(args);
-
-builder.Services
-    .AddOptions<MarketDataOptions>()
-    .Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName))
-    .Validate(options => options.Symbols.Length > 0, "At least one symbol is required.")
-    .Validate(options => options.Intervals.Length > 0, "At least one interval is required.")
-    .ValidateOnStart();
-
-var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
-
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-{
-    var connection = ConnectionMultiplexer.Connect(redisConnectionString);
-    connection.GetDatabase().Ping();
-    return connection;
-});
-
-builder.Services.AddSingleton<KlinePublisher>();
-builder.Services.AddHostedService<Worker>();
-
-await builder.Build().RunAsync();
+using TradingSystem.Infrastructure.DependencyInjection;
+using TradingSystem.Operations;
+using TradingSystem.Persistence.PostgreSql.Configuration;
+using TradingSystem.Redis;
+using TradingSystem.Redis.DependencyInjection;
+var builder = Host.CreateApplicationBuilder(args); builder.Configuration.AddEnvironmentVariables(); builder.Services.AddOptions<MarketDataOptions>().Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName)).Validate(x => x.Symbols.Length > 0 && x.Intervals.Length > 0, "Symbols and intervals are required").ValidateOnStart(); builder.Services.AddTradingInfrastructure(); builder.Services.AddTradingRedis(builder.Configuration); builder.Services.AddSingleton<KlinePublisher>(); builder.Services.AddHostedService<Worker>(); builder.Services.AddPostgresTradingHistory(builder.Configuration); builder.Services.AddServiceHeartbeat(builder.Configuration, "MarketDataService"); await builder.Build().RunAsync();
