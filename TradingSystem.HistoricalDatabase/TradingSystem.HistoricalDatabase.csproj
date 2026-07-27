@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TradingSystem.Observability\TradingSystem.Observability.csproj" />
+    <ProjectReference Include="..\src\TradingSystem.Observability\TradingSystem.Observability.csproj" />
     <ProjectReference Include="..\TradingSystem.PortfolioManager\TradingSystem.PortfolioManager.csproj" />
   </ItemGroup>
 

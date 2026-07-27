@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
+using TradingSystem.Application.Risk;
 
 namespace TradingSystem.RiskManagement;
 
@@ -27,18 +28,6 @@ public sealed class RiskBotProfile
     public decimal Quantity { get; set; }
     public int Leverage { get; set; } = 1;
     public decimal? MaximumNotional { get; set; }
-}
-
-public sealed record RiskStateSnapshot(
-    decimal DailyRealizedPnl,
-    decimal DailyPeakEquity,
-    decimal CurrentEquity,
-    int ConsecutiveLosses,
-    bool HasCriticalReconciliationFindings);
-
-public interface IRiskStateProvider
-{
-    Task<RiskStateSnapshot> GetAsync(DateTime atUtc, CancellationToken cancellationToken);
 }
 
 public sealed class EmptyRiskStateProvider : IRiskStateProvider

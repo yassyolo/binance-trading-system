@@ -27,3 +27,15 @@ public sealed class NullCentralRiskManager : ICentralRiskManager
     public Task<RiskDecision> EvaluateOpenAsync(RiskEvaluationContext context,  CancellationToken cancellationToken)
          =>  Task.FromResult(RiskDecision.Allow("Central risk management is not configured."));
 }
+
+public sealed record RiskStateSnapshot(
+    decimal DailyRealizedPnl,
+    decimal DailyPeakEquity,
+    decimal CurrentEquity,
+    int ConsecutiveLosses,
+    bool HasCriticalReconciliationFindings);
+
+public interface IRiskStateProvider
+{
+    Task<RiskStateSnapshot> GetAsync(DateTime atUtc, CancellationToken cancellationToken);
+}

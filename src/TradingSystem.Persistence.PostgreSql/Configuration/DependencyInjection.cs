@@ -12,7 +12,6 @@ using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.Persistence.PostgreSql.TradingHistory;
 using TradingSystem.Persistence.PostgreSql.Reliability;
 using TradingSystem.Reconciliation;
-using TradingSystem.RiskManagement;
 using TradingSystem.Operations;
 using TradingSystem.Persistence.PostgreSql.Operations;
 using TradingSystem.PaperTrading;
@@ -21,6 +20,7 @@ using TradingSystem.EventStore;
 using TradingSystem.Persistence.PostgreSql.EventStore;
 using TradingSystem.ReplayEngine;
 using TradingSystem.Persistence.PostgreSql.Replay;
+using TradingSystem.Application.Risk;
 
 namespace TradingSystem.Persistence.PostgreSql.Configuration;
 

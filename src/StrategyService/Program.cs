@@ -25,6 +25,7 @@ using TradingSystem.Strategies.Grid;
 using TradingSystem.Strategies.Positions;
 using TradingSystem.Strategies.Protection;
 using TradingSystem.StrategyPlugins;
+using TradingSystem.HistoricalDatabase; // <-- Add the correct using directive for AddHistoricalDatabase if it exists in your solution.
 
 var builder = Host.CreateApplicationBuilder(args);
 

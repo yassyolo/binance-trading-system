@@ -2,7 +2,6 @@ using System.Text.Json;
 using Dapper;
 using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.Reconciliation;
-using TradingSystem.RiskManagement;
 
 namespace TradingSystem.Persistence.PostgreSql.Reliability;
 

@@ -85,7 +85,7 @@ public sealed class PortfolioMetricsWorker(
                         x => x.Count());
 
                 foreach (var stale in _knownPositionLabels.Except(currentLabels.Keys).ToArray())
-                    metrics.OpenPositions.WithLabels(stale.Bot, stale.Symbol, stale.Side).Set(0);
+                    metrics.OpenPositions.WithLabels(stale.Item1, stale.Symbol, stale.Side).Set(0);
 
                 foreach (var item in currentLabels)
                 {

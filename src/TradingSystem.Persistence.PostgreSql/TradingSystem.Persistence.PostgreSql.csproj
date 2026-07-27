@@ -4,7 +4,6 @@
 	</PropertyGroup>
  <ItemGroup><PackageReference Include = "Dapper" Version = "2.1.35"/><PackageReference Include = "Npgsql" Version = "8.0.4"/>
  <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0"/>
-	 <ProjectReference Include = "../TradingSystem.RiskManagement/TradingSystem.RiskManagement.csproj" />
 	 <ProjectReference Include = "../TradingSystem.Reconciliation/TradingSystem.Reconciliation.csproj" />  
 	 <ProjectReference Include = "../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
   </ItemGroup>

@@ -1,7 +1,7 @@
 ﻿using Dapper;
+using TradingSystem.Application.Risk;
 using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.Reconciliation;
-using TradingSystem.RiskManagement;
 
 namespace TradingSystem.Persistence.PostgreSql.Reliability;
 
