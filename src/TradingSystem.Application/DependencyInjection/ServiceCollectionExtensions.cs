@@ -13,14 +13,15 @@ namespace TradingSystem.Application.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddTradingApplication(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddTradingApplication(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
         services.AddOptions<TradingEngineOptions>()
-            .Configure<IConfiguration>((opts, config) =>
-            {
-                config.GetSection(TradingEngineOptions.SectionName).Bind(opts);
-            })
+            .Bind(configuration.GetSection(TradingEngineOptions.SectionName))
+            .Validate(TradingEngineOptions.IsValid, TradingEngineOptions.ValidationError)
             .ValidateOnStart();
+
         services.AddSingleton<TradingStrategyRegistry>();
         services.AddSingleton<TradeExecutorRegistry>();
         services.AddSingleton<ITradeExecutor>(sp => sp.GetRequiredService<TradeExecutorRegistry>());

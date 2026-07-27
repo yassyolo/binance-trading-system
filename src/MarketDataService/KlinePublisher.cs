@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TradingSystem.Contracts.Klines;
 using TradingSystem.Contracts.Messaging;
@@ -7,34 +9,94 @@ using TradingSystem.Infrastructure.Serialization;
 namespace MarketDataService;
 
 public sealed class KlinePublisher(
-    IConnectionMultiplexer redis, 
+    IConnectionMultiplexer redis,
+    IOptions<Configuration.MarketDataOptions> options,
     ILogger<KlinePublisher> logger)
 {
-    readonly IDatabase db = redis.GetDatabase();
-    readonly ISubscriber sub = redis.GetSubscriber();
-    
-    public async Task PublishAsync(JsonElement k, CancellationToken ct)
+    private readonly IDatabase _database = redis.GetDatabase();
+    private readonly ISubscriber _subscriber = redis.GetSubscriber();
+    private readonly TimeSpan _latestKlineTtl =
+        TimeSpan.FromSeconds(options.Value.LatestKlineTtlSeconds);
+
+    public async Task PublishAsync(JsonElement kline, CancellationToken cancellationToken)
     {
-        ct.ThrowIfCancellationRequested();
-        if(!S(k, "s", out var symbol) || !S(k, "i", out var interval) || !L(k, "t", out var ot) || !L(k, "T", out var ctms))
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!TryReadString(kline, "s", out var symbol) ||
+            !TryReadString(kline, "i", out var interval) ||
+            !TryReadLong(kline, "t", out var openTime) ||
+            !TryReadLong(kline, "T", out var closeTime) ||
+            closeTime < openTime ||
+            !TryReadDecimal(kline, "o", out var open) ||
+            !TryReadDecimal(kline, "h", out var high) ||
+            !TryReadDecimal(kline, "l", out var low) ||
+            !TryReadDecimal(kline, "c", out var close) ||
+            !TryReadDecimal(kline, "v", out var volume) ||
+            high < low ||
+            open < low || open > high ||
+            close < low || close > high ||
+            volume < 0)
+        {
+            logger.LogWarning("Rejected malformed closed Binance kline payload.");
             return;
-        symbol = symbol.ToUpperInvariant();
-        interval = interval.ToLowerInvariant();
-        var m = new ClosedKlineMessage(symbol, ot, O(k, "o"), O(k, "h"), O(k, "l"), O(k, "c"), O(k, "v"), ctms, interval);
-        var json = JsonSerializer.Serialize(m, JsonDefaults.Messaging);
-        await db.StringSetAsync($"kline:{symbol.ToLowerInvariant()}:{interval}", json);
-        await sub.PublishAsync(RedisChannel.Literal(RedisChannels.Kline(interval, symbol)), json);
-        logger.LogInformation("Closed kline published. Symbol = {Symbol},  Interval = {Interval}", symbol, interval);
+        }
+
+        symbol = symbol.Trim().ToUpperInvariant();
+        interval = interval.Trim().ToLowerInvariant();
+
+        var message = new ClosedKlineMessage(
+            symbol,
+            openTime,
+            Format(open),
+            Format(high),
+            Format(low),
+            Format(close),
+            Format(volume),
+            closeTime,
+            interval);
+
+        var json = JsonSerializer.Serialize(message, JsonDefaults.Messaging);
+        var key = $"kline:{symbol.ToLowerInvariant()}:{interval}";
+        var channel = RedisChannels.Kline(interval, symbol);
+
+        await _database.StringSetAsync(key, json, _latestKlineTtl);
+        await _subscriber.PublishAsync(RedisChannel.Literal(channel), json);
+
+        logger.LogInformation(
+            "Closed kline published. Symbol = {Symbol}, Interval = {Interval}, CloseTime = {CloseTime}",
+            symbol,
+            interval,
+            closeTime);
     }
-    static bool S(JsonElement e, string n, out string v)
+
+    private static bool TryReadString(JsonElement element, string name, out string value)
     {
-        v = e.TryGetProperty(n, out var p)?p.GetString()??"":"";return v.Length>0;
+        value = element.TryGetProperty(name, out var property)
+            ? property.GetString() ?? string.Empty
+            : string.Empty;
+        return !string.IsNullOrWhiteSpace(value);
     }
-    static bool L(JsonElement e, string n, out long v)
+
+    private static bool TryReadLong(JsonElement element, string name, out long value)
     {
-        v = 0;
-        return e.TryGetProperty(n, out var p) && p.TryGetInt64(out v);
+        value = 0;
+        return element.TryGetProperty(name, out var property) &&
+               property.TryGetInt64(out value);
     }
-    static string? O(JsonElement e, string n)
-         => e.TryGetProperty(n, out var p)?p.ToString():null;
+
+    private static bool TryReadDecimal(JsonElement element, string name, out decimal value)
+    {
+        value = 0;
+        if (!element.TryGetProperty(name, out var property))
+            return false;
+
+        return decimal.TryParse(
+            property.ToString(),
+            NumberStyles.Number | NumberStyles.AllowExponent,
+            CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    private static string Format(decimal value) =>
+        value.ToString(CultureInfo.InvariantCulture);
 }

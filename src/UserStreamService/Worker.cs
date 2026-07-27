@@ -7,74 +7,123 @@ using UserStreamService.Services;
 
 namespace UserStreamService;
 
-public sealed class Worker(IBinanceListenKeyClient listenKeys, IBinanceUserStreamClient stream, UserStreamEventProcessor processor, HealingPublisher healing, IOptions<BinanceUserStreamOptions> binance, IOptions<UserStreamServiceOptions> service, TimeProvider time, ILogger<Worker> logger):BackgroundService
+public sealed class Worker(
+    IBinanceListenKeyClient listenKeys,
+    IBinanceUserStreamClient stream,
+    UserStreamEventProcessor processor,
+    HealingPublisher healing,
+    IOptions<BinanceUserStreamOptions> binanceOptions,
+    IOptions<UserStreamServiceOptions> serviceOptions,
+    TimeProvider time,
+    ILogger<Worker> logger)
+    : BackgroundService
 {
     private readonly object _sync = new();
+    private readonly BinanceUserStreamOptions _binanceOptions = binanceOptions.Value;
+    private readonly UserStreamServiceOptions _serviceOptions = serviceOptions.Value;
+
     private string? _listenKey;
-    private DateTimeOffset? _disconnectedAt;
-    private readonly BinanceUserStreamOptions _b = binance.Value;
-    private readonly UserStreamServiceOptions _s = service.Value;
-    
-    protected override Task ExecuteAsync(CancellationToken ct) 
-        => Task.WhenAll(StreamLoop(ct), KeepAliveLoop(ct));
-    
-    async Task StreamLoop(CancellationToken ct)
+    private DateTimeOffset? _disconnectedAtUtc;
+
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        => Task.WhenAll(
+            StreamLoopAsync(stoppingToken),
+            KeepAliveLoopAsync(stoppingToken));
+
+    private async Task StreamLoopAsync(CancellationToken cancellationToken)
     {
-        while(!ct.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var key = await listenKeys.CreateAsync(ct);
-                lock(_sync)_listenKey = key;
-                await stream.RunAsync(key, processor.ProcessAsync, OnConnected, ct);
+                var listenKey = await listenKeys.CreateAsync(cancellationToken);
+
+                lock (_sync)
+                    _listenKey = listenKey;
+
+                await stream.RunAsync(
+                    listenKey,
+                    processor.ProcessAsync,
+                    OnConnectedAsync,
+                    cancellationToken);
             }
-            catch(OperationCanceledException)when(ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 logger.LogError(ex, "Binance user stream failed.");
             }
             finally
             {
-                lock(_sync)
+                lock (_sync)
                 {
                     _listenKey = null;
-                    _disconnectedAt??= time.GetUtcNow();
+                    _disconnectedAtUtc ??= time.GetUtcNow();
                 }
             }
-            if(!ct.IsCancellationRequested)
-                await Task.Delay(TimeSpan.FromSeconds(_s.ReconnectDelaySeconds), ct);
-        }
-    }
-    
-    async Task KeepAliveLoop(CancellationToken ct)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_b.ListenKeyKeepAliveSeconds));
-        while(await timer.WaitForNextTickAsync(ct))
-        {
-            string? key;lock(_sync)key = _listenKey;
-            if(string.IsNullOrWhiteSpace(key))
-                continue;
-            try
+
+            if (!cancellationToken.IsCancellationRequested)
             {
-                await listenKeys.KeepAliveAsync(key, ct);
-            }
-            catch(Exception ex)
-            {
-                logger.LogWarning(ex, "Listen-key keepalive failed.");
+                await Task.Delay(
+                    TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds),
+                    cancellationToken);
             }
         }
     }
-    
-    async Task OnConnected(CancellationToken ct)
+
+    private async Task KeepAliveLoopAsync(CancellationToken cancellationToken)
     {
-        DateTimeOffset? at;lock(_sync)
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
+
+        try
         {
-            at = _disconnectedAt;_disconnectedAt = null;
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                string? listenKey;
+
+                lock (_sync)
+                    listenKey = _listenKey;
+
+                if (string.IsNullOrWhiteSpace(listenKey))
+                    continue;
+
+                try
+                {
+                    await listenKeys.KeepAliveAsync(listenKey, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Listen-key keepalive failed.");
+                }
+            }
         }
-        if(at is not null)
-            await healing.PublishAfterReconnectAsync(time.GetUtcNow()-at.Value, ct);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal service shutdown.
+        }
+    }
+
+    private async Task OnConnectedAsync(CancellationToken cancellationToken)
+    {
+        DateTimeOffset? disconnectedAtUtc;
+
+        lock (_sync)
+        {
+            disconnectedAtUtc = _disconnectedAtUtc;
+            _disconnectedAtUtc = null;
+        }
+
+        if (disconnectedAtUtc is null)
+            return;
+
+        var downtime = time.GetUtcNow() - disconnectedAtUtc.Value;
+        await healing.PublishAfterReconnectAsync(downtime, cancellationToken);
     }
 }

@@ -8,33 +8,129 @@ using TradingSystem.Signals.Models;
 
 namespace TradingSystem.Signals.Services;
 
-public sealed class SignalGenerationCoordinator(
-    IEnumerable<ITradingSignalGenerator> generators, 
-    ISignalPublisher publisher, 
-    IDistributedSignalThrottleStore throttle, 
-    ITradingPipelineRecorder history, 
-    ITradingEnvironmentProvider environment, 
-    IOptions<SignalGenerationOptions> options, 
-    ILogger<SignalGenerationCoordinator> logger):
-    ISignalGenerationCoordinator
+public sealed class SignalGenerationCoordinator : ISignalGenerationCoordinator
 {
-    readonly ITradingSignalGenerator[] _generators = generators.ToArray();
-    readonly SignalGenerationOptions _options = options.Value;
- public async Task ProcessAsync(MarketIndicatorSnapshot snapshot, CancellationToken ct)
+    private readonly IReadOnlyDictionary<string, ITradingSignalGenerator[]> _generatorsBySymbol;
+    private readonly ISignalPublisher _publisher;
+    private readonly IDistributedSignalThrottleStore _throttle;
+    private readonly ITradingPipelineRecorder _history;
+    private readonly ITradingEnvironmentProvider _environment;
+    private readonly SignalGenerationOptions _options;
+    private readonly ILogger<SignalGenerationCoordinator> _logger;
+
+    public SignalGenerationCoordinator(
+        IEnumerable<ITradingSignalGenerator> generators,
+        ISignalPublisher publisher,
+        IDistributedSignalThrottleStore throttle,
+        ITradingPipelineRecorder history,
+        ITradingEnvironmentProvider environment,
+        IOptions<SignalGenerationOptions> options,
+        ILogger<SignalGenerationCoordinator> logger)
     {
-        foreach(var g in _generators.Where(x => x.SupportedSymbols.Contains(snapshot.Symbol, StringComparer.OrdinalIgnoreCase)))
+        _publisher = publisher;
+        _throttle = throttle;
+        _history = history;
+        _environment = environment;
+        _options = options.Value;
+        _logger = logger;
+
+        _generatorsBySymbol = generators
+            .SelectMany(generator => generator.SupportedSymbols
+                .Where(symbol => !string.IsNullOrWhiteSpace(symbol))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(symbol => new { Symbol = symbol, Generator = generator }))
+            .GroupBy(item => item.Symbol, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(item => item.Generator).Distinct().ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task ProcessAsync(MarketIndicatorSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (!_generatorsBySymbol.TryGetValue(snapshot.Symbol, out var generators))
+            return;
+
+        foreach (var generator in generators)
         {
-            if(!_options.Bots.TryGetValue(g.BotName, out var b) || !b.Enabled || b.Mode==SignalGenerationMode.TradingViewOnly)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!_options.Bots.TryGetValue(generator.BotName, out var botOptions) ||
+                !botOptions.Enabled ||
+                botOptions.Mode == SignalGenerationMode.TradingViewOnly)
                 continue;
-            if(!b.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase) || !b.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
+
+            if (!botOptions.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase) ||
+                !botOptions.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
                 continue;
-            var s = await g.GenerateAsync(snapshot, ct);
-            if(s is null)
+
+            var signal = await generator.GenerateAsync(snapshot, cancellationToken);
+            if (signal is null)
                 continue;
-            if(!await throttle.TryAcquireAsync(s.BotName, s.Symbol, s.Action, s.GeneratedAtUtc, TimeSpan.FromSeconds(Math.Max(0, b.MinimumSecondsBetweenGeneratedSignals)), ct))
+
+            ValidateGeneratedSignal(generator, snapshot, signal);
+
+            var minimumInterval = TimeSpan.FromSeconds(botOptions.MinimumSecondsBetweenGeneratedSignals);
+            var acquired = await _throttle.TryAcquireAsync(
+                signal.BotName,
+                signal.Symbol,
+                signal.Action,
+                signal.GeneratedAtUtc,
+                minimumInterval,
+                cancellationToken);
+
+            if (!acquired)
                 continue;
-            await history.RecordSignalAsync(new(s.SignalId, s.BotName, s.StrategyVersion, s.Symbol, s.Action, s.Source, environment.EnvironmentName, s.GeneratedAtUtc, s.Price, s.CandleOpenTimeUtc, s.Interval, s.Reason, null, s.Metadata), ct);
-            if(b.Mode is SignalGenerationMode.InternalLive or SignalGenerationMode.Compare)
-                await publisher.PublishAsync(s, ct);
-            else logger.LogInformation("Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}", s.BotName, s.Action, s.Symbol);}}
+
+            await _history.RecordSignalAsync(new(
+                signal.SignalId,
+                signal.BotName,
+                signal.StrategyVersion,
+                signal.Symbol,
+                signal.Action,
+                signal.Source,
+                _environment.EnvironmentName,
+                signal.GeneratedAtUtc,
+                signal.Price,
+                signal.CandleOpenTimeUtc,
+                signal.Interval,
+                signal.Reason,
+                null,
+                signal.Metadata), cancellationToken);
+
+            if (botOptions.Mode is SignalGenerationMode.InternalLive or SignalGenerationMode.Compare)
+            {
+                await _publisher.PublishAsync(signal, cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}",
+                    signal.BotName,
+                    signal.Action,
+                    signal.Symbol);
+            }
+        }
+    }
+
+    private static void ValidateGeneratedSignal(
+        ITradingSignalGenerator generator,
+        MarketIndicatorSnapshot snapshot,
+        GeneratedTradingSignal signal)
+    {
+        if (!signal.BotName.Equals(generator.BotName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Generator '{generator.BotName}' produced signal for bot '{signal.BotName}'.");
+        if (!signal.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Generator '{generator.BotName}' produced signal for symbol '{signal.Symbol}' while processing '{snapshot.Symbol}'.");
+        if (!signal.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Generator '{generator.BotName}' produced interval '{signal.Interval}' while processing '{snapshot.Interval}'.");
+        if (string.IsNullOrWhiteSpace(signal.SignalId))
+            throw new InvalidOperationException($"Generator '{generator.BotName}' produced an empty signal id.");
+        if (signal.Price <= 0)
+            throw new InvalidOperationException($"Generator '{generator.BotName}' produced a non-positive signal price.");
+    }
 }

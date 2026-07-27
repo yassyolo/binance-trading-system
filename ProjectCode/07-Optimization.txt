@@ -1,0 +1,823 @@
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Analytics\BacktestPerformanceMapper.cs
+================================================================================
+using System.Text.Json;
+using TradingSystem.Analytics.Models;
+using TradingSystem.Backtesting.Bots.Common;
+
+namespace TradingSystem.Optimization.Analytics;
+
+public static class BacktestPerformanceMapper
+{
+    private static readonly JsonSerializerOptions JsonOptions  =  new(JsonSerializerDefaults.Web);
+
+    public static (PerformanceRun Run,  PerformanceSnapshot Snapshot,  IReadOnlyList<PerformanceTrade> Trades) Map<TOptions>(
+        BotBacktestResult<TOptions> result, 
+        string strategyVersion, 
+        string interval, 
+        decimal score  =  0m)
+    {
+        var runId  =  Guid.NewGuid();
+        var metrics  =  ToMetrics(result.Metrics);
+        var run  =  new PerformanceRun
+        {
+            RunId  =  runId, 
+            RunType  =  PerformanceRunType.Backtest, 
+            BotName  =  result.BotName, 
+            StrategyVersion  =  strategyVersion, 
+            Symbol  =  result.Candles.First().Symbol, 
+            Interval  =  interval, 
+            StartedAtUtc  =  result.StartedAtUtc, 
+            CompletedAtUtc  =  result.CompletedAtUtc, 
+            Status  =  PerformanceRunStatus.Completed, 
+            ParametersJson  =  JsonSerializer.Serialize(result.Options,  JsonOptions)
+        };
+        var snapshot  =  new PerformanceSnapshot
+        {
+            RunId  =  runId, 
+            BotName  =  result.BotName, 
+            Symbol  =  result.Candles.First().Symbol, 
+            PeriodFromUtc  =  result.Candles.First().OpenTimeUtc, 
+            PeriodToUtc  =  result.Candles.Last().CloseTimeUtc, 
+            Metrics  =  metrics, 
+            Score  =  score
+        };
+        var trades  =  result.Positions.Select(x  =>  new PerformanceTrade
+        {
+            PositionId  =  x.PositionId, 
+            Side  =  x.Side.ToString(), 
+            EntryTimeUtc  =  x.EntryTimeUtc, 
+            EntryPrice  =  x.EntryPrice, 
+            ExitTimeUtc  =  x.ExitTimeUtc, 
+            ExitPrice  =  x.ExitPrice, 
+            Quantity  =  x.Quantity, 
+            GrossPnl  =  x.GrossPnl, 
+            Fees  =  x.Fees, 
+            NetPnl  =  x.NetPnl, 
+            ExitReason  =  x.ExitReason, 
+            PartialTakeProfitReached  =  x.PartialTakeProfitReached
+        }).ToArray();
+        return (run,  snapshot,  trades);
+    }
+
+    public static PerformanceMetricSet ToMetrics(BotBacktestMetrics m)  =>  new()
+    {
+        Signals  =  m.Signals, 
+        OpenedPositions  =  m.OpenedPositions, 
+        BlockedSignals  =  m.BlockedSignals, 
+        ClosedPositions  =  m.ClosedPositions, 
+        WinningPositions  =  m.WinningPositions, 
+        LosingPositions  =  m.LosingPositions, 
+        InitialBalance  =  m.InitialBalance, 
+        FinalBalance  =  m.FinalBalance, 
+        NetProfit  =  m.NetProfit, 
+        ReturnPercent  =  m.ReturnPercent, 
+        WinRatePercent  =  m.WinRatePercent, 
+        ProfitFactor  =  m.ProfitFactor, 
+        MaximumDrawdownAmount  =  m.MaximumDrawdownAmount, 
+        MaximumDrawdownPercent  =  m.MaximumDrawdownPercent, 
+        TotalFees  =  m.TotalFees, 
+        Expectancy  =  m.Expectancy
+    };
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Optimization.Engine;
+using TradingSystem.Optimization.Scoring;
+
+namespace TradingSystem.Optimization;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddTradingOptimization(this IServiceCollection services)
+    {
+        services.AddSingleton<PerformanceScoreCalculator>();
+        services.AddSingleton<ParameterTuningEngine>();
+        services.AddSingleton<WalkForwardOptimizationEngine>();
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Engine\ParameterTuningEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Optimization.Models;
+using TradingSystem.Optimization.Scoring;
+
+namespace TradingSystem.Optimization.Engine;
+
+public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalculator)
+{
+    public async Task<IReadOnlyList<ParameterTrial<TOptions>>> RunAsync<TOptions,  TResult>(
+        IEnumerable<TOptions> candidates, 
+        Func<TOptions,  CancellationToken,  Task<TResult>> run, 
+        Func<TResult,  BotBacktestMetrics> metricsSelector, 
+        OptimizationScoreWeights weights, 
+        int top  =  50, 
+        CancellationToken cancellationToken  =  default)
+    {
+        var trials  =  new List<ParameterTrial<TOptions>>();
+        var sequence  =  0;
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result  =  await run(candidate,  cancellationToken);
+            var metrics  =  metricsSelector(result);
+            trials.Add(new ParameterTrial<TOptions>
+            {
+                Sequence  =  ++sequence, 
+                Options  =  candidate, 
+                Metrics  =  metrics, 
+                Score  =  scoreCalculator.Calculate(metrics,  weights)
+            });
+        }
+
+        return trials
+            .OrderByDescending(x  =>  x.Score)
+            .ThenByDescending(x  =>  x.Metrics.NetProfit)
+            .Take(Math.Max(1,  top))
+            .ToArray();
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Engine\WalkForwardOptimizationEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Domain.MarketData;
+using TradingSystem.Optimization.Models;
+using TradingSystem.Optimization.Scoring;
+
+namespace TradingSystem.Optimization.Engine;
+
+public sealed class WalkForwardOptimizationEngine(
+    ParameterTuningEngine tuning,
+    PerformanceScoreCalculator scoreCalculator)
+{
+    public async Task<WalkForwardResult<TOptions>> RunAsync<TOptions, TResult>(
+        string botName,
+        IReadOnlyList<MarketCandle> candles,
+        IReadOnlyList<HistoricalBotSignal> signals,
+        IEnumerable<TOptions> candidates,
+        Func<TOptions, IReadOnlyList<MarketCandle>, IReadOnlyList<HistoricalBotSignal>, CancellationToken, Task<TResult>> run,
+        Func<TResult, BotBacktestMetrics> metricsSelector,
+        WalkForwardOptions options,
+        OptimizationScoreWeights weights,
+        CancellationToken cancellationToken = default)
+    {
+        Validate(options, candles.Count);
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        var candidateSet = candidates as IReadOnlyList<TOptions> ?? candidates.ToArray();
+        if (candidateSet.Count == 0)
+            throw new InvalidOperationException("At least one optimization candidate is required.");
+
+        var startedAtUtc = DateTime.UtcNow;
+        var windows = new List<WalkForwardWindowResult<TOptions>>();
+        var windowNumber = 0;
+
+        for (var testStart = options.TrainingBars;
+             testStart + options.TestingBars <= candles.Count;
+             testStart += options.StepBars)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var trainStart = options.AnchoredTraining ? 0 : testStart - options.TrainingBars;
+            var training = candles.Skip(trainStart).Take(testStart - trainStart).ToArray();
+            var testing = candles.Skip(testStart).Take(options.TestingBars).ToArray();
+            var trainSignals = SliceSignals(signals, training);
+            var testSignals = SliceSignals(signals, testing);
+
+            var best = (await tuning.RunAsync(
+                candidateSet,
+                (candidate, ct) => run(candidate, training, trainSignals, ct),
+                metricsSelector,
+                weights,
+                options.TopCandidatesPerWindow,
+                cancellationToken)).First();
+
+            var outOfSample = await run(best.Options, testing, testSignals, cancellationToken);
+            var outMetrics = metricsSelector(outOfSample);
+            windows.Add(new WalkForwardWindowResult<TOptions>
+            {
+                WindowNumber = ++windowNumber,
+                TrainFromUtc = training.First().OpenTimeUtc,
+                TrainToUtc = training.Last().CloseTimeUtc,
+                TestFromUtc = testing.First().OpenTimeUtc,
+                TestToUtc = testing.Last().CloseTimeUtc,
+                SelectedOptions = best.Options,
+                InSampleScore = best.Score,
+                OutOfSampleScore = scoreCalculator.Calculate(outMetrics, weights),
+                InSampleMetrics = best.Metrics,
+                OutOfSampleMetrics = outMetrics
+            });
+        }
+
+        return new WalkForwardResult<TOptions>
+        {
+            BotName = botName,
+            StartedAtUtc = startedAtUtc,
+            CompletedAtUtc = DateTime.UtcNow,
+            Windows = windows
+        };
+    }
+
+    private static IReadOnlyList<HistoricalBotSignal> SliceSignals(IReadOnlyList<HistoricalBotSignal> signals, IReadOnlyList<MarketCandle> candles)
+    {
+        var from = candles.First().OpenTimeUtc;
+        var to = candles.Last().CloseTimeUtc;
+        return signals.Where(x => x.TimeUtc >= from && x.TimeUtc <= to).ToArray();
+    }
+
+    private static void Validate(WalkForwardOptions options, int candleCount)
+    {
+        if (options.TrainingBars < 2) throw new ArgumentOutOfRangeException(nameof(options.TrainingBars));
+        if (options.TestingBars < 1) throw new ArgumentOutOfRangeException(nameof(options.TestingBars));
+        if (options.StepBars < 1) throw new ArgumentOutOfRangeException(nameof(options.StepBars));
+        if (options.TopCandidatesPerWindow < 1) throw new ArgumentOutOfRangeException(nameof(options.TopCandidatesPerWindow));
+        if (candleCount < options.TrainingBars + options.TestingBars)
+            throw new InvalidOperationException("Not enough candles for one walk-forward window.");
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Models\OptimizationModels.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+
+namespace TradingSystem.Optimization.Models;
+
+public sealed record OptimizationScoreWeights
+{
+    public decimal ReturnWeight {  get;  init;  }  =  1m;
+    public decimal ProfitFactorWeight {  get;  init;  }  =  4m;
+    public decimal DrawdownPenalty {  get;  init;  }  =  1.5m;
+    public decimal LowActivityPenalty {  get;  init;  }  =  2m;
+    public int MinimumClosedPositions {  get;  init;  }  =  10;
+    public decimal MaximumProfitFactorContribution {  get;  init;  }  =  5m;
+}
+
+public sealed record ParameterTrial<TOptions>
+{
+    public required int Sequence {  get;  init;  }
+    public required TOptions Options {  get;  init;  }
+    public required BotBacktestMetrics Metrics {  get;  init;  }
+    public required decimal Score {  get;  init;  }
+}
+
+public sealed record WalkForwardOptions
+{
+    public int TrainingBars {  get;  init;  }  =  10_000;
+    public int TestingBars {  get;  init;  }  =  2_000;
+    public int StepBars {  get;  init;  }  =  2_000;
+    public bool AnchoredTraining {  get;  init;  }
+    public int TopCandidatesPerWindow {  get;  init;  }  =  1;
+}
+
+public sealed record WalkForwardWindowResult<TOptions>
+{
+    public required int WindowNumber {  get;  init;  }
+    public required DateTime TrainFromUtc {  get;  init;  }
+    public required DateTime TrainToUtc {  get;  init;  }
+    public required DateTime TestFromUtc {  get;  init;  }
+    public required DateTime TestToUtc {  get;  init;  }
+    public required TOptions SelectedOptions {  get;  init;  }
+    public required decimal InSampleScore {  get;  init;  }
+    public required decimal OutOfSampleScore {  get;  init;  }
+    public required BotBacktestMetrics InSampleMetrics {  get;  init;  }
+    public required BotBacktestMetrics OutOfSampleMetrics {  get;  init;  }
+}
+
+public sealed record WalkForwardResult<TOptions>
+{
+    public required string BotName {  get;  init;  }
+    public required DateTime StartedAtUtc {  get;  init;  }
+    public required DateTime CompletedAtUtc {  get;  init;  }
+    public required IReadOnlyList<WalkForwardWindowResult<TOptions>> Windows {  get;  init;  }
+    public decimal AverageOutOfSampleScore  =>  Windows.Count == 0 ? 0m : Windows.Average(x  =>  x.OutOfSampleScore);
+    public decimal TotalOutOfSampleNetProfit  =>  Windows.Sum(x  =>  x.OutOfSampleMetrics.NetProfit);
+    public decimal WorstOutOfSampleDrawdownPercent  =>  Windows.Count == 0 ? 0m : Windows.Max(x  =>  x.OutOfSampleMetrics.MaximumDrawdownPercent);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\ParameterSpaces\BotParameterSpaces.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Bot8011;
+using TradingSystem.Backtesting.Bots.Bot8012;
+using TradingSystem.Backtesting.Bots.Bot8013;
+using TradingSystem.Backtesting.Bots.Bot8014;
+using TradingSystem.Backtesting.Bots.Bot8015;
+using TradingSystem.Backtesting.Bots.Bot8016;
+
+namespace TradingSystem.Optimization.ParameterSpaces;
+
+public static class BotParameterSpaces
+{
+    public static IEnumerable<Bot8011BacktestOptions> Bot8011(Bot8011BacktestOptions seed)  => 
+        from tp in new[] { 0.08m,  0.12m,  0.16m }
+        from sl in new[] { 200m,  300m,  400m }
+        from step in new[] { 200m,  400m,  600m }
+        from buffer in new[] { 25m,  50m,  100m }
+        select seed with { TakeProfitPercent  =  tp,  InitialStopLossDistance  =  sl,  Stop3TrailingStep  =  step,  Stop3TrailingBuffer  =  buffer };
+
+    public static IEnumerable<Bot8012BacktestOptions> Bot8012(Bot8012BacktestOptions seed)  => 
+        from profit in new[] { 100m,  150m,  200m,  250m,  300m }
+        from gap in new[] { 200m,  300m,  400m,  500m,  600m }
+        from limit in new[] { 1,  2,  3 }
+        select seed with { ProfitDistance  =  profit,  PriceDistance  =  gap,  OrderSideLimit  =  limit };
+
+    public static IEnumerable<Bot8013BacktestOptions> Bot8013(Bot8013BacktestOptions seed)  => 
+        from profit in new[] { 100m,  150m,  200m,  250m }
+        from gap in new[] { 200m,  300m,  400m,  500m }
+        from limit in new[] { 1,  2,  3 }
+        select seed with { ProfitDistance  =  profit,  PriceDistance  =  gap,  OrderSideLimit  =  limit };
+
+    public static IEnumerable<Bot8014BacktestOptions> Bot8014(Bot8014BacktestOptions seed)  => 
+        from profit in new[] { 100m,  150m,  200m,  250m }
+        from gap in new[] { 200m,  300m,  400m,  500m }
+        from limit in new[] { 1,  2,  3 }
+        select seed with { ProfitDistance  =  profit,  PriceDistance  =  gap,  OrderSideLimit  =  limit };
+
+    public static IEnumerable<Bot8015BacktestOptions> Bot8015(Bot8015BacktestOptions seed)  => 
+        from tp in new[] { 0.08m,  0.12m,  0.16m }
+        from sl in new[] { 200m,  300m,  400m }
+        from step in new[] { 200m,  400m,  600m }
+        select seed with { TakeProfitPercent  =  tp,  InitialStopLossDistance  =  sl,  Stop3TrailingStep  =  step };
+
+    public static IEnumerable<Bot8016BacktestOptions> Bot8016(Bot8016BacktestOptions seed)  => 
+        from tp in new[] { 0.08m,  0.12m,  0.16m }
+        from range in new[] { 25m,  50m,  75m,  100m }
+        from ma in new[] { true,  false }
+        select seed with { TakeProfitPercent  =  tp,  MinimumSignalCandleRange  =  range,  UseMa200Filter  =  ma };
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Scoring\PerformanceScoreCalculator.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Optimization.Models;
+
+namespace TradingSystem.Optimization.Scoring;
+
+public sealed class PerformanceScoreCalculator
+{
+    public decimal Calculate(BotBacktestMetrics metrics,  OptimizationScoreWeights weights)
+    {
+        var profitFactor  =  Math.Min(metrics.ProfitFactor,  weights.MaximumProfitFactorContribution);
+        var activityPenalty  =  Math.Max(0,  weights.MinimumClosedPositions - metrics.ClosedPositions) * weights.LowActivityPenalty;
+        return metrics.ReturnPercent * weights.ReturnWeight
+               + profitFactor * weights.ProfitFactorWeight
+               - metrics.MaximumDrawdownPercent * weights.DrawdownPenalty
+               - activityPenalty;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\TradingSystem.Optimization.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+    <ProjectReference Include = "../TradingSystem.Analytics/TradingSystem.Analytics.csproj" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization.Cli\Program.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Backtesting.Bots;
+using TradingSystem.Backtesting.Bots.Bot8012;
+using TradingSystem.Backtesting.Bots.Signals;
+using TradingSystem.HistoricalData;
+using TradingSystem.Optimization;
+using TradingSystem.Optimization.Engine;
+using TradingSystem.Optimization.Models;
+using TradingSystem.Optimization.ParameterSpaces;
+
+var map  =  Parse(args);
+var services  =  new ServiceCollection().AddBotBacktesting().AddTradingOptimization();
+using var provider  =  services.BuildServiceProvider();
+var symbol  =  Get("symbol",  "BTCUSDC");
+var interval  =  Get("interval",  "1m");
+var candles  =  await new CsvHistoricalCandleSource(Get("candles",  "data/BTCUSDC_1m.csv"))
+    .LoadAsync(symbol,  interval,  null,  null);
+var signalPath  =  Get("signals",  string.Empty);
+var signals  =  File.Exists(signalPath)
+    ? await new CsvHistoricalBotSignalSource(signalPath).LoadAsync()
+    : new EmaCrossDemoSignalSource().Generate(candles);
+
+var engine  =  provider.GetRequiredService<Bot8012BacktestEngine>();
+var tuning  =  provider.GetRequiredService<ParameterTuningEngine>();
+var walkForward  =  provider.GetRequiredService<WalkForwardOptimizationEngine>();
+var seed  =  new Bot8012BacktestOptions { Symbol  =  symbol,  InitialBalance  =  Decimal("balance",  10_000m) };
+var candidates  =  BotParameterSpaces.Bot8012(seed).ToArray();
+var weights  =  new OptimizationScoreWeights();
+
+if (map.ContainsKey("walk-forward"))
+{
+    var result  =  await walkForward.RunAsync(
+        "BOT8012",  candles,  signals,  candidates, 
+        (o,  c,  s,  _)  =>  Task.FromResult(engine.Run(c,  s,  o)), 
+        x  =>  x.Metrics, 
+        new WalkForwardOptions
+        {
+            TrainingBars  =  Int("train-bars",  10_000), 
+            TestingBars  =  Int("test-bars",  2_000), 
+            StepBars  =  Int("step-bars",  2_000), 
+            AnchoredTraining  =  map.ContainsKey("anchored")
+        },  weights);
+    Console.WriteLine($"Windows = {result.Windows.Count},  Average OOS score = {result.AverageOutOfSampleScore:F2},  OOS net = {result.TotalOutOfSampleNetProfit:F2},  Worst DD = {result.WorstOutOfSampleDrawdownPercent:F2}%");
+    foreach (var w in result.Windows)
+        Console.WriteLine($"#{w.WindowNumber} train = {w.TrainFromUtc:d}-{w.TrainToUtc:d} test = {w.TestFromUtc:d}-{w.TestToUtc:d} IS = {w.InSampleScore:F2} OOS = {w.OutOfSampleScore:F2}");
+}
+else
+{
+    var rows  =  await tuning.RunAsync(candidates,  (o,  _)  =>  Task.FromResult(engine.Run(candles,  signals,  o)),  x  =>  x.Metrics,  weights,  Int("top",  20));
+    foreach (var row in rows)
+        Console.WriteLine($"Score = {row.Score:F2} Net = {row.Metrics.NetProfit:F2} DD = {row.Metrics.MaximumDrawdownPercent:F2}% Options = {row.Options}");
+}
+
+string Get(string key,  string fallback)  =>  map.TryGetValue(key,  out var value) ? value : fallback;
+int Int(string key,  int fallback)  =>  int.TryParse(Get(key,  string.Empty),  out var value) ? value : fallback;
+decimal Decimal(string key,  decimal fallback)  =>  decimal.TryParse(Get(key,  string.Empty),  System.Globalization.NumberStyles.Any,  System.Globalization.CultureInfo.InvariantCulture,  out var value) ? value : fallback;
+static Dictionary<string, string> Parse(string[] values) { var result  =  new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); for (var i = 0;i<values.Length;i++) { if (!values[i].StartsWith("--")) continue; var key = values[i][2..]; var value = i+1<values.Length && !values[i+1].StartsWith("--")?values[++i]:"true"; result[key] = value; } return result; }
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization.Cli\TradingSystem.Optimization.Cli.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Optimization/TradingSystem.Optimization.csproj" />
+    <ProjectReference Include = "../TradingSystem.HistoricalData/TradingSystem.HistoricalData.csproj" />
+    <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+  </ItemGroup>
+  <ItemGroup><PackageReference Include = "Microsoft.Extensions.DependencyInjection" Version = "8.0.1" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData\CsvHistoricalCandleSource.cs
+================================================================================
+using System.Globalization;
+using TradingSystem.Application.MarketData;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.HistoricalData;
+
+public sealed class CsvHistoricalCandleSource(string filePath) : IHistoricalCandleRangeSource
+{
+    public async Task<IReadOnlyList<MarketCandle>> LoadAsync(
+        string symbol,
+        string interval,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        ArgumentException.ThrowIfNullOrWhiteSpace(interval);
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException("Historical CSV not found.", filePath);
+
+        DateTime? normalizedFromUtc = fromUtc.HasValue ? EnsureUtc(fromUtc.Value) : (DateTime?)null;
+        DateTime? normalizedToUtc = toUtc.HasValue ? EnsureUtc(toUtc.Value) : (DateTime?)null;
+        if (normalizedFromUtc.HasValue && normalizedToUtc.HasValue && normalizedFromUtc >= normalizedToUtc)
+            throw new ArgumentException("The historical range must satisfy fromUtc < toUtc.");
+
+        await using var stream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream);
+
+        var headerLine = await reader.ReadLineAsync(cancellationToken);
+        if (headerLine is null)
+            return [];
+
+        var separator = headerLine.Contains(';') ? ';' : ',';
+        var headers = SplitLine(headerLine, separator)
+            .Select(static value => value.Trim().ToLowerInvariant())
+            .ToArray();
+
+        int Column(params string[] names) =>
+            Array.FindIndex(headers, header => names.Contains(header, StringComparer.OrdinalIgnoreCase));
+
+        var openTimeIndex = Column("open_time_utc", "time", "timestamp", "datetime");
+        var closeTimeIndex = Column("close_time_utc", "close_time");
+        var openIndex = Column("open", "o");
+        var highIndex = Column("high", "h");
+        var lowIndex = Column("low", "l");
+        var closeIndex = Column("close", "c");
+        var volumeIndex = Column("volume", "v");
+
+        var requiredIndexes = new[] { openTimeIndex, openIndex, highIndex, lowIndex, closeIndex };
+        if (requiredIndexes.Any(index => index < 0))
+            throw new InvalidOperationException(
+                "CSV requires open_time_utc/time, open, high, low and close columns.");
+
+        var highestRequiredIndex = requiredIndexes.Max();
+        var normalizedSymbol = symbol.Trim().ToUpperInvariant();
+        var normalizedInterval = interval.Trim().ToLowerInvariant();
+        var candlesByOpenTime = new Dictionary<DateTime, MarketCandle>();
+
+        var lineNumber = 1;
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            lineNumber++;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            var values = SplitLine(line, separator);
+            if (values.Length <= highestRequiredIndex)
+                throw new FormatException($"CSV row {lineNumber} has fewer columns than the header.");
+
+            if (!TryParseUtc(values, openTimeIndex, out var openTimeUtc))
+                throw new FormatException($"CSV row {lineNumber} contains an invalid open time.");
+
+            // Historical ranges are half-open: [fromUtc, toUtc).
+            if (normalizedFromUtc.HasValue && openTimeUtc < normalizedFromUtc.Value)
+                continue;
+            if (normalizedToUtc.HasValue && openTimeUtc >= normalizedToUtc.Value)
+                continue;
+
+            var closeTimeUtc = TryParseUtc(values, closeTimeIndex, out var parsedClose)
+                ? parsedClose
+                : openTimeUtc;
+
+            var candle = new MarketCandle(
+                normalizedSymbol,
+                normalizedInterval,
+                openTimeUtc,
+                closeTimeUtc,
+                ParseDecimal(values[openIndex], lineNumber, "open"),
+                ParseDecimal(values[highIndex], lineNumber, "high"),
+                ParseDecimal(values[lowIndex], lineNumber, "low"),
+                ParseDecimal(values[closeIndex], lineNumber, "close"),
+                volumeIndex >= 0 && volumeIndex < values.Length
+                    ? ParseDecimal(values[volumeIndex], lineNumber, "volume")
+                    : 0m,
+                true);
+
+            ValidateCandle(candle, lineNumber);
+            candlesByOpenTime[openTimeUtc] = candle;
+        }
+
+        return candlesByOpenTime.Values
+            .OrderBy(static candle => candle.OpenTimeUtc)
+            .ToArray();
+    }
+
+    private static string[] SplitLine(string line, char separator)
+    {
+        var values = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var quoted = false;
+
+        for (var index = 0; index < line.Length; index++)
+        {
+            var character = line[index];
+            if (character == '"')
+            {
+                if (quoted && index + 1 < line.Length && line[index + 1] == '"')
+                {
+                    current.Append('"');
+                    index++;
+                }
+                else
+                {
+                    quoted = !quoted;
+                }
+                continue;
+            }
+
+            if (character == separator && !quoted)
+            {
+                values.Add(current.ToString().Trim());
+                current.Clear();
+                continue;
+            }
+
+            current.Append(character);
+        }
+
+        if (quoted)
+            throw new FormatException("CSV contains an unterminated quoted value.");
+
+        values.Add(current.ToString().Trim());
+        return values.ToArray();
+    }
+
+    private static bool TryParseUtc(string[] values, int index, out DateTime utc)
+    {
+        utc = default;
+        if (index < 0 || index >= values.Length)
+            return false;
+
+        if (!DateTime.TryParse(
+                values[index],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+            return false;
+
+        utc = EnsureUtc(parsed);
+        return true;
+    }
+
+    private static DateTime EnsureUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value.ToUniversalTime()
+    };
+
+    private static decimal ParseDecimal(string value, int lineNumber, string column)
+    {
+        if (decimal.TryParse(value, NumberStyles.Number | NumberStyles.AllowExponent,
+                CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        throw new FormatException($"CSV row {lineNumber} contains an invalid {column} value '{value}'.");
+    }
+
+    private static void ValidateCandle(MarketCandle candle, int lineNumber)
+    {
+        if (candle.CloseTimeUtc < candle.OpenTimeUtc)
+            throw new FormatException($"CSV row {lineNumber} has close_time_utc before open_time_utc.");
+        if (candle.Low > candle.High)
+            throw new FormatException($"CSV row {lineNumber} has low greater than high.");
+        if (candle.Open < candle.Low || candle.Open > candle.High ||
+            candle.Close < candle.Low || candle.Close > candle.High)
+            throw new FormatException($"CSV row {lineNumber} has OHLC values outside the low/high range.");
+        if (candle.Volume < 0)
+            throw new FormatException($"CSV row {lineNumber} has negative volume.");
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData.Cli\Program.cs
+================================================================================
+using System.Globalization;
+using TradingSystem.Binance.Market;
+
+var options = Parse(args);
+var symbol = Get("symbol", "BTCUSDC").Trim().ToUpperInvariant();
+var interval = Get("interval", "1m").Trim().ToLowerInvariant();
+var fromUtc = ParseUtc(Get("from", DateTime.UtcNow.AddMonths(-1)
+    .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+var toUtc = ParseUtc(Get("to", DateTime.UtcNow
+    .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+var environment = Get("environment", "Production");
+var output = Get("output", $"data/{symbol}_{interval}_{fromUtc:yyyyMMdd}_{toUtc:yyyyMMdd}.csv");
+
+Validate(symbol, interval, fromUtc, toUtc, output);
+
+var baseAddress = environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)
+    ? "https://demo-fapi.binance.com"
+    : environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
+        ? "https://fapi.binance.com"
+        : throw new ArgumentException("environment must be Demo or Production.");
+
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellation.Cancel();
+};
+
+using var http = new HttpClient
+{
+    BaseAddress = new Uri(baseAddress),
+    Timeout = TimeSpan.FromSeconds(30)
+};
+
+var source = new BinanceHistoricalCandleRangeSource(http);
+var candles = await source.LoadAsync(symbol, interval, fromUtc, toUtc, cancellation.Token);
+var ordered = candles
+    .Where(candle => candle.OpenTimeUtc >= fromUtc && candle.OpenTimeUtc < toUtc)
+    .OrderBy(candle => candle.OpenTimeUtc)
+    .GroupBy(candle => candle.OpenTimeUtc)
+    .Select(group => group.Last())
+    .ToArray();
+
+var fullOutputPath = Path.GetFullPath(output);
+Directory.CreateDirectory(Path.GetDirectoryName(fullOutputPath)!);
+var temporaryPath = fullOutputPath + ".tmp";
+
+try
+{
+    await using (var writer = new StreamWriter(temporaryPath, false, new System.Text.UTF8Encoding(false)))
+    {
+        await writer.WriteLineAsync("open_time_utc,close_time_utc,open,high,low,close,volume");
+        foreach (var candle in ordered)
+        {
+            cancellation.Token.ThrowIfCancellationRequested();
+            await writer.WriteLineAsync(string.Join(',',
+                candle.OpenTimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                candle.CloseTimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                Format(candle.Open),
+                Format(candle.High),
+                Format(candle.Low),
+                Format(candle.Close),
+                Format(candle.Volume)));
+        }
+    }
+
+    File.Move(temporaryPath, fullOutputPath, overwrite: true);
+    Console.WriteLine(
+        $"Completed. Environment = {environment}; Candles = {ordered.Length:N0}; File = {fullOutputPath}");
+}
+catch
+{
+    if (File.Exists(temporaryPath))
+        File.Delete(temporaryPath);
+    throw;
+}
+
+string Get(string key, string fallback) => options.TryGetValue(key, out var value) ? value : fallback;
+static string Format(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+static DateTime ParseUtc(string value)
+{
+    if (!DateTime.TryParse(value, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var result))
+        throw new ArgumentException($"Invalid UTC date: {value}");
+
+    return DateTime.SpecifyKind(result, DateTimeKind.Utc);
+}
+
+static void Validate(string symbol, string interval, DateTime fromUtc, DateTime toUtc, string output)
+{
+    if (string.IsNullOrWhiteSpace(symbol) || !symbol.All(char.IsLetterOrDigit))
+        throw new ArgumentException("symbol must contain only letters and digits.");
+    if (string.IsNullOrWhiteSpace(interval))
+        throw new ArgumentException("interval is required.");
+    if (fromUtc >= toUtc)
+        throw new ArgumentException("The export range must satisfy from < to.");
+    if (toUtc - fromUtc > TimeSpan.FromDays(3660))
+        throw new ArgumentException("The export range cannot exceed 10 years.");
+    if (string.IsNullOrWhiteSpace(output))
+        throw new ArgumentException("output is required.");
+}
+
+static Dictionary<string, string> Parse(string[] values)
+{
+    var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    for (var index = 0; index < values.Length; index++)
+    {
+        if (!values[index].StartsWith("--", StringComparison.Ordinal))
+            continue;
+
+        var key = values[index][2..];
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("Command-line option names cannot be empty.");
+        if (!result.TryAdd(key,
+                index + 1 < values.Length && !values[index + 1].StartsWith("--", StringComparison.Ordinal)
+                    ? values[++index]
+                    : "true"))
+            throw new ArgumentException($"Duplicate command-line option '--{key}'.");
+    }
+    return result;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData.Cli\TradingSystem.HistoricalData.Cli.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Binance\TradingSystem.Binance.csproj" />
+  </ItemGroup>
+</Project>

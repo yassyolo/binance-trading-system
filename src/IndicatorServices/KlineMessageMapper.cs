@@ -1,19 +1,55 @@
-using System.Globalization;using TradingSystem.Contracts.Klines;using TradingSystem.Domain.MarketData;
+using System.Globalization;
+using TradingSystem.Contracts.Klines;
+using TradingSystem.Domain.MarketData;
 
 namespace IndicatorServices;
 
 internal static class KlineMessageMapper
 {
-    public static bool TryMap(ClosedKlineMessage m, out MarketCandle c)
+    public static bool TryMap(ClosedKlineMessage message, out MarketCandle candle)
     {
-        c  =  default!;
-        if(!D(m.Open, out var o) || !D(m.High, out var h) || !D(m.Low, out var l) || !D(m.Close, out var cl) || !D(m.Volume, out var v))
+        candle = default!;
+
+        if (string.IsNullOrWhiteSpace(message.Symbol) ||
+            string.IsNullOrWhiteSpace(message.Interval) ||
+            message.Time <= 0 ||
+            message.CloseTime < message.Time ||
+            !TryParseDecimal(message.Open, out var open) ||
+            !TryParseDecimal(message.High, out var high) ||
+            !TryParseDecimal(message.Low, out var low) ||
+            !TryParseDecimal(message.Close, out var close) ||
+            !TryParseDecimal(message.Volume, out var volume))
+        {
             return false;
-        
-        c  =  new(m.Symbol.ToUpperInvariant(), m.Interval.ToLowerInvariant(), DateTimeOffset.FromUnixTimeMilliseconds(m.Time).UtcDateTime, DateTimeOffset.FromUnixTimeMilliseconds(m.CloseTime).UtcDateTime, o, h, l, cl, v, true);
-        
+        }
+
+        if (high < low ||
+            high < Math.Max(open, close) ||
+            low > Math.Min(open, close) ||
+            volume < 0)
+        {
+            return false;
+        }
+
+        candle = new MarketCandle(
+            message.Symbol.Trim().ToUpperInvariant(),
+            message.Interval.Trim().ToLowerInvariant(),
+            DateTimeOffset.FromUnixTimeMilliseconds(message.Time).UtcDateTime,
+            DateTimeOffset.FromUnixTimeMilliseconds(message.CloseTime).UtcDateTime,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            true);
+
         return true;
     }
-    
-    static bool D(string? x, out decimal d) => decimal.TryParse(x, NumberStyles.Any, CultureInfo.InvariantCulture, out d);
+
+    private static bool TryParseDecimal(string? value, out decimal result) =>
+        decimal.TryParse(
+            value,
+            NumberStyles.Number | NumberStyles.AllowExponent,
+            CultureInfo.InvariantCulture,
+            out result);
 }

@@ -1,5 +1,7 @@
 using TradingSystem.Domain.Enums;
+
 namespace TradingSystem.Domain.Positions;
+
 public sealed class BotPosition
 {
     public required string ShortId { get; init; }
@@ -54,14 +56,93 @@ public sealed class BotPosition
     public bool HighReached { get; set; }
 
     public void MarkParentFilled(decimal entryPrice, string orderId, DateTime occurredAtUtc)
-    { EntryPrice = entryPrice; ParentOrderId = orderId; ParentFilledAtUtc = occurredAtUtc; Status = PositionStatus.Open; UpdatedAtUtc = occurredAtUtc; }
-    public void MarkTpFilled(decimal executedQuantity, DateTime occurredAtUtc)
-    { RemainingQuantity = Math.Max(RemainingQuantity - executedQuantity, 0); TpExecuted = true; TpStatus = "FILLED"; TpFilledAtUtc = occurredAtUtc; UpdatedAtUtc = occurredAtUtc; if (RemainingQuantity == 0) MarkClosed("TAKE_PROFIT_FILLED", occurredAtUtc); else Status = PositionStatus.TpFilled; }
-    public void MarkProtectiveOrderTerminal(string status, DateTime occurredAtUtc)
-    { TpStatus = status; ProtectiveActive = false; UpdatedAtUtc = occurredAtUtc; }
-    public void MarkClosing(DateTime occurredAtUtc) { Status = PositionStatus.Closing; UpdatedAtUtc = occurredAtUtc; }
+    {
+        if (entryPrice <= 0) throw new ArgumentOutOfRangeException(nameof(entryPrice));
+        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        if (Closed) throw new InvalidOperationException("A closed position cannot be opened again.");
 
+        EntryPrice = entryPrice;
+        ParentOrderId = orderId;
+        ParentFilledAtUtc = occurredAtUtc;
+        RemainingQuantity = RemainingQuantity > 0 ? RemainingQuantity : Quantity;
+        Status = PositionStatus.Open;
+        UpdatedAtUtc = occurredAtUtc;
+    }
+
+    public void MarkTpFilled(decimal executedQuantity, DateTime occurredAtUtc)
+    {
+        if (executedQuantity <= 0) throw new ArgumentOutOfRangeException(nameof(executedQuantity));
+        if (Closed) return;
+
+        var currentRemaining = RemainingQuantity > 0 ? RemainingQuantity : Quantity;
+        if (executedQuantity > currentRemaining)
+            throw new InvalidOperationException(
+                $"TP executed quantity {executedQuantity} exceeds remaining quantity {currentRemaining}.");
+
+        RemainingQuantity = currentRemaining - executedQuantity;
+        TpFilledAtUtc = occurredAtUtc;
+        UpdatedAtUtc = occurredAtUtc;
+
+        if (RemainingQuantity == 0)
+        {
+            TpExecuted = true;
+            TpStatus = "FILLED";
+            MarkClosed("TAKE_PROFIT_FILLED", occurredAtUtc);
+        }
+        else
+        {
+            TpExecuted = false;
+            TpStatus = "PARTIALLY_FILLED";
+            Status = PositionStatus.Open;
+        }
+    }
+
+    public void MarkTpOrderTerminal(string status, DateTime occurredAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+        TpStatus = status;
+        ProtectiveActive = false;
+        UpdatedAtUtc = occurredAtUtc;
+    }
+
+    public void MarkSlOrderTerminal(string status, DateTime occurredAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+        SlStatus = status;
+        ProtectiveActive = false;
+        UpdatedAtUtc = occurredAtUtc;
+    }
+
+    public void MarkStop3OrderTerminal(string status, DateTime occurredAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
+        Stop3Status = status;
+        Stop3Pending = false;
+        TrailingInProgress = false;
+        ProtectiveActive = false;
+        UpdatedAtUtc = occurredAtUtc;
+    }
+
+    [Obsolete("Use MarkTpOrderTerminal, MarkSlOrderTerminal or MarkStop3OrderTerminal.")]
+    public void MarkProtectiveOrderTerminal(string status, DateTime occurredAtUtc) =>
+        MarkTpOrderTerminal(status, occurredAtUtc);
+
+    public void MarkClosing(DateTime occurredAtUtc)
+    {
+        if (Closed) return;
+        Status = PositionStatus.Closing;
+        UpdatedAtUtc = occurredAtUtc;
+    }
 
     public void MarkClosed(string reason, DateTime occurredAtUtc)
-    { Closed = true; RemainingQuantity = 0; ProtectiveActive = false; CloseStatus = reason; Status = PositionStatus.Closed; ClosedAtUtc = occurredAtUtc; UpdatedAtUtc = occurredAtUtc; }
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        Closed = true;
+        RemainingQuantity = 0;
+        ProtectiveActive = false;
+        CloseStatus = reason;
+        Status = PositionStatus.Closed;
+        ClosedAtUtc = occurredAtUtc;
+        UpdatedAtUtc = occurredAtUtc;
+    }
 }

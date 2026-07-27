@@ -5,48 +5,125 @@ using Microsoft.Extensions.Options;
 using TradingSystem.Infrastructure.WebSockets;
 
 namespace MarketDataService;
+
 public sealed class Worker(
-    IOptions<MarketDataOptions> options, 
-    KlinePublisher publisher, 
+    IOptions<MarketDataOptions> options,
+    KlinePublisher publisher,
     ILogger<Worker> logger)
-    :BackgroundService
+    : BackgroundService
 {
-    readonly MarketDataOptions o = options.Value;
-    protected override async Task ExecuteAsync(CancellationToken ct)
+    private readonly MarketDataOptions _options = options.Value;
+
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        var symbols = o.Symbols.Where(x => ! string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).Distinct().ToArray();
-        var intervals = o.Intervals.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToLowerInvariant()).Distinct().ToArray();
-        await Task.WhenAll(intervals.Select(i => Loop(symbols, i, ct)));
+        var symbols = _options.Symbols
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var intervals = _options.Intervals
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return Task.WhenAll(
+            intervals.Select(interval =>
+                RunStreamLoopAsync(symbols, interval, cancellationToken)));
     }
-    async Task Loop(string[] symbols, string interval, CancellationToken ct)
+
+    private async Task RunStreamLoopAsync(
+        IReadOnlyCollection<string> symbols,
+        string interval,
+        CancellationToken cancellationToken)
     {
-        while(!ct.IsCancellationRequested)
+        var failureCount = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                using var ws = ClientWebSocketFactory.Create(new(){KeepAliveIntervalSeconds = o.KeepAliveIntervalSeconds, ReceiveBufferSizeBytes = o.ReceiveBufferSizeBytes});
-                var streams = string.Join('/', symbols.Select(s => $"{s.ToLowerInvariant()}@kline_{interval}"));
-                var url = $"{o.BinanceWebSocketBaseUrl.TrimEnd('/', '?')}?streams = {streams}";
-                await ws.ConnectAsync(new Uri(url), ct);
-                while(ws.State==WebSocketState.Open && !ct.IsCancellationRequested)
+                using var webSocket = ClientWebSocketFactory.Create(new()
+                {
+                    KeepAliveIntervalSeconds = _options.KeepAliveIntervalSeconds,
+                    ReceiveBufferSizeBytes = _options.ReceiveBufferSizeBytes
+                });
+
+                var streams = string.Join('/',
+                    symbols.Select(symbol =>
+                        $"{symbol.ToLowerInvariant()}@kline_{interval}"));
+
+                var baseUrl = _options.BinanceWebSocketBaseUrl.TrimEnd('/', '?');
+                var streamUrl = new Uri($"{baseUrl}?streams={streams}");
+
+                logger.LogInformation(
+                    "Connecting to Binance kline stream. Interval = {Interval}, Symbols = {Symbols}",
+                    interval,
+                    string.Join(',', symbols));
+
+                await webSocket.ConnectAsync(streamUrl, cancellationToken);
+                failureCount = 0;
+
+                while (webSocket.State == WebSocketState.Open &&
+                       !cancellationToken.IsCancellationRequested)
+                {
+                    var json = await WebSocketMessageReader.ReadTextMessageAsync(
+                        webSocket,
+                        _options.ReceiveBufferSizeBytes,
+                        cancellationToken);
+
+                    if (json is null)
+                        break;
+
+                    try
                     {
-                    var json = await WebSocketMessageReader.ReadTextMessageAsync(ws, o.ReceiveBufferSizeBytes, ct);
-                    if(json is null)break;using var d = JsonDocument.Parse(json);
-                    if(d.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("k", out var k) && k.TryGetProperty("x", out var x) && x.ValueKind==JsonValueKind.True)
-                        await publisher.PublishAsync(k, ct);
+                        using var document = JsonDocument.Parse(json);
+                        if (document.RootElement.TryGetProperty("data", out var data) &&
+                            data.TryGetProperty("k", out var kline) &&
+                            kline.TryGetProperty("x", out var isClosed) &&
+                            isClosed.ValueKind == JsonValueKind.True)
+                        {
+                            await publisher.PublishAsync(kline, cancellationToken);
+                        }
+                    }
+                    catch (JsonException exception)
+                    {
+                        logger.LogWarning(
+                            exception,
+                            "Invalid Binance websocket JSON. Interval = {Interval}",
+                            interval);
+                    }
                 }
             }
-            catch(OperationCanceledException)
-            when(ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
-            catch(Exception ex)
+            catch (Exception exception)
             {
-                logger.LogError(ex, "Market stream failed. Interval = {Interval}", interval);
+                failureCount++;
+                logger.LogError(
+                    exception,
+                    "Market stream failed. Interval = {Interval}, ConsecutiveFailures = {Failures}",
+                    interval,
+                    failureCount);
             }
-            if(!ct.IsCancellationRequested)
-                await Task.Delay(TimeSpan.FromSeconds(o.ReconnectDelaySeconds), ct);
+
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            var exponentialSeconds = _options.ReconnectDelaySeconds *
+                                     Math.Pow(2, Math.Min(failureCount, 6));
+            var boundedSeconds = Math.Min(
+                _options.MaximumReconnectDelaySeconds,
+                exponentialSeconds);
+            var jitterMilliseconds = Random.Shared.Next(0, 1_000);
+
+            await Task.Delay(
+                TimeSpan.FromSeconds(boundedSeconds) +
+                TimeSpan.FromMilliseconds(jitterMilliseconds),
+                cancellationToken);
         }
     }
 }

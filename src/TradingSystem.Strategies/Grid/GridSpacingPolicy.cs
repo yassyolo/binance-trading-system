@@ -1,0 +1,84 @@
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.Strategies.Grid;
+
+public sealed record GridPositionReference(
+    PositionSide Side,
+    decimal TakeProfitPrice,
+    DateTime OpenedAtUtc);
+
+public sealed record GridSpacingParameters(
+    decimal PriceDistance,
+    decimal ProfitDistance,
+    int SideLimit);
+
+public sealed record PolicyDecision(bool Allowed, string Reason)
+{
+    public static PolicyDecision Allow(string reason) => new(true, reason);
+    public static PolicyDecision Block(string reason) => new(false, reason);
+}
+
+public sealed class GridSpacingPolicy
+{
+    public PolicyDecision Evaluate(
+        PositionSide side,
+        decimal markPrice,
+        IReadOnlyCollection<GridPositionReference> positions,
+        GridSpacingParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(positions);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        if (markPrice <= 0)
+            return PolicyDecision.Block("Mark price must be greater than zero.");
+
+        if (parameters.SideLimit <= 0)
+            return PolicyDecision.Block("ORDER_SIDE_LIMIT must be greater than zero.");
+
+        if (parameters.PriceDistance < 0 || parameters.ProfitDistance < 0)
+            return PolicyDecision.Block("Grid distances cannot be negative.");
+
+        var sameSidePositions = positions
+            .Where(position => position.Side == side)
+            .OrderByDescending(position => position.OpenedAtUtc)
+            .ToArray();
+
+        if (sameSidePositions.Length >= parameters.SideLimit)
+        {
+            return PolicyDecision.Block(
+                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{parameters.SideLimit}).");
+        }
+
+        if (sameSidePositions.Length == 0)
+            return PolicyDecision.Allow("No active TP positions for this side.");
+
+        var newestTakeProfit = sameSidePositions[0].TakeProfitPrice;
+        if (newestTakeProfit <= 0)
+            return PolicyDecision.Block("Newest position has an invalid take-profit price.");
+
+        // Do not round to whole currency units here. Exchange tick-size rounding belongs
+        // to the Binance execution boundary; rounding inside the strategy changes the rule.
+        if (side == PositionSide.Long)
+        {
+            var maximumAllowedMark = newestTakeProfit
+                                     - parameters.ProfitDistance
+                                     - parameters.PriceDistance;
+
+            return markPrice <= maximumAllowedMark
+                ? PolicyDecision.Allow(
+                    $"LONG spacing valid: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.")
+                : PolicyDecision.Block(
+                    $"GAP fail LONG: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.");
+        }
+
+        var minimumAllowedMark = newestTakeProfit
+                                 + parameters.ProfitDistance
+                                 + parameters.PriceDistance;
+
+        return markPrice >= minimumAllowedMark
+            ? PolicyDecision.Allow(
+                $"SHORT spacing valid: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.")
+            : PolicyDecision.Block(
+                $"GAP fail SHORT: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.");
+    }
+}

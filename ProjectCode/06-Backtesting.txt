@@ -1,0 +1,2766 @@
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Costs\BinanceFuturesCostModel.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Costs;
+
+public sealed class BinanceFuturesCostModel(decimal takerFeeRate  =  0.0004m) : ITradingCostModel
+{
+    public decimal CalculateEntryFee(decimal price,  decimal quantity)  =>  price * quantity * takerFeeRate;
+    public decimal CalculateExitFee(decimal price,  decimal quantity)  =>  price * quantity * takerFeeRate;
+    public decimal CalculateFunding(BacktestPosition position,  DateTime exitTimeUtc)  =>  0m;
+
+    public decimal ApplyEntrySlippage(decimal price,  TradeSide side,  decimal basisPoints)
+         =>  side == TradeSide.Long ? price * (1m + basisPoints / 10_000m) : price * (1m - basisPoints / 10_000m);
+
+    public decimal ApplyExitSlippage(decimal price,  TradeSide side,  decimal basisPoints)
+         =>  side == TradeSide.Long ? price * (1m - basisPoints / 10_000m) : price * (1m + basisPoints / 10_000m);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Costs\ITradingCostModel.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Costs;
+
+public interface ITradingCostModel
+{
+    decimal CalculateEntryFee(decimal price,  decimal quantity);
+    decimal CalculateExitFee(decimal price,  decimal quantity);
+    decimal CalculateFunding(BacktestPosition position,  DateTime exitTimeUtc);
+    decimal ApplyEntrySlippage(decimal price,  TradeSide side,  decimal basisPoints);
+    decimal ApplyExitSlippage(decimal price,  TradeSide side,  decimal basisPoints);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Engine;
+using TradingSystem.Backtesting.Execution;
+using TradingSystem.Backtesting.Metrics;
+using TradingSystem.Backtesting.Risk;
+using TradingSystem.Backtesting.Strategies;
+
+namespace TradingSystem.Backtesting;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddBacktesting(this IServiceCollection services)
+    {
+        services.AddSingleton<PositionSizeCalculator>();
+        services.AddSingleton<CandleFillResolver>();
+        services.AddSingleton<BacktestMetricsCalculator>();
+        services.AddSingleton<ITradingCostModel>(_  =>  new BinanceFuturesCostModel());
+        services.AddSingleton<BacktestStrategyRegistry>();
+        services.AddSingleton<BacktestEngine>();
+        services.AddBacktestStrategy<EmaCrossStrategyFactory>();
+        return services;
+    }
+
+    public static IServiceCollection AddBacktestStrategy<TFactory>(this IServiceCollection services)
+        where TFactory : class,  IBacktestStrategyFactory
+    {
+        services.AddSingleton<IBacktestStrategyFactory,  TFactory>();
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Engine\BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Execution;
+using TradingSystem.Backtesting.Metrics;
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Portfolio;
+using TradingSystem.Backtesting.Risk;
+using TradingSystem.Backtesting.Strategies;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Engine;
+
+public sealed class BacktestEngine(
+    BacktestStrategyRegistry registry,
+    PositionSizeCalculator sizeCalculator,
+    CandleFillResolver fillResolver,
+    BacktestMetricsCalculator metricsCalculator,
+    ITradingCostModel costModel)
+{
+    public async Task<BacktestResult> RunAsync(
+        BacktestRequest request,
+        IReadOnlyList<MarketCandle> sourceCandles,
+        SymbolTradingRules rules,
+        CancellationToken cancellationToken = default)
+    {
+        BacktestRequestValidator.Validate(request, rules);
+        var started = DateTime.UtcNow;
+        var candles = sourceCandles
+            .Where(x => (!request.StartUtc.HasValue || x.OpenTimeUtc >= request.StartUtc.Value)
+                        && (!request.EndUtc.HasValue || x.OpenTimeUtc < request.EndUtc.Value))
+            .OrderBy(x => x.OpenTimeUtc)
+            .ToArray();
+        Validate(candles);
+
+        var strategy = registry.Create(request.StrategyName, request.StrategyParameters);
+        var portfolio = new BacktestPortfolio(request.InitialBalance, rules, costModel);
+        var signals = new List<SignalMarker>();
+        PendingEntry? pending = null;
+
+        for (var i = 0; i < candles.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var candle = candles[i];
+
+            if (pending is not null)
+            {
+                var opened = Open(pending, candle.Open, candle.OpenTimeUtc);
+                signals[pending.MarkerIndex] = signals[pending.MarkerIndex] with
+                {
+                    Executed = opened,
+                    Reason = opened
+                        ? pending.Reason + " (executed at next open)"
+                        : pending.Reason + " (rejected at next open)"
+                };
+                pending = null;
+            }
+
+            if (portfolio.ActivePosition is not null)
+            {
+                var fill = fillResolver.Resolve(portfolio.ActivePosition, candle, request.ConflictPolicy);
+                if (fill is not null)
+                {
+                    var price = costModel.ApplyExitSlippage(
+                        fill.Price,
+                        portfolio.ActivePosition.Side,
+                        request.SlippageBasisPoints);
+                    portfolio.Close(Round(price, rules.TickSize), candle.CloseTimeUtc, fill.Reason);
+                }
+            }
+
+            if (i >= strategy.WarmupBars)
+            {
+                var context = new BacktestStrategyContext
+                {
+                    CurrentCandle = candle,
+                    PreviousCandle = i > 0 ? candles[i - 1] : null,
+                    History = new ArraySegment<MarketCandle>(candles, 0, i + 1),
+                    ActivePosition = portfolio.ActivePosition,
+                    Balance = portfolio.Balance,
+                    BarIndex = i
+                };
+
+                var decision = await strategy.DecideAsync(context, cancellationToken);
+                if (decision.Type != DecisionType.None)
+                {
+                    if (decision.Type is DecisionType.Close or DecisionType.CloseAndReverse
+                        && portfolio.ActivePosition is not null)
+                    {
+                        var closePrice = costModel.ApplyExitSlippage(
+                            candle.Close,
+                            portfolio.ActivePosition.Side,
+                            request.SlippageBasisPoints);
+                        portfolio.Close(
+                            Round(closePrice, rules.TickSize),
+                            candle.CloseTimeUtc,
+                            decision.Type == DecisionType.CloseAndReverse
+                                ? ExitReason.ReverseSignal
+                                : ExitReason.Strategy);
+                    }
+
+                    if (decision.Type is DecisionType.Open or DecisionType.CloseAndReverse
+                        && decision.Side.HasValue
+                        && decision.StopLoss.HasValue)
+                    {
+                        var marker = new SignalMarker(
+                            candle.CloseTimeUtc,
+                            decision.Side.Value,
+                            candle.Close,
+                            false,
+                            decision.Reason);
+
+                        if (request.EntryExecutionMode == EntryExecutionMode.SignalCandleClose)
+                        {
+                            var success = Open(
+                                new PendingEntry(
+                                    decision.Side.Value,
+                                    decision.StopLoss.Value,
+                                    decision.TakeProfit,
+                                    -1,
+                                    decision.Reason),
+                                candle.Close,
+                                candle.CloseTimeUtc);
+                            signals.Add(marker with { Executed = success });
+                        }
+                        else if (i + 1 < candles.Length)
+                        {
+                            var markerIndex = signals.Count;
+                            signals.Add(marker with { Reason = decision.Reason + " (pending next open)" });
+                            pending = new PendingEntry(
+                                decision.Side.Value,
+                                decision.StopLoss.Value,
+                                decision.TakeProfit,
+                                markerIndex,
+                                decision.Reason);
+                        }
+                        else
+                        {
+                            signals.Add(marker with { Reason = decision.Reason + " (no next candle)" });
+                        }
+                    }
+                }
+            }
+
+            portfolio.MarkToMarket(candle.Close, candle.CloseTimeUtc);
+        }
+
+        if (portfolio.ActivePosition is not null)
+        {
+            var last = candles[^1];
+            var price = costModel.ApplyExitSlippage(
+                last.Close,
+                portfolio.ActivePosition.Side,
+                request.SlippageBasisPoints);
+            portfolio.Close(Round(price, rules.TickSize), last.CloseTimeUtc, ExitReason.BacktestEnd);
+        }
+
+        var metrics = metricsCalculator.Calculate(
+            portfolio.InitialBalance,
+            portfolio.Balance,
+            portfolio.Trades,
+            portfolio.EquityCurve);
+
+        return new BacktestResult
+        {
+            RunId = $"{request.StrategyName}_{request.Symbol}_{DateTime.UtcNow:yyyyMMdd_HHmmss}",
+            Request = request,
+            StartedAtUtc = started,
+            CompletedAtUtc = DateTime.UtcNow,
+            InitialBalance = portfolio.InitialBalance,
+            FinalBalance = portfolio.Balance,
+            Metrics = metrics,
+            Trades = portfolio.Trades.ToArray(),
+            EquityCurve = portfolio.EquityCurve.ToArray(),
+            Candles = candles,
+            Signals = signals
+        };
+
+        bool Open(PendingEntry entry, decimal rawPrice, DateTime timeUtc)
+        {
+            if (portfolio.ActivePosition is not null)
+                return false;
+
+            var price = Round(
+                costModel.ApplyEntrySlippage(rawPrice, entry.Side, request.SlippageBasisPoints),
+                rules.TickSize);
+            var stopLoss = Round(entry.StopLoss, rules.TickSize);
+            var takeProfit = entry.TakeProfit.HasValue
+                ? Round(entry.TakeProfit.Value, rules.TickSize)
+                : (decimal?)null;
+            var size = sizeCalculator.Calculate(
+                portfolio.Balance,
+                request.RiskPerTradePercent,
+                price,
+                stopLoss,
+                rules);
+
+            if (!size.Succeeded)
+                return false;
+
+            var risk = Math.Abs(price - stopLoss) * size.Quantity * rules.ContractMultiplier;
+            try
+            {
+                portfolio.Open(
+                    request.Symbol,
+                    entry.Side,
+                    price,
+                    size.Quantity,
+                    stopLoss,
+                    takeProfit,
+                    timeUtc,
+                    risk);
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+    }
+
+    private static decimal Round(decimal value, decimal step)
+        => step <= 0m
+            ? value
+            : Math.Round(value / step, MidpointRounding.AwayFromZero) * step;
+
+    private static void Validate(IReadOnlyList<MarketCandle> candles)
+    {
+        if (candles.Count < 2)
+            throw new InvalidOperationException("At least two candles are required.");
+
+        for (var i = 0; i < candles.Count; i++)
+        {
+            var candle = candles[i];
+            if (!candle.IsClosed)
+                throw new InvalidOperationException($"Backtesting requires closed candles. Candle = {candle.OpenTimeUtc:O}.");
+            if (candle.CloseTimeUtc < candle.OpenTimeUtc)
+                throw new InvalidOperationException($"Candle close time precedes open time. Candle = {candle.OpenTimeUtc:O}.");
+            if (candle.Volume < 0
+                || candle.Low > candle.High
+                || candle.Open < candle.Low
+                || candle.Open > candle.High
+                || candle.Close < candle.Low
+                || candle.Close > candle.High)
+                throw new InvalidOperationException($"Invalid OHLCV candle at {candle.OpenTimeUtc:O}.");
+            if (i > 0 && candle.OpenTimeUtc <= candles[i - 1].OpenTimeUtc)
+                throw new InvalidOperationException("Candles must have unique ascending timestamps.");
+        }
+    }
+
+    private sealed record PendingEntry(
+        TradeSide Side,
+        decimal StopLoss,
+        decimal? TakeProfit,
+        int MarkerIndex,
+        string Reason);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Engine\BacktestRequestValidator.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Engine;
+
+internal static class BacktestRequestValidator
+{
+    public static void Validate(BacktestRequest request,  SymbolTradingRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(rules);
+        if (string.IsNullOrWhiteSpace(request.StrategyName))
+            throw new ArgumentException("StrategyName is required.",  nameof(request));
+        if (string.IsNullOrWhiteSpace(request.Symbol))
+            throw new ArgumentException("Symbol is required.",  nameof(request));
+        if (string.IsNullOrWhiteSpace(request.Interval))
+            throw new ArgumentException("Interval is required.",  nameof(request));
+        if (request.InitialBalance <= 0)
+            throw new ArgumentOutOfRangeException(nameof(request),  "InitialBalance must be positive.");
+        if (request.RiskPerTradePercent is <= 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(request),  "RiskPerTradePercent must be in (0,  100].");
+        if (request.SlippageBasisPoints < 0)
+            throw new ArgumentOutOfRangeException(nameof(request),  "SlippageBasisPoints cannot be negative.");
+        if (request.StartUtc.HasValue  &&  request.EndUtc.HasValue  &&  request.EndUtc <= request.StartUtc)
+            throw new ArgumentException("EndUtc must be after StartUtc.",  nameof(request));
+        if (rules.TickSize <= 0  ||  rules.QuantityStep <= 0  ||  rules.MinimumQuantity <= 0  ||  rules.MaximumQuantity < rules.MinimumQuantity)
+            throw new ArgumentException("Invalid symbol trading rules.",  nameof(rules));
+        if (rules.ContractMultiplier <= 0  ||  rules.Leverage <= 0)
+            throw new ArgumentException("ContractMultiplier and Leverage must be positive.",  nameof(rules));
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Execution\CandleFillResolver.cs
+================================================================================
+using TradingSystem.Domain.MarketData;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Execution;
+
+public sealed record ProtectiveFill(ExitReason Reason,  decimal Price);
+
+public sealed class CandleFillResolver
+{
+    public ProtectiveFill? Resolve(BacktestPosition position,  MarketCandle candle,  IntrabarConflictPolicy policy)
+    {
+        var stopHit  =  position.StopLoss.HasValue  &&  IsPriceTouched(position.StopLoss.Value,  position.Side,  isStop: true,  candle);
+        var takeHit  =  position.TakeProfit.HasValue  &&  IsPriceTouched(position.TakeProfit.Value,  position.Side,  isStop: false,  candle);
+
+        if (!stopHit  &&  !takeHit) return null;
+        if (stopHit  &&  !takeHit) return new(ExitReason.StopLoss,  position.StopLoss!.Value);
+        if (!stopHit  &&  takeHit) return new(ExitReason.TakeProfit,  position.TakeProfit!.Value);
+
+        return policy switch
+        {
+            IntrabarConflictPolicy.StopLossFirst  =>  new(ExitReason.StopLoss,  position.StopLoss!.Value), 
+            IntrabarConflictPolicy.TakeProfitFirst  =>  new(ExitReason.TakeProfit,  position.TakeProfit!.Value), 
+            IntrabarConflictPolicy.WorstCase  =>  new(ExitReason.StopLoss,  position.StopLoss!.Value), 
+            IntrabarConflictPolicy.BestCase  =>  new(ExitReason.TakeProfit,  position.TakeProfit!.Value), 
+            _  =>  throw new ArgumentOutOfRangeException(nameof(policy),  policy,  null)
+        };
+    }
+
+    private static bool IsPriceTouched(decimal price,  TradeSide side,  bool isStop,  MarketCandle candle)
+    {
+        if (side == TradeSide.Long)
+            return isStop ? candle.Low <= price : candle.High >= price;
+        return isStop ? candle.High >= price : candle.Low <= price;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Metrics\BacktestMetricsCalculator.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Metrics;
+
+public sealed class BacktestMetricsCalculator
+{
+    public BacktestMetrics Calculate(decimal initialBalance,  decimal finalBalance,  IReadOnlyList<BacktestTrade> trades,  IReadOnlyList<EquityPoint> equity)
+    {
+        var wins  =  trades.Where(x  =>  x.NetPnl > 0m).ToArray();
+        var losses  =  trades.Where(x  =>  x.NetPnl <= 0m).ToArray();
+        var grossProfit  =  wins.Sum(x  =>  x.NetPnl);
+        var grossLoss  =  Math.Abs(losses.Sum(x  =>  x.NetPnl));
+        var (maxWins,  maxLosses)  =  Consecutive(trades);
+        return new BacktestMetrics
+        {
+            TotalTrades  =  trades.Count,  WinningTrades  =  wins.Length,  LosingTrades  =  losses.Length, 
+            WinRatePercent  =  trades.Count == 0 ? 0m : wins.Length * 100m / trades.Count, 
+            GrossProfit  =  grossProfit,  GrossLoss  =  grossLoss,  NetProfit  =  finalBalance - initialBalance, 
+            NetReturnPercent  =  initialBalance == 0m ? 0m : (finalBalance - initialBalance) / initialBalance * 100m, 
+            ProfitFactor  =  grossLoss == 0m ? (grossProfit > 0m ? decimal.MaxValue : 0m) : grossProfit / grossLoss, 
+            MaximumDrawdownAmount  =  equity.Count == 0 ? 0m : equity.Max(x  =>  x.DrawdownAmount), 
+            MaximumDrawdownPercent  =  equity.Count == 0 ? 0m : equity.Max(x  =>  x.DrawdownPercent), 
+            AverageWin  =  wins.Length == 0 ? 0m : wins.Average(x  =>  x.NetPnl), 
+            AverageLoss  =  losses.Length == 0 ? 0m : losses.Average(x  =>  x.NetPnl), 
+            Expectancy  =  trades.Count == 0 ? 0m : trades.Average(x  =>  x.NetPnl), 
+            AverageRMultiple  =  trades.Count == 0 ? 0m : trades.Average(x  =>  x.RMultiple), 
+            MaximumConsecutiveWins  =  maxWins,  MaximumConsecutiveLosses  =  maxLosses, 
+            TotalFees  =  trades.Sum(x  =>  x.EntryFee + x.ExitFee),  TotalFunding  =  trades.Sum(x  =>  x.FundingCost)
+        };
+    }
+
+    private static (int wins,  int losses) Consecutive(IReadOnlyList<BacktestTrade> trades)
+    {
+        var maxW  =  0; var maxL  =  0; var w  =  0; var l  =  0;
+        foreach (var trade in trades)
+        {
+            if (trade.NetPnl > 0m) { w++; l  =  0; maxW  =  Math.Max(maxW,  w); }
+            else { l++; w  =  0; maxL  =  Math.Max(maxL,  l); }
+        }
+        return (maxW,  maxL);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestMetrics.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record BacktestMetrics
+{
+    public int TotalTrades {  get;  init;  }
+    public int WinningTrades {  get;  init;  }
+    public int LosingTrades {  get;  init;  }
+    public decimal WinRatePercent {  get;  init;  }
+    public decimal GrossProfit {  get;  init;  }
+    public decimal GrossLoss {  get;  init;  }
+    public decimal NetProfit {  get;  init;  }
+    public decimal NetReturnPercent {  get;  init;  }
+    public decimal ProfitFactor {  get;  init;  }
+    public decimal MaximumDrawdownAmount {  get;  init;  }
+    public decimal MaximumDrawdownPercent {  get;  init;  }
+    public decimal AverageWin {  get;  init;  }
+    public decimal AverageLoss {  get;  init;  }
+    public decimal Expectancy {  get;  init;  }
+    public decimal AverageRMultiple {  get;  init;  }
+    public int MaximumConsecutiveWins {  get;  init;  }
+    public int MaximumConsecutiveLosses {  get;  init;  }
+    public decimal TotalFees {  get;  init;  }
+    public decimal TotalFunding {  get;  init;  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestPosition.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed class BacktestPosition
+{
+    public required long Id {  get;  init;  }
+    public required string Symbol {  get;  init;  }
+    public required TradeSide Side {  get;  init;  }
+    public required decimal EntryPrice {  get;  init;  }
+    public required decimal Quantity {  get;  init;  }
+    public required DateTime EntryTimeUtc {  get;  init;  }
+    public required decimal EntryFee {  get;  init;  }
+    public decimal? StopLoss {  get;  set; }
+    public decimal? TakeProfit {  get;  set; }
+    public decimal InitialRiskAmount {  get;  init;  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestRequest.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record BacktestRequest
+{
+    public required string StrategyName {  get;  init;  }
+    public required string Symbol {  get;  init;  }
+    public required string Interval {  get;  init;  }
+    public DateTime? StartUtc {  get;  init;  }
+    public DateTime? EndUtc {  get;  init;  }
+    public decimal InitialBalance {  get;  init;  }  =  10_000m;
+    public decimal RiskPerTradePercent {  get;  init;  }  =  1m;
+    public EntryExecutionMode EntryExecutionMode {  get;  init;  }  =  EntryExecutionMode.NextCandleOpen;
+    public IntrabarConflictPolicy ConflictPolicy {  get;  init;  }  =  IntrabarConflictPolicy.WorstCase;
+    public decimal SlippageBasisPoints {  get;  init;  }  =  1m;
+    public IReadOnlyDictionary<string,  string> StrategyParameters {  get;  init;  }
+         =  new Dictionary<string,  string>(StringComparer.OrdinalIgnoreCase);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestResult.cs
+================================================================================
+using TradingSystem.Domain.MarketData;
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record BacktestResult
+{
+    public required string RunId {  get;  init;  }
+    public required BacktestRequest Request {  get;  init;  }
+    public required DateTime StartedAtUtc {  get;  init;  }
+    public required DateTime CompletedAtUtc {  get;  init;  }
+    public required decimal InitialBalance {  get;  init;  }
+    public required decimal FinalBalance {  get;  init;  }
+    public required BacktestMetrics Metrics {  get;  init;  }
+    public required IReadOnlyList<BacktestTrade> Trades {  get;  init;  }
+    public required IReadOnlyList<EquityPoint> EquityCurve {  get;  init;  }
+    public required IReadOnlyList<MarketCandle> Candles {  get;  init;  }
+    public required IReadOnlyList<SignalMarker> Signals {  get;  init;  }
+}
+
+public sealed record SignalMarker(DateTime TimeUtc,  TradeSide Side,  decimal Price,  bool Executed,  string Reason);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestTrade.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record BacktestTrade
+{
+    public required long Id {  get;  init;  }
+    public required string Symbol {  get;  init;  }
+    public required TradeSide Side {  get;  init;  }
+    public required DateTime EntryTimeUtc {  get;  init;  }
+    public required DateTime ExitTimeUtc {  get;  init;  }
+    public required decimal EntryPrice {  get;  init;  }
+    public required decimal ExitPrice {  get;  init;  }
+    public required decimal Quantity {  get;  init;  }
+    public required ExitReason ExitReason {  get;  init;  }
+    public required decimal GrossPnl {  get;  init;  }
+    public required decimal EntryFee {  get;  init;  }
+    public required decimal ExitFee {  get;  init;  }
+    public required decimal FundingCost {  get;  init;  }
+    public required decimal NetPnl {  get;  init;  }
+    public decimal RMultiple {  get;  init;  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\Enums.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public enum TradeSide { Long,  Short }
+public enum EntryExecutionMode { SignalCandleClose,  NextCandleOpen }
+public enum IntrabarConflictPolicy { StopLossFirst,  TakeProfitFirst,  WorstCase,  BestCase }
+public enum ExitReason { TakeProfit,  StopLoss,  Strategy,  ReverseSignal,  BacktestEnd }
+public enum DecisionType { None,  Open,  Close,  CloseAndReverse }
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\EquityPoint.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record EquityPoint(
+    DateTime TimeUtc,
+    decimal Balance,
+    decimal Equity,
+    decimal PeakEquity,
+    decimal DrawdownAmount,
+    decimal DrawdownPercent);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\SymbolTradingRules.cs
+================================================================================
+namespace TradingSystem.Backtesting.Models;
+
+public sealed record SymbolTradingRules
+{
+    public decimal TickSize {  get;  init;  }  =  0.1m;
+    public decimal QuantityStep {  get;  init;  }  =  0.001m;
+    public decimal MinimumQuantity {  get;  init;  }  =  0.001m;
+    public decimal MaximumQuantity {  get;  init;  }  =  1_000m;
+    public decimal MinimumNotional {  get;  init;  }  =  5m;
+    public decimal ContractMultiplier {  get;  init;  }  =  1m;
+    public int Leverage {  get;  init;  }  =  20;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Portfolio\BacktestPortfolio.cs
+================================================================================
+using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Portfolio;
+
+public sealed class BacktestPortfolio(
+    decimal initialBalance,
+    SymbolTradingRules rules,
+    ITradingCostModel costModel)
+{
+    private readonly List<BacktestTrade> _trades = [];
+    private readonly List<EquityPoint> _equity = [];
+    private long _nextId = 1;
+    private decimal _peakEquity = initialBalance;
+
+    public decimal InitialBalance { get; } = initialBalance;
+    public decimal Balance { get; private set; } = initialBalance;
+    public BacktestPosition? ActivePosition { get; private set; }
+    public IReadOnlyList<BacktestTrade> Trades => _trades;
+    public IReadOnlyList<EquityPoint> EquityCurve => _equity;
+
+    public BacktestPosition Open(
+        string symbol,
+        TradeSide side,
+        decimal entryPrice,
+        decimal quantity,
+        decimal stopLoss,
+        decimal? takeProfit,
+        DateTime timeUtc,
+        decimal initialRisk)
+    {
+        if (ActivePosition is not null)
+            throw new InvalidOperationException("Only one active position is supported in v1.");
+
+        var requiredMargin = entryPrice * quantity * rules.ContractMultiplier / rules.Leverage;
+        var entryFee = costModel.CalculateEntryFee(entryPrice, quantity);
+
+        if (requiredMargin + entryFee > Balance)
+            throw new InvalidOperationException("Available balance is insufficient for margin and entry fee.");
+
+        Balance -= entryFee;
+        ActivePosition = new BacktestPosition
+        {
+            Id = _nextId++,
+            Symbol = symbol,
+            Side = side,
+            EntryPrice = entryPrice,
+            Quantity = quantity,
+            EntryTimeUtc = timeUtc,
+            EntryFee = entryFee,
+            StopLoss = stopLoss,
+            TakeProfit = takeProfit,
+            InitialRiskAmount = initialRisk
+        };
+
+        MarkToMarket(entryPrice, timeUtc);
+        return ActivePosition;
+    }
+
+    public BacktestTrade Close(decimal exitPrice, DateTime timeUtc, ExitReason reason)
+    {
+        var position = ActivePosition ?? throw new InvalidOperationException("No active position.");
+        var direction = position.Side == TradeSide.Long ? 1m : -1m;
+        var gross = (exitPrice - position.EntryPrice) * position.Quantity * rules.ContractMultiplier * direction;
+        var exitFee = costModel.CalculateExitFee(exitPrice, position.Quantity);
+        var funding = costModel.CalculateFunding(position, timeUtc);
+        var netAfterExit = gross - exitFee - funding;
+
+        Balance += netAfterExit;
+
+        var trade = new BacktestTrade
+        {
+            Id = position.Id,
+            Symbol = position.Symbol,
+            Side = position.Side,
+            EntryTimeUtc = position.EntryTimeUtc,
+            ExitTimeUtc = timeUtc,
+            EntryPrice = position.EntryPrice,
+            ExitPrice = exitPrice,
+            Quantity = position.Quantity,
+            ExitReason = reason,
+            GrossPnl = gross,
+            EntryFee = position.EntryFee,
+            ExitFee = exitFee,
+            FundingCost = funding,
+            NetPnl = gross - position.EntryFee - exitFee - funding,
+            RMultiple = position.InitialRiskAmount > 0m
+                ? (gross - position.EntryFee - exitFee - funding) / position.InitialRiskAmount
+                : 0m
+        };
+
+        _trades.Add(trade);
+        ActivePosition = null;
+        MarkToMarket(exitPrice, timeUtc);
+        return trade;
+    }
+
+    public void MarkToMarket(decimal marketPrice, DateTime timeUtc)
+    {
+        var unrealized = ActivePosition is null
+            ? 0m
+            : UnrealizedPnl(ActivePosition, marketPrice);
+
+        var equity = Balance + unrealized;
+        _peakEquity = Math.Max(_peakEquity, equity);
+        var drawdown = _peakEquity - equity;
+        var drawdownPercent = _peakEquity > 0m
+            ? drawdown / _peakEquity * 100m
+            : 0m;
+
+        if (_equity.Count > 0 && _equity[^1].TimeUtc == timeUtc)
+            _equity[^1] = new(timeUtc, Balance, equity, _peakEquity, drawdown, drawdownPercent);
+        else
+            _equity.Add(new(timeUtc, Balance, equity, _peakEquity, drawdown, drawdownPercent));
+    }
+
+    private decimal UnrealizedPnl(BacktestPosition position, decimal currentPrice)
+    {
+        var direction = position.Side == TradeSide.Long ? 1m : -1m;
+        return (currentPrice - position.EntryPrice)
+               * position.Quantity
+               * rules.ContractMultiplier
+               * direction;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Risk\PositionSizeCalculator.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Risk;
+
+public sealed record PositionSizeResult(bool Succeeded,  decimal Quantity,  string Reason)
+{
+    public static PositionSizeResult Success(decimal quantity)  =>  new(true,  quantity,  string.Empty);
+    public static PositionSizeResult Failure(string reason)  =>  new(false,  0m,  reason);
+}
+
+public sealed class PositionSizeCalculator
+{
+    public PositionSizeResult Calculate(decimal balance,  decimal riskPercent,  decimal entryPrice,  decimal stopPrice,  SymbolTradingRules rules)
+    {
+        var distance  =  Math.Abs(entryPrice - stopPrice);
+        if (distance <= 0m) return PositionSizeResult.Failure("Stop distance must be positive.");
+
+        var riskAmount  =  balance * riskPercent / 100m;
+        var byRisk  =  riskAmount / (distance * rules.ContractMultiplier);
+        var byMargin  =  balance * rules.Leverage / (entryPrice * rules.ContractMultiplier);
+        var quantity  =  Math.Min(Math.Min(byRisk,  byMargin),  rules.MaximumQuantity);
+        quantity  =  RoundDown(quantity,  rules.QuantityStep);
+
+        if (quantity < rules.MinimumQuantity)
+            return PositionSizeResult.Failure("Minimum quantity would exceed configured risk or margin.");
+
+        var notional  =  quantity * entryPrice * rules.ContractMultiplier;
+        if (notional < rules.MinimumNotional)
+            return PositionSizeResult.Failure("Order is below minimum notional.");
+
+        return PositionSizeResult.Success(quantity);
+    }
+
+    private static decimal RoundDown(decimal value,  decimal step)
+         =>  step <= 0m ? value : Math.Floor(value / step) * step;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\BacktestStrategyContext.cs
+================================================================================
+using TradingSystem.Domain.MarketData;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Strategies;
+
+public sealed record BacktestStrategyContext
+{
+    public required MarketCandle CurrentCandle {  get;  init;  }
+    public required MarketCandle? PreviousCandle {  get;  init;  }
+    public required IReadOnlyList<MarketCandle> History {  get;  init;  }
+    public required BacktestPosition? ActivePosition {  get;  init;  }
+    public required decimal Balance {  get;  init;  }
+    public required int BarIndex {  get;  init;  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\BacktestStrategyRegistry.cs
+================================================================================
+namespace TradingSystem.Backtesting.Strategies;
+
+public sealed class BacktestStrategyRegistry(IEnumerable<IBacktestStrategyFactory> factories)
+{
+    private readonly IReadOnlyDictionary<string,  IBacktestStrategyFactory> _factories  =  factories
+        .ToDictionary(x  =>  x.Name,  StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyCollection<string> Names  =>  _factories.Keys.OrderBy(x  =>  x).ToArray();
+
+    public IBacktestStrategy Create(string name,  IReadOnlyDictionary<string,  string> parameters)
+    {
+        if (!_factories.TryGetValue(name,  out var factory))
+            throw new InvalidOperationException($"Unknown strategy '{name}'. Available: {string.Join(",  ",  Names)}");
+
+        return factory.Create(parameters);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\EmaCrossStrategy.cs
+================================================================================
+using System.Globalization;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Strategies;
+
+public sealed class EmaCrossStrategy(int fastPeriod,  int slowPeriod,  decimal stopLossPercent,  decimal takeProfitPercent)
+    : IBacktestStrategy
+{
+    public string Name  =>  "EMA_CROSS";
+    public int WarmupBars  =>  slowPeriod + 2;
+
+    public ValueTask<StrategyDecision> DecideAsync(BacktestStrategyContext context,  CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (context.History.Count < WarmupBars)
+            return ValueTask.FromResult(StrategyDecision.None("Warmup"));
+
+        var closes  =  context.History.Select(x  =>  x.Close).ToArray();
+        var previousFast  =  CalculateEma(closes.AsSpan(0,  closes.Length - 1),  fastPeriod);
+        var previousSlow  =  CalculateEma(closes.AsSpan(0,  closes.Length - 1),  slowPeriod);
+        var currentFast  =  CalculateEma(closes,  fastPeriod);
+        var currentSlow  =  CalculateEma(closes,  slowPeriod);
+        var price  =  context.CurrentCandle.Close;
+
+        if (previousFast <= previousSlow  &&  currentFast > currentSlow)
+        {
+            var sl  =  price * (1m - stopLossPercent / 100m);
+            var tp  =  price * (1m + takeProfitPercent / 100m);
+            return ValueTask.FromResult(context.ActivePosition?.Side == TradeSide.Short
+                ? StrategyDecision.Reverse(TradeSide.Long,  sl,  tp,  "Bullish EMA crossover")
+                : context.ActivePosition is null
+                    ? StrategyDecision.Open(TradeSide.Long,  sl,  tp,  "Bullish EMA crossover")
+                    : StrategyDecision.None("Long already open"));
+        }
+
+        if (previousFast >= previousSlow  &&  currentFast < currentSlow)
+        {
+            var sl  =  price * (1m + stopLossPercent / 100m);
+            var tp  =  price * (1m - takeProfitPercent / 100m);
+            return ValueTask.FromResult(context.ActivePosition?.Side == TradeSide.Long
+                ? StrategyDecision.Reverse(TradeSide.Short,  sl,  tp,  "Bearish EMA crossover")
+                : context.ActivePosition is null
+                    ? StrategyDecision.Open(TradeSide.Short,  sl,  tp,  "Bearish EMA crossover")
+                    : StrategyDecision.None("Short already open"));
+        }
+
+        return ValueTask.FromResult(StrategyDecision.None());
+    }
+
+    private static decimal CalculateEma(ReadOnlySpan<decimal> values,  int period)
+    {
+        if (values.Length == 0) return 0m;
+        var multiplier  =  2m / (period + 1m);
+        var ema  =  values[0];
+        for (var i  =  1; i < values.Length; i++)
+            ema  =  (values[i] - ema) * multiplier + ema;
+        return ema;
+    }
+}
+
+public sealed class EmaCrossStrategyFactory : IBacktestStrategyFactory
+{
+    public string Name  =>  "EMA_CROSS";
+
+    public IBacktestStrategy Create(IReadOnlyDictionary<string,  string> parameters)
+         =>  new EmaCrossStrategy(
+            GetInt(parameters,  "fast",  20), 
+            GetInt(parameters,  "slow",  50), 
+            GetDecimal(parameters,  "slPercent",  1m), 
+            GetDecimal(parameters,  "tpPercent",  2m));
+
+    private static int GetInt(IReadOnlyDictionary<string,  string> values,  string key,  int fallback)
+         =>  values.TryGetValue(key,  out var value)  &&  int.TryParse(value,  NumberStyles.Integer,  CultureInfo.InvariantCulture,  out var result)
+            ? result : fallback;
+
+    private static decimal GetDecimal(IReadOnlyDictionary<string,  string> values,  string key,  decimal fallback)
+         =>  values.TryGetValue(key,  out var value)  &&  decimal.TryParse(value,  NumberStyles.Any,  CultureInfo.InvariantCulture,  out var result)
+            ? result : fallback;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\IBacktestStrategy.cs
+================================================================================
+namespace TradingSystem.Backtesting.Strategies;
+
+public interface IBacktestStrategy
+{
+    string Name {  get;  }
+    int WarmupBars {  get;  }
+    ValueTask<StrategyDecision> DecideAsync(BacktestStrategyContext context,  CancellationToken cancellationToken);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\IBacktestStrategyFactory.cs
+================================================================================
+namespace TradingSystem.Backtesting.Strategies;
+
+public interface IBacktestStrategyFactory
+{
+    string Name {  get;  }
+    IBacktestStrategy Create(IReadOnlyDictionary<string,  string> parameters);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Strategies\StrategyDecision.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Strategies;
+
+public sealed record StrategyDecision
+{
+    public DecisionType Type {  get;  init;  }
+    public TradeSide? Side {  get;  init;  }
+    public decimal? StopLoss {  get;  init;  }
+    public decimal? TakeProfit {  get;  init;  }
+    public string Reason {  get;  init;  }  =  string.Empty;
+
+    public static StrategyDecision None(string reason  =  "")  =>  new() { Type  =  DecisionType.None,  Reason  =  reason };
+    public static StrategyDecision Open(TradeSide side,  decimal stopLoss,  decimal? takeProfit,  string reason)
+         =>  new() { Type  =  DecisionType.Open,  Side  =  side,  StopLoss  =  stopLoss,  TakeProfit  =  takeProfit,  Reason  =  reason };
+    public static StrategyDecision Close(string reason)
+         =>  new() { Type  =  DecisionType.Close,  Reason  =  reason };
+    public static StrategyDecision Reverse(TradeSide side,  decimal stopLoss,  decimal? takeProfit,  string reason)
+         =>  new() { Type  =  DecisionType.CloseAndReverse,  Side  =  side,  StopLoss  =  stopLoss,  TakeProfit  =  takeProfit,  Reason  =  reason };
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj
+================================================================================
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8011\Bot8011BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Bot8011;
+
+public sealed class Bot8011BacktestEngine
+{
+    public Task<BotBacktestResult<Bot8011BacktestOptions>> RunAsync(
+        decimal initialBalance, 
+        Bot8011BacktestOptions options, 
+        IReadOnlyList<MarketCandle> sourceCandles, 
+        IReadOnlyList<HistoricalBotSignal> sourceSignals, 
+        CancellationToken cancellationToken  =  default)
+    {
+        Validate(initialBalance,  options,  sourceCandles);
+        var started  =  DateTime.UtcNow;
+        var candles  =  sourceCandles.OrderBy(x  =>  x.OpenTimeUtc).ToArray();
+        var signals  =  sourceSignals.OrderBy(x  =>  x.TimeUtc).ToArray();
+        var executions  =  new List<BotExecution>();
+        var positions  =  new List<BotPositionResult>();
+        var decisions  =  new List<BotSignalDecision>();
+        var equity  =  new List<BotEquityPoint>();
+        var lastSignalAt  =  new Dictionary<TradeSide,  DateTime>();
+        var balance  =  initialBalance;
+        var peak  =  balance;
+        var signalIndex  =  0;
+        SimulatedPosition? active  =  null;
+        HistoricalBotSignal? pending  =  null;
+
+        foreach (var candle in candles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (pending is not null)
+            {
+                active ??=  TryOpen(pending,  candle.Open,  candle.OpenTimeUtc);
+                pending  =  null;
+            }
+
+            if (active is not null)
+            {
+                ProcessProtection(active,  candle);
+                if (active.Stage == LifecycleStage.Stop3Active)
+                    UpdateTrailing(active,  candle.Close);
+            }
+
+            while (signalIndex < signals.Length  &&  signals[signalIndex].TimeUtc <= candle.CloseTimeUtc)
+            {
+                var signal  =  signals[signalIndex++];
+                if (signal.TimeUtc < candle.OpenTimeUtc)
+                    continue;
+
+                var sideEnabled  =  signal.Side == TradeSide.Long ? options.EnableLong : options.EnableShort;
+                if (!sideEnabled)
+                {
+                    decisions.Add(new(signal.TimeUtc,  signal.Side,  "Block",  "SIDE_DISABLED",  candle.Close,  signal.SignalId));
+                    continue;
+                }
+
+                if (lastSignalAt.TryGetValue(signal.Side,  out var last)  && 
+                    signal.TimeUtc - last < TimeSpan.FromSeconds(options.CooldownSeconds))
+                {
+                    decisions.Add(new(signal.TimeUtc,  signal.Side,  "Block",  "SIGNAL_COOLDOWN",  candle.Close,  signal.SignalId));
+                    continue;
+                }
+
+                if (active is not null && active.Side != signal.Side)
+                {
+                    CloseRemaining(active!,  BotBacktestMath.ExitSlippage(candle.Close,  active!.Side,  options.SlippageBasisPoints),  candle.CloseTimeUtc,  "REVERSE_SIGNAL");
+                    active  =  null;
+                }
+                else if (active is not null)
+                {
+                    decisions.Add(new(signal.TimeUtc,  signal.Side,  "Block",  "ORDER_SIDE_LIMIT reached (1/1)",  candle.Close,  signal.SignalId));
+                    continue;
+                }
+
+                lastSignalAt[signal.Side]  =  signal.TimeUtc;
+                decisions.Add(new(signal.TimeUtc,  signal.Side,  "Open",  options.EnterOnNextCandleOpen ? "PENDING_NEXT_OPEN" : "SIGNAL_CLOSE",  candle.Close,  signal.SignalId));
+                if (options.EnterOnNextCandleOpen)
+                    pending  =  signal;
+                else
+                    active  =  TryOpen(signal,  candle.Close,  candle.CloseTimeUtc);
+            }
+
+            var unrealized  =  active is null ? 0 : BotBacktestMath.UnrealizedPnl(active.Side,  active.EntryPrice,  candle.Close,  active.RemainingQuantity);
+            var totalEquity  =  balance + unrealized;
+            peak  =  Math.Max(peak,  totalEquity);
+            var drawdown  =  peak - totalEquity;
+            equity.Add(new(candle.CloseTimeUtc,  balance,  totalEquity,  peak,  drawdown,  peak == 0 ? 0 : drawdown / peak * 100m));
+        }
+
+        if (active is not null)
+        {
+            var last  =  candles[^1];
+            CloseRemaining(active,  BotBacktestMath.ExitSlippage(last.Close,  active.Side,  options.SlippageBasisPoints),  last.CloseTimeUtc,  "BACKTEST_END");
+        }
+
+        return Task.FromResult(new BotBacktestResult<Bot8011BacktestOptions>
+        {
+            RunId  =  $"BOT8011_{options.Symbol}_{DateTime.UtcNow:yyyyMMdd_HHmmssfff}", 
+            BotName  =  options.BotName, 
+            Options  =  options, 
+            StartedAtUtc  =  started, 
+            CompletedAtUtc  =  DateTime.UtcNow, 
+            Metrics  =  BotBacktestMath.Metrics(signals.Length,  decisions.Count(x  =>  x.Decision == "Block"),  initialBalance,  balance,  positions,  equity), 
+            Positions  =  positions, 
+            Executions  =  executions, 
+            Decisions  =  decisions, 
+            EquityCurve  =  equity, 
+            Candles  =  candles, 
+            Signals  =  signals
+        });
+
+        SimulatedPosition? TryOpen(HistoricalBotSignal signal,  decimal rawPrice,  DateTime time)
+        {
+            var quantity  =  BotBacktestMath.RoundDown(options.Quantity,  options.QuantityStep);
+            var price  =  BotBacktestMath.RoundToStep(BotBacktestMath.EntrySlippage(rawPrice,  signal.Side,  options.SlippageBasisPoints),  options.TickSize);
+            if (quantity < options.MinimumQuantity  ||  price * quantity < options.MinimumNotional  ||  price * quantity / options.Leverage > balance)
+            {
+                decisions.Add(new(signal.TimeUtc,  signal.Side,  "Block",  "QUANTITY_OR_MARGIN_INVALID",  price,  signal.SignalId));
+                return null;
+            }
+
+            var sl  =  signal.Side == TradeSide.Long
+                ? price - options.InitialStopLossDistance
+                : price + options.InitialStopLossDistance;
+            var tp  =  signal.Side == TradeSide.Long
+                ? price * (1 + options.TakeProfitPercent / 100m)
+                : price * (1 - options.TakeProfitPercent / 100m);
+            var fee  =  price * quantity * options.TakerFeeRate;
+            balance -= fee;
+            var position  =  new SimulatedPosition
+            {
+                Id  =  Guid.NewGuid().ToString("N")[..8],  Side  =  signal.Side,  EntryTimeUtc  =  time,  EntryPrice  =  price, 
+                InitialQuantity  =  quantity,  RemainingQuantity  =  quantity, 
+                InitialStopLoss  =  BotBacktestMath.RoundToStep(sl,  options.TickSize), 
+                TakeProfit  =  BotBacktestMath.RoundToStep(tp,  options.TickSize),  Fees  =  fee
+            };
+            executions.Add(new(position.Id,  time,  "ENTRY",  position.Side,  price,  quantity,  0,  fee,  signal.Source));
+            return position;
+        }
+
+        void ProcessProtection(SimulatedPosition position,  MarketCandle candle)
+        {
+            if (position.Stage == LifecycleStage.InitialProtection)
+            {
+                var slHit  =  position.Side == TradeSide.Long ? candle.Low <= position.InitialStopLoss : candle.High >= position.InitialStopLoss;
+                var tpHit  =  position.Side == TradeSide.Long ? candle.High >= position.TakeProfit : candle.Low <= position.TakeProfit;
+                if (slHit  &&  tpHit)
+                {
+                    if (options.ConflictPolicy is IntrabarConflictPolicy.WorstCase or IntrabarConflictPolicy.StopLossFirst) tpHit  =  false;
+                    else slHit  =  false;
+                }
+                if (slHit)
+                {
+                    CloseRemaining(position,  BotBacktestMath.ExitSlippage(position.InitialStopLoss,  position.Side,  options.SlippageBasisPoints),  candle.CloseTimeUtc,  "INITIAL_SL");
+                    active  =  null;
+                    return;
+                }
+                if (tpHit)
+                {
+                    var closeQty  =  Math.Min(position.RemainingQuantity,  BotBacktestMath.RoundDown(position.InitialQuantity * options.TakeProfitCloseFraction,  options.QuantityStep));
+                    Realize(position,  position.TakeProfit,  closeQty,  candle.CloseTimeUtc,  "TP_PARTIAL");
+                    position.PartialTpReached  =  true;
+                    position.Stop3Current  =  BotBacktestMath.RoundToStep(
+                        position.Side == TradeSide.Long ? position.EntryPrice + options.Stop3EntryOffset : position.EntryPrice - options.Stop3EntryOffset, 
+                        options.TickSize);
+                    position.Stage  =  position.RemainingQuantity <= 0 ? LifecycleStage.Closed : LifecycleStage.Stop3Active;
+                    if (position.Stage == LifecycleStage.Closed)
+                        Finalize(position,  position.TakeProfit,  candle.CloseTimeUtc,  "TP_FULL_EXIT");
+                }
+            }
+            else if (position.Stage == LifecycleStage.Stop3Active  &&  position.Stop3Current.HasValue)
+            {
+                var hit  =  position.Side == TradeSide.Long ? candle.Low <= position.Stop3Current : candle.High >= position.Stop3Current;
+                if (hit)
+                {
+                    CloseRemaining(position,  BotBacktestMath.ExitSlippage(position.Stop3Current.Value,  position.Side,  options.SlippageBasisPoints),  candle.CloseTimeUtc,  "STOP3");
+                    active  =  null;
+                }
+            }
+        }
+
+        void UpdateTrailing(SimulatedPosition position,  decimal close)
+        {
+            if (!position.Stop3Current.HasValue) return;
+            if (position.Side == TradeSide.Long  &&  close >= position.Stop3Current.Value + options.Stop3TrailingStep)
+                position.Stop3Current  =  BotBacktestMath.RoundToStep(position.Stop3Current.Value + options.Stop3TrailingBuffer,  options.TickSize);
+            else if (position.Side == TradeSide.Short  &&  close <= position.Stop3Current.Value - options.Stop3TrailingStep)
+                position.Stop3Current  =  BotBacktestMath.RoundToStep(position.Stop3Current.Value - options.Stop3TrailingBuffer,  options.TickSize);
+        }
+
+        void CloseRemaining(SimulatedPosition position,  decimal price,  DateTime time,  string reason)
+        {
+            if (position.RemainingQuantity > 0) Realize(position,  price,  position.RemainingQuantity,  time,  reason);
+            position.Stage  =  LifecycleStage.Closed;
+            Finalize(position,  price,  time,  reason);
+        }
+
+        void Realize(SimulatedPosition position,  decimal rawPrice,  decimal quantity,  DateTime time,  string reason)
+        {
+            var price  =  BotBacktestMath.RoundToStep(rawPrice,  options.TickSize);
+            var gross  =  BotBacktestMath.UnrealizedPnl(position.Side,  position.EntryPrice,  price,  quantity);
+            var fee  =  price * quantity * options.TakerFeeRate;
+            position.RealizedGross += gross;
+            position.Fees += fee;
+            position.RemainingQuantity  =  Math.Max(0,  position.RemainingQuantity - quantity);
+            balance += gross - fee;
+            executions.Add(new(position.Id,  time,  "EXIT",  position.Side,  price,  quantity,  gross,  fee,  reason));
+        }
+
+        void Finalize(SimulatedPosition position,  decimal exitPrice,  DateTime exitTime,  string reason)
+        {
+            if (positions.Any(x  =>  x.PositionId == position.Id)) return;
+            positions.Add(new BotPositionResult
+            {
+                PositionId  =  position.Id,  Side  =  position.Side,  EntryTimeUtc  =  position.EntryTimeUtc, 
+                EntryPrice  =  position.EntryPrice,  ExitTimeUtc  =  exitTime,  ExitPrice  =  exitPrice, 
+                Quantity  =  position.InitialQuantity,  GrossPnl  =  position.RealizedGross,  Fees  =  position.Fees, 
+                NetPnl  =  position.RealizedGross - position.Fees,  ExitReason  =  reason, 
+                PartialTakeProfitReached  =  position.PartialTpReached
+            });
+        }
+    }
+
+    private static void Validate(decimal initialBalance,  Bot8011BacktestOptions options,  IReadOnlyList<MarketCandle> candles)
+    {
+        if (initialBalance <= 0) throw new ArgumentOutOfRangeException(nameof(initialBalance));
+        if (candles.Count < 2) throw new InvalidOperationException("At least two candles are required.");
+        if (options.Quantity <= 0  ||  options.Leverage <= 0  ||  options.TakeProfitPercent <= 0  ||  options.InitialStopLossDistance <= 0)
+            throw new ArgumentException("Invalid BOT8011 options.");
+        if (options.TakeProfitCloseFraction is <= 0 or > 1)
+            throw new ArgumentException("TakeProfitCloseFraction must be in (0,  1].");
+    }
+
+    private enum LifecycleStage { InitialProtection,  Stop3Active,  Closed }
+    private sealed class SimulatedPosition
+    {
+        public required string Id {  get;  init;  }
+        public required TradeSide Side {  get;  init;  }
+        public required DateTime EntryTimeUtc {  get;  init;  }
+        public required decimal EntryPrice {  get;  init;  }
+        public required decimal InitialQuantity {  get;  init;  }
+        public required decimal RemainingQuantity {  get;  set; }
+        public required decimal InitialStopLoss {  get;  init;  }
+        public required decimal TakeProfit {  get;  init;  }
+        public decimal? Stop3Current {  get;  set; }
+        public LifecycleStage Stage {  get;  set; }
+        public decimal RealizedGross {  get;  set; }
+        public decimal Fees {  get;  set; }
+        public bool PartialTpReached {  get;  set; }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8011\Bot8011BacktestOptions.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Bots.Bot8011;
+
+public sealed record Bot8011BacktestOptions
+{
+    public string BotName {  get;  init;  }  =  "BOT8011";
+    public string Symbol {  get;  init;  }  =  "BTCUSDC";
+    public decimal Quantity {  get;  init;  }  =  0.002m;
+    public int Leverage {  get;  init;  }  =  50;
+    public decimal TakeProfitPercent {  get;  init;  }  =  0.12m;
+    public decimal InitialStopLossDistance {  get;  init;  }  =  300m;
+    public decimal TakeProfitCloseFraction {  get;  init;  }  =  0.50m;
+    public int CooldownSeconds {  get;  init;  }  =  180;
+    public bool EnableLong {  get;  init;  }  =  true;
+    public bool EnableShort {  get;  init;  }  =  true;
+    public decimal Stop3EntryOffset {  get;  init;  }
+    public decimal Stop3TrailingStep {  get;  init;  }  =  400m;
+    public decimal Stop3TrailingBuffer {  get;  init;  }  =  50m;
+    public decimal TakerFeeRate {  get;  init;  }  =  0.0004m;
+    public decimal SlippageBasisPoints {  get;  init;  }  =  1m;
+    public decimal MinimumQuantity {  get;  init;  }  =  0.001m;
+    public decimal QuantityStep {  get;  init;  }  =  0.001m;
+    public decimal MinimumNotional {  get;  init;  }  =  5m;
+    public decimal TickSize {  get;  init;  }  =  0.1m;
+    public bool EnterOnNextCandleOpen {  get;  init;  }  =  true;
+    public IntrabarConflictPolicy ConflictPolicy {  get;  init;  }  =  IntrabarConflictPolicy.WorstCase;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8011\Bot8011Optimizer.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Optimization;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Bot8011;
+
+public sealed record Bot8011OptimizationSpace
+{
+    public IReadOnlyList<decimal> TakeProfitPercents {  get;  init;  }  =  [0.08m,  0.12m,  0.16m];
+    public IReadOnlyList<decimal> StopLossDistances {  get;  init;  }  =  [200m,  300m,  400m];
+    public IReadOnlyList<decimal> Stop3EntryOffsets {  get;  init;  }  =  [0m,  50m];
+    public IReadOnlyList<decimal> Stop3TrailingSteps {  get;  init;  }  =  [200m,  400m,  600m];
+    public IReadOnlyList<decimal> Stop3TrailingBuffers {  get;  init;  }  =  [25m,  50m,  100m];
+    public IReadOnlyList<int> Cooldowns {  get;  init;  }  =  [0,  180,  300];
+}
+
+public sealed class Bot8011Optimizer(Bot8011BacktestEngine engine,  GridSearchOptimizer optimizer)
+{
+    public Task<IReadOnlyList<OptimizationResult<Bot8011BacktestOptions,  BotBacktestMetrics>>> RunAsync(
+        decimal initialBalance,  Bot8011BacktestOptions baseline,  Bot8011OptimizationSpace space, 
+        IReadOnlyList<MarketCandle> candles,  IReadOnlyList<HistoricalBotSignal> signals, 
+        int top  =  50,  CancellationToken cancellationToken  =  default)
+    {
+        var candidates  = 
+            from tp in space.TakeProfitPercents
+            from sl in space.StopLossDistances
+            from offset in space.Stop3EntryOffsets
+            from step in space.Stop3TrailingSteps
+            from buffer in space.Stop3TrailingBuffers
+            from cooldown in space.Cooldowns
+            select baseline with { TakeProfitPercent  =  tp,  InitialStopLossDistance  =  sl,  Stop3EntryOffset  =  offset,  Stop3TrailingStep  =  step,  Stop3TrailingBuffer  =  buffer,  CooldownSeconds  =  cooldown };
+        return optimizer.RunAsync(
+            candidates, 
+            (o,  ct)  =>  engine.RunAsync(initialBalance,  o,  candles,  signals,  ct), 
+            x  =>  x.Metrics, 
+            m  =>  m.ReturnPercent + Math.Min(m.ProfitFactor,  5m) * 5m - m.MaximumDrawdownPercent * 1.5m - Math.Max(0,  10 - m.ClosedPositions) * 2m, 
+            top, 
+            cancellationToken);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8012\Bot8012BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Bot8012;
+
+public sealed class Bot8012BacktestEngine
+{
+    public BotBacktestResult<Bot8012BacktestOptions> Run(
+        IReadOnlyList<MarketCandle> sourceCandles,
+        IReadOnlyList<HistoricalBotSignal> sourceSignals,
+        Bot8012BacktestOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        Validate(sourceCandles, options);
+        var started = DateTime.UtcNow;
+        var candles = sourceCandles.OrderBy(x => x.OpenTimeUtc).ToArray();
+        var signals = sourceSignals.OrderBy(x => x.TimeUtc).ToArray();
+        var active = new List<Position>();
+        var completed = new List<BotPositionResult>();
+        var executions = new List<BotExecution>();
+        var decisions = new List<BotSignalDecision>();
+        var equity = new List<BotEquityPoint>();
+        var pending = new Queue<HistoricalBotSignal>();
+        var lastSignalAt = new Dictionary<TradeSide, DateTime>();
+        var balance = options.InitialBalance;
+        var peak = balance;
+        var signalIndex = 0;
+
+        foreach (var candle in candles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.OpenTimeUtc)
+                pending.Enqueue(signals[signalIndex++]);
+
+            while (pending.TryDequeue(out var signal))
+            {
+                var enabled = signal.Side == TradeSide.Long ? options.EnableLong : options.EnableShort;
+                if (!enabled)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "SIDE_DISABLED", candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                if (lastSignalAt.TryGetValue(signal.Side, out var last)
+                    && signal.TimeUtc - last < TimeSpan.FromSeconds(options.CooldownSeconds))
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "SIGNAL_COOLDOWN", candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                var policy = ValidateGap(signal.Side, candle.Open, active, options);
+                if (!policy.Open)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", policy.Reason, candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                var entry = BotBacktestMath.RoundToStep(
+                    BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints),
+                    options.TickSize);
+                var margin = entry * options.Quantity / options.Leverage;
+                var usedMargin = active.Sum(x => x.Margin);
+                var entryFee = entry * options.Quantity * options.EntryFeeRate;
+                var availableBalance = balance - usedMargin;
+
+                if (margin + entryFee > availableBalance)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "INSUFFICIENT_FREE_MARGIN", entry, signal.SignalId));
+                    continue;
+                }
+
+                var takeProfit = BotBacktestMath.RoundToStep(
+                    signal.Side == TradeSide.Long
+                        ? entry + options.ProfitDistance
+                        : entry - options.ProfitDistance,
+                    options.TickSize);
+
+                balance -= entryFee;
+                var position = new Position(
+                    Guid.NewGuid().ToString("N")[..8],
+                    signal.Side,
+                    signal.TimeUtc,
+                    candle.OpenTimeUtc,
+                    entry,
+                    takeProfit,
+                    options.Quantity,
+                    margin,
+                    entryFee);
+                active.Add(position);
+                executions.Add(new(position.Id, candle.OpenTimeUtc, "ENTRY", position.Side, entry, position.Quantity, 0, entryFee, signal.Source));
+                decisions.Add(new(signal.TimeUtc, signal.Side, "Open", policy.Reason, entry, signal.SignalId));
+                lastSignalAt[signal.Side] = signal.TimeUtc;
+            }
+
+            foreach (var position in active.ToArray())
+            {
+                var hit = position.Side == TradeSide.Long
+                    ? candle.High >= position.TakeProfit
+                    : candle.Low <= position.TakeProfit;
+                if (hit)
+                    Close(position, position.TakeProfit, candle.CloseTimeUtc, "TAKE_PROFIT");
+            }
+
+            var unrealized = active.Sum(x => BotBacktestMath.UnrealizedPnl(x.Side, x.EntryPrice, candle.Close, x.Quantity));
+            var totalEquity = balance + unrealized;
+            peak = Math.Max(peak, totalEquity);
+            var drawdown = peak - totalEquity;
+            equity.Add(new(candle.CloseTimeUtc, balance, totalEquity, peak, drawdown, peak == 0 ? 0 : drawdown / peak * 100m));
+        }
+
+        if (options.ForceCloseAtEnd)
+        {
+            var last = candles[^1];
+            foreach (var position in active.ToArray())
+                Close(position, BotBacktestMath.ExitSlippage(last.Close, position.Side, options.SlippageBasisPoints), last.CloseTimeUtc, "BACKTEST_END");
+        }
+
+        return new BotBacktestResult<Bot8012BacktestOptions>
+        {
+            RunId = $"BOT8012_{options.Symbol}_{DateTime.UtcNow:yyyyMMdd_HHmmssfff}",
+            BotName = options.BotName,
+            Options = options,
+            StartedAtUtc = started,
+            CompletedAtUtc = DateTime.UtcNow,
+            Metrics = BotBacktestMath.Metrics(signals.Length, decisions.Count(x => x.Decision == "Block"), options.InitialBalance, balance, completed, equity),
+            Positions = completed,
+            Executions = executions,
+            Decisions = decisions,
+            EquityCurve = equity,
+            Candles = candles,
+            Signals = signals
+        };
+
+        void Close(Position position, decimal rawPrice, DateTime time, string reason)
+        {
+            var price = BotBacktestMath.RoundToStep(rawPrice, options.TickSize);
+            var gross = BotBacktestMath.UnrealizedPnl(position.Side, position.EntryPrice, price, position.Quantity);
+            var exitFee = price * position.Quantity * options.ExitFeeRate;
+            balance += gross - exitFee;
+            active.Remove(position);
+            executions.Add(new(position.Id, time, "EXIT", position.Side, price, position.Quantity, gross, exitFee, reason));
+            completed.Add(new BotPositionResult
+            {
+                PositionId = position.Id,
+                Side = position.Side,
+                EntryTimeUtc = position.EntryTimeUtc,
+                EntryPrice = position.EntryPrice,
+                ExitTimeUtc = time,
+                ExitPrice = price,
+                Quantity = position.Quantity,
+                GrossPnl = gross,
+                Fees = position.EntryFee + exitFee,
+                NetPnl = gross - position.EntryFee - exitFee,
+                ExitReason = reason,
+                PartialTakeProfitReached = false
+            });
+        }
+    }
+
+    private static (bool Open, string Reason) ValidateGap(
+        TradeSide side,
+        decimal markPrice,
+        IReadOnlyCollection<Position> active,
+        Bot8012BacktestOptions options)
+    {
+        var sameSide = active
+            .Where(x => x.Side == side)
+            .OrderByDescending(x => x.EntryTimeUtc)
+            .ToArray();
+
+        if (sameSide.Length >= options.OrderSideLimit)
+            return (false, $"ORDER_SIDE_LIMIT reached ({sameSide.Length}/{options.OrderSideLimit})");
+        if (sameSide.Length == 0)
+            return (true, "No active TP positions for this side");
+
+        var newestTakeProfit = sameSide[0].TakeProfit;
+        if (side == TradeSide.Long)
+        {
+            var maximum = newestTakeProfit - options.ProfitDistance - options.PriceDistance;
+            return markPrice <= maximum
+                ? (true, $"LONG spacing valid: mark={markPrice}, maximum={maximum}")
+                : (false, $"GAP fail LONG: mark={markPrice}, maximum={maximum}");
+        }
+
+        var minimum = newestTakeProfit + options.ProfitDistance + options.PriceDistance;
+        return markPrice >= minimum
+            ? (true, $"SHORT spacing valid: mark={markPrice}, minimum={minimum}")
+            : (false, $"GAP fail SHORT: mark={markPrice}, minimum={minimum}");
+    }
+
+    private static void Validate(IReadOnlyList<MarketCandle> candles, Bot8012BacktestOptions options)
+    {
+        if (candles.Count < 2)
+            throw new InvalidOperationException("At least two candles are required.");
+        if (options.InitialBalance <= 0
+            || options.Quantity <= 0
+            || options.Leverage <= 0
+            || options.PriceDistance <= 0
+            || options.ProfitDistance <= 0
+            || options.OrderSideLimit <= 0
+            || options.TickSize <= 0
+            || options.EntryFeeRate < 0
+            || options.ExitFeeRate < 0
+            || options.SlippageBasisPoints < 0)
+            throw new ArgumentException("Invalid BOT8012 options.");
+    }
+
+    private sealed record Position(
+        string Id,
+        TradeSide Side,
+        DateTime SignalTimeUtc,
+        DateTime EntryTimeUtc,
+        decimal EntryPrice,
+        decimal TakeProfit,
+        decimal Quantity,
+        decimal Margin,
+        decimal EntryFee);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8012\Bot8012BacktestOptions.cs
+================================================================================
+namespace TradingSystem.Backtesting.Bots.Bot8012;
+
+public sealed record Bot8012BacktestOptions
+{
+    public string BotName {  get;  init;  }  =  "BOT8012";
+    public string StrategyVersion {  get;  init;  }  =  "1.0.0";
+    public string Symbol {  get;  init;  }  =  "BTCUSDC";
+    public decimal InitialBalance {  get;  init;  }  =  10_000m;
+    public decimal Quantity {  get;  init;  }  =  0.002m;
+    public int Leverage {  get;  init;  }  =  50;
+    public decimal PriceDistance {  get;  init;  }  =  400m;
+    public decimal ProfitDistance {  get;  init;  }  =  200m;
+    public int OrderSideLimit {  get;  init;  }  =  2;
+    public int CooldownSeconds {  get;  init;  }  =  180;
+    public bool EnableLong {  get;  init;  }  =  true;
+    public bool EnableShort {  get;  init;  }  =  true;
+    public decimal EntryFeeRate {  get;  init;  }  =  0.0004m;
+    public decimal ExitFeeRate {  get;  init;  }  =  0.0004m;
+    public decimal SlippageBasisPoints {  get;  init;  }  =  1m;
+    public decimal TickSize {  get;  init;  }  =  0.1m;
+    public bool ForceCloseAtEnd {  get;  init;  }  =  true;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8012\Bot8012Optimizer.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Optimization;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Bot8012;
+
+public sealed record Bot8012OptimizationSpace
+{
+    public IReadOnlyList<decimal> ProfitDistances {  get;  init;  }  =  [100m,  150m,  200m,  250m,  300m];
+    public IReadOnlyList<decimal> PriceDistances {  get;  init;  }  =  [200m,  300m,  400m,  500m,  600m];
+    public IReadOnlyList<int> SideLimits {  get;  init;  }  =  [1,  2,  3];
+    public IReadOnlyList<int> Cooldowns {  get;  init;  }  =  [0,  60,  180,  300];
+}
+
+public sealed class Bot8012Optimizer(Bot8012BacktestEngine engine,  GridSearchOptimizer optimizer)
+{
+    public Task<IReadOnlyList<OptimizationResult<Bot8012BacktestOptions,  BotBacktestMetrics>>> RunAsync(
+        Bot8012BacktestOptions baseline,  Bot8012OptimizationSpace space, 
+        IReadOnlyList<MarketCandle> candles,  IReadOnlyList<HistoricalBotSignal> signals, 
+        int top  =  50,  CancellationToken cancellationToken  =  default)
+    {
+        var candidates  = 
+            from profit in space.ProfitDistances
+            from gap in space.PriceDistances
+            from limit in space.SideLimits
+            from cooldown in space.Cooldowns
+            select baseline with { ProfitDistance  =  profit,  PriceDistance  =  gap,  OrderSideLimit  =  limit,  CooldownSeconds  =  cooldown };
+        return optimizer.RunAsync(
+            candidates, 
+            (o,  _)  =>  Task.FromResult(engine.Run(candles,  signals,  o)), 
+            x  =>  x.Metrics, 
+            m  =>  m.ReturnPercent + Math.Min(m.ProfitFactor,  5m) * 3m - m.MaximumDrawdownPercent * 2m, 
+            top, 
+            cancellationToken);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8013\Bot8013BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Domain.MarketData;namespace TradingSystem.Backtesting.Bots.Bot8013;public sealed class Bot8013BacktestEngine(TpOnlyGridBacktestEngine engine){public BotBacktestResult<Bot8013BacktestOptions> Run(IReadOnlyList<MarketCandle> candles, IReadOnlyList<HistoricalBotSignal> signals, Bot8013BacktestOptions options) => engine.Run(candles, signals, options);}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8013\Bot8013BacktestOptions.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;namespace TradingSystem.Backtesting.Bots.Bot8013;
+public sealed record Bot8013BacktestOptions:ITpOnlyGridBacktestOptions{public string BotName{ get; init; } = "BOT8013";public string Symbol{ get; init; } = "BTCUSDC";public decimal InitialBalance{ get; init; } = 10_000m;public decimal Quantity{ get; init; } = .002m;public int Leverage{ get; init; } = 50;public decimal PriceDistance{ get; init; } = 400m;public decimal ProfitDistance{ get; init; } = 200m;public int OrderSideLimit{ get; init; } = 2;public int CooldownSeconds{ get; init; } = 180;public bool EnableLong{ get; init; } = true;public bool EnableShort{ get; init; } = true;public decimal EntryFeeRate{ get; init; } = .0004m;public decimal ExitFeeRate{ get; init; } = .0004m;public decimal SlippageBasisPoints{ get; init; } = 1m;public decimal TickSize{ get; init; } = .1m;public bool ForceCloseAtEnd{ get; init; } = true;}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8014\Bot8014BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Domain.MarketData;namespace TradingSystem.Backtesting.Bots.Bot8014;public sealed class Bot8014BacktestEngine(TpOnlyGridBacktestEngine engine){public BotBacktestResult<Bot8014BacktestOptions> Run(IReadOnlyList<MarketCandle> candles, IReadOnlyList<HistoricalBotSignal> signals, Bot8014BacktestOptions options) => engine.Run(candles, signals, options);}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8014\Bot8014BacktestOptions.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;namespace TradingSystem.Backtesting.Bots.Bot8014;
+public sealed record Bot8014BacktestOptions:ITpOnlyGridBacktestOptions{public string BotName{ get; init; } = "BOT8014";public string Symbol{ get; init; } = "BTCUSDC";public decimal InitialBalance{ get; init; } = 10_000m;public decimal Quantity{ get; init; } = .002m;public int Leverage{ get; init; } = 50;public decimal PriceDistance{ get; init; } = 400m;public decimal ProfitDistance{ get; init; } = 200m;public int OrderSideLimit{ get; init; } = 2;public int CooldownSeconds{ get; init; } = 180;public bool EnableLong{ get; init; } = true;public bool EnableShort{ get; init; } = true;public decimal EntryFeeRate{ get; init; } = .0004m;public decimal ExitFeeRate{ get; init; } = .0004m;public decimal SlippageBasisPoints{ get; init; } = 1m;public decimal TickSize{ get; init; } = .1m;public bool ForceCloseAtEnd{ get; init; } = true;}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8015\Bot8015BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Bot8011;using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Domain.MarketData;namespace TradingSystem.Backtesting.Bots.Bot8015;public sealed class Bot8015BacktestEngine(Bot8011BacktestEngine engine){public async Task<BotBacktestResult<Bot8015BacktestOptions>> RunAsync(IReadOnlyList<MarketCandle> candles, IReadOnlyList<HistoricalBotSignal> signals, Bot8015BacktestOptions o, CancellationToken ct = default){var mapped = new Bot8011BacktestOptions{BotName = o.BotName, Symbol = o.Symbol, Quantity = o.Quantity, Leverage = o.Leverage, InitialStopLossDistance = o.InitialStopLossDistance, TakeProfitPercent = o.TakeProfitPercent, TakeProfitCloseFraction = o.TakeProfitCloseFraction, CooldownSeconds = o.CooldownSeconds, EnableLong = o.EnableLong, EnableShort = o.EnableShort, Stop3EntryOffset = o.Stop3EntryOffset, Stop3TrailingStep = o.Stop3TrailingStep, Stop3TrailingBuffer = o.Stop3TrailingBuffer, TakerFeeRate = o.TakerFeeRate, SlippageBasisPoints = o.SlippageBasisPoints, MinimumQuantity = o.MinimumQuantity, QuantityStep = o.QuantityStep, MinimumNotional = o.MinimumNotional, TickSize = o.TickSize, EnterOnNextCandleOpen = o.EnterOnNextCandleOpen};var r = await engine.RunAsync(o.InitialBalance, mapped, candles, signals, ct);return new(){RunId = r.RunId.Replace("BOT8011", "BOT8015"), BotName = o.BotName, Options = o, StartedAtUtc = r.StartedAtUtc, CompletedAtUtc = r.CompletedAtUtc, Metrics = r.Metrics, Positions = r.Positions, Executions = r.Executions, Decisions = r.Decisions, EquityCurve = r.EquityCurve, Candles = r.Candles, Signals = r.Signals};}}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8015\Bot8015BacktestOptions.cs
+================================================================================
+namespace TradingSystem.Backtesting.Bots.Bot8015;public sealed record Bot8015BacktestOptions{public string BotName{ get; init; } = "BOT8015";public string Symbol{ get; init; } = "BTCUSDC";public decimal InitialBalance{ get; init; } = 10_000m;public decimal Quantity{ get; init; } = .002m;public int Leverage{ get; init; } = 50;public decimal InitialStopLossDistance{ get; init; } = 300m;public decimal TakeProfitPercent{ get; init; } = .12m;public decimal TakeProfitCloseFraction{ get; init; } = .5m;public int CooldownSeconds{ get; init; } = 180;public bool EnableLong{ get; init; } = true;public bool EnableShort{ get; init; } = true;public decimal Stop3EntryOffset{ get; init; } = 0m;public decimal Stop3TrailingStep{ get; init; } = 400m;public decimal Stop3TrailingBuffer{ get; init; } = 50m;public decimal TakerFeeRate{ get; init; } = .0004m;public decimal SlippageBasisPoints{ get; init; } = 1m;public decimal MinimumQuantity{ get; init; } = .001m;public decimal QuantityStep{ get; init; } = .001m;public decimal MinimumNotional{ get; init; } = 5m;public decimal TickSize{ get; init; } = .1m;public bool EnterOnNextCandleOpen{ get; init; } = true;}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8016\Bot8016BacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Backtesting.Models;using TradingSystem.Domain.Enums;using TradingSystem.Domain.MarketData;using TradingSystem.Strategies.Alligator;using TradingSystem.Strategies.Protection;
+namespace TradingSystem.Backtesting.Bots.Bot8016;
+public sealed class Bot8016BacktestEngine(AlligatorEntryPolicy entryPolicy, Stop3Policy stop3Policy)
+{
+ public BotBacktestResult<Bot8016BacktestOptions> Run(IReadOnlyList<MarketCandle> sourceCandles, IReadOnlyList<HistoricalAlligatorSnapshot> sourceIndicators, Bot8016BacktestOptions o)
+ {
+  var candles = sourceCandles.OrderBy(x => x.OpenTimeUtc).ToArray();if(candles.Length<2)throw new InvalidOperationException("At least two candles are required.");var indicators = sourceIndicators.OrderBy(x => x.TimeUtc).ToArray();var completed = new List<BotPositionResult>();var executions = new List<BotExecution>();var decisions = new List<BotSignalDecision>();var equity = new List<BotEquityPoint>();var generated = new List<HistoricalBotSignal>();P? active = null;decimal balance = o.InitialBalance, peak = balance;HistoricalAlligatorSnapshot? latest = null;var ii = 0;
+  foreach(var c in candles){while(ii<indicators.Length && indicators[ii].TimeUtc<=c.CloseTimeUtc)latest = indicators[ii++];
+            if(c.Interval.Equals(o.EntryTimeframe, StringComparison.OrdinalIgnoreCase) && latest is not null && active is null){
+                var decision = entryPolicy.Evaluate(new(c.Symbol, c.Interval, c.IsClosed, c.Open, c.High, c.Low, c.Close, latest.Teeth, latest.Sma200), new(o.Symbol, o.EntryTimeframe, o.EnableLong, o.EnableShort, o.UseMa200Filter, o.MinimumSignalCandleRange));
+                if (decision is not null)
+                {
+                    var side = decision.Side == PositionSide.Long
+                        ? TradeSide.Long
+                        : TradeSide.Short;
+
+                    var signal = new HistoricalBotSignal(
+                        c.CloseTimeUtc,
+                        side,
+                        "BOT8016_INTERNAL");
+
+                    generated.Add(signal);
+
+                    var entry = BotBacktestMath.RoundToStep(
+                        BotBacktestMath.EntrySlippage(
+                            c.Close,
+                            side,
+                            o.SlippageBasisPoints),
+                        o.TickSize);
+
+                    var sl = decision.Side == PositionSide.Long
+                        ? c.Low > 0
+                            ? c.Low
+                            : entry - o.InitialStopLossFallback
+                        : c.High > 0
+                            ? c.High
+                            : entry + o.InitialStopLossFallback;
+
+                    var tp = decision.Side == PositionSide.Long
+                        ? entry * (1 + o.TakeProfitPercent / 100m)
+                        : entry * (1 - o.TakeProfitPercent / 100m);
+
+                    var fee = entry * o.Quantity * o.TakerFeeRate;
+
+                    balance -= fee;
+
+                    active = new P(
+                        Guid.NewGuid().ToString("N")[..8],
+                        decision.Side,
+                        c.CloseTimeUtc,
+                        entry,
+                        o.Quantity,
+                        sl,
+                        tp,
+                        c.High,
+                        c.Low,
+                        fee);
+
+                    executions.Add(new BotExecution(
+                        active.Id,
+                        c.CloseTimeUtc,
+                        "ENTRY",
+                        side,
+                        entry,
+                        o.Quantity,
+                        0,
+                        fee,
+                        decision.Reason));
+
+                    decisions.Add(new BotSignalDecision(
+                        c.CloseTimeUtc,
+                        side,
+                        "Open",
+                        decision.Reason,
+                        c.Close,
+                        signal.SignalId));
+                }
+            }
+   if(active is not null){var side = active.Side==PositionSide.Long?TradeSide.Long:TradeSide.Short;if(!active.TpReached){var slHit = active.Side==PositionSide.Long?c.Low<=active.Sl:c.High>=active.Sl;var tpHit = active.Side==PositionSide.Long?c.High>=active.Tp:c.Low<=active.Tp;if(slHit){Close(active, active.Sl, c.CloseTimeUtc, "INITIAL_SL");active = null;}else if(tpHit){var qty = active.Qty/2m;Realize(active, active.Tp, qty, c.CloseTimeUtc, "TP_PARTIAL");active.TpReached = true;active.Remaining-=qty;}}
+    if(active is not null && active.TpReached && !active.Stop3Created && stop3Policy.Breakout(active.Side, c.Close, active.SignalHigh, active.SignalLow)){active.Stop3 = BotBacktestMath.RoundToStep(stop3Policy.InitialTrigger(active.Side, active.Entry, new(o.Stop3EntryOffset, 0, 0)), o.TickSize);active.Stop3Created = true;}
+    if(active is not null && active.Stop3Created && active.Stop3.HasValue){var hit = active.Side==PositionSide.Long?c.Low<=active.Stop3:c.High>=active.Stop3;if(hit){Close(active, active.Stop3.Value, c.CloseTimeUtc, "STOP3");active = null;}else if(latest is not null && stop3Policy.TeethExit(active.Side, c.Close, latest.Teeth)){Close(active, c.Close, c.CloseTimeUtc, active.Side==PositionSide.Long?"EXIT_BELOW_TEETH":"EXIT_ABOVE_TEETH");active = null;}}}
+   var unreal = active is null?0:BotBacktestMath.UnrealizedPnl(active.Side==PositionSide.Long?TradeSide.Long:TradeSide.Short, active.Entry, c.Close, active.Remaining);var eq = balance+unreal;peak = Math.Max(peak, eq);var dd = peak-eq;equity.Add(new(c.CloseTimeUtc, balance, eq, peak, dd, peak==0?0:dd/peak*100m));}
+  if(active is not null){var c = candles[^1];Close(active, c.Close, c.CloseTimeUtc, "BACKTEST_END");}
+  return new(){RunId = $"BOT8016_{o.Symbol}_{DateTime.UtcNow:yyyyMMdd_HHmmssfff}", BotName = o.BotName, Options = o, StartedAtUtc = candles[0].OpenTimeUtc, CompletedAtUtc = DateTime.UtcNow, Metrics = BotBacktestMath.Metrics(generated.Count, decisions.Count(x => x.Decision=="Block"), o.InitialBalance, balance, completed, equity), Positions = completed, Executions = executions, Decisions = decisions, EquityCurve = equity, Candles = candles, Signals = generated};
+  void Realize(P p, decimal raw, decimal qty, DateTime time, string reason){var side = p.Side==PositionSide.Long?TradeSide.Long:TradeSide.Short;var price = BotBacktestMath.RoundToStep(BotBacktestMath.ExitSlippage(raw, side, o.SlippageBasisPoints), o.TickSize);var gross = BotBacktestMath.UnrealizedPnl(side, p.Entry, price, qty);var fee = price*qty*o.TakerFeeRate;p.Gross+=gross;p.Fees+=fee;balance+=gross-fee;executions.Add(new(p.Id, time, "EXIT", side, price, qty, gross, fee, reason));}
+  void Close(P p, decimal raw, DateTime time, string reason){if(p.Remaining>0){Realize(p, raw, p.Remaining, time, reason);p.Remaining = 0;}var side = p.Side==PositionSide.Long?TradeSide.Long:TradeSide.Short;completed.Add(new(){PositionId = p.Id, Side = side, EntryTimeUtc = p.EntryTime, EntryPrice = p.Entry, ExitTimeUtc = time, ExitPrice = raw, Quantity = p.Qty, GrossPnl = p.Gross, Fees = p.Fees, NetPnl = p.Gross-p.Fees, ExitReason = reason, PartialTakeProfitReached = p.TpReached});}
+ }
+ private sealed class P(string id, PositionSide side, DateTime entryTime, decimal entry, decimal qty, decimal sl, decimal tp, decimal high, decimal low, decimal fee){public string Id = id;public PositionSide Side = side;public DateTime EntryTime = entryTime;public decimal Entry = entry;public decimal Qty = qty;public decimal Remaining = qty;public decimal Sl = sl;public decimal Tp = tp;public decimal? SignalHigh = high;public decimal? SignalLow = low;public decimal Fees = fee;public decimal Gross;public bool TpReached;public bool Stop3Created;public decimal? Stop3;}
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8016\Bot8016BacktestModels.cs
+================================================================================
+using TradingSystem.Domain.MarketData;namespace TradingSystem.Backtesting.Bots.Bot8016;public sealed record HistoricalAlligatorSnapshot(DateTime TimeUtc, string Symbol, string Interval, decimal Jaw, decimal Teeth, decimal Lips, decimal Sma200);public sealed record Bot8016BacktestOptions{public string BotName{ get; init; } = "BOT8016";public string Symbol{ get; init; } = "BTCUSDC";public string EntryTimeframe{ get; init; } = "5m";public string ExitTimeframe{ get; init; } = "1m";public decimal InitialBalance{ get; init; } = 10_000m;public decimal Quantity{ get; init; } = .002m;public int Leverage{ get; init; } = 50;public decimal InitialStopLossFallback{ get; init; } = 300m;public decimal TakeProfitPercent{ get; init; } = .12m;public decimal Stop3EntryOffset{ get; init; } = 0m;public bool UseMa200Filter{ get; init; } = true;public decimal MinimumSignalCandleRange{ get; init; } = 50m;public bool EnableLong{ get; init; } = true;public bool EnableShort{ get; init; } = true;public decimal TakerFeeRate{ get; init; } = .0004m;public decimal SlippageBasisPoints{ get; init; } = 1m;public decimal TickSize{ get; init; } = .1m;}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\BotBacktestMath.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Bots.Common;
+
+internal static class BotBacktestMath
+{
+    public static decimal RoundToStep(decimal value,  decimal step)
+         =>  step <= 0 ? value : Math.Round(value / step,  MidpointRounding.AwayFromZero) * step;
+
+    public static decimal RoundDown(decimal value,  decimal step)
+         =>  step <= 0 ? value : Math.Floor(value / step) * step;
+
+    public static decimal EntrySlippage(decimal price,  TradeSide side,  decimal basisPoints)
+         =>  side == TradeSide.Long
+            ? price * (1m + basisPoints / 10_000m)
+            : price * (1m - basisPoints / 10_000m);
+
+    public static decimal ExitSlippage(decimal price,  TradeSide side,  decimal basisPoints)
+         =>  side == TradeSide.Long
+            ? price * (1m - basisPoints / 10_000m)
+            : price * (1m + basisPoints / 10_000m);
+
+    public static decimal UnrealizedPnl(TradeSide side,  decimal entry,  decimal current,  decimal quantity)
+         =>  (side == TradeSide.Long ? current - entry : entry - current) * quantity;
+
+    public static BotBacktestMetrics Metrics(
+        int signals, 
+        int blocked, 
+        decimal initial, 
+        decimal final, 
+        IReadOnlyList<BotPositionResult> positions, 
+        IReadOnlyList<BotEquityPoint> equity)
+    {
+        var wins  =  positions.Where(x  =>  x.NetPnl > 0).ToArray();
+        var losses  =  positions.Where(x  =>  x.NetPnl <= 0).ToArray();
+        var grossProfit  =  wins.Sum(x  =>  x.NetPnl);
+        var grossLoss  =  Math.Abs(losses.Sum(x  =>  x.NetPnl));
+        return new BotBacktestMetrics
+        {
+            Signals  =  signals, 
+            OpenedPositions  =  positions.Count, 
+            BlockedSignals  =  blocked, 
+            ClosedPositions  =  positions.Count, 
+            WinningPositions  =  wins.Length, 
+            LosingPositions  =  losses.Length, 
+            WinRatePercent  =  positions.Count == 0 ? 0 : wins.Length * 100m / positions.Count, 
+            InitialBalance  =  initial, 
+            FinalBalance  =  final, 
+            NetProfit  =  final - initial, 
+            ReturnPercent  =  initial == 0 ? 0 : (final - initial) / initial * 100m, 
+            GrossProfit  =  grossProfit, 
+            GrossLoss  =  grossLoss, 
+            ProfitFactor  =  grossLoss == 0 ? (grossProfit > 0 ? decimal.MaxValue : 0) : grossProfit / grossLoss, 
+            MaximumDrawdownAmount  =  equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownAmount), 
+            MaximumDrawdownPercent  =  equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownPercent), 
+            TotalFees  =  positions.Sum(x  =>  x.Fees), 
+            Expectancy  =  positions.Count == 0 ? 0 : positions.Average(x  =>  x.NetPnl), 
+            PartialTakeProfits  =  positions.Count(x  =>  x.PartialTakeProfitReached)
+        };
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\BotSimulationModels.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Common;
+
+public sealed record BotExecution(
+    string PositionId, 
+    DateTime TimeUtc, 
+    string Type, 
+    TradeSide Side, 
+    decimal Price, 
+    decimal Quantity, 
+    decimal GrossPnl, 
+    decimal Fee, 
+    string Reason);
+
+public sealed record BotPositionResult
+{
+    public required string PositionId {  get;  init;  }
+    public required TradeSide Side {  get;  init;  }
+    public required DateTime EntryTimeUtc {  get;  init;  }
+    public required decimal EntryPrice {  get;  init;  }
+    public required DateTime ExitTimeUtc {  get;  init;  }
+    public required decimal ExitPrice {  get;  init;  }
+    public required decimal Quantity {  get;  init;  }
+    public required decimal GrossPnl {  get;  init;  }
+    public required decimal Fees {  get;  init;  }
+    public required decimal NetPnl {  get;  init;  }
+    public required string ExitReason {  get;  init;  }
+    public bool PartialTakeProfitReached {  get;  init;  }
+}
+
+public sealed record BotEquityPoint(
+    DateTime TimeUtc, 
+    decimal Balance, 
+    decimal Equity, 
+    decimal Peak, 
+    decimal DrawdownAmount, 
+    decimal DrawdownPercent);
+
+public sealed record BotBacktestMetrics
+{
+    public int Signals {  get;  init;  }
+    public int OpenedPositions {  get;  init;  }
+    public int BlockedSignals {  get;  init;  }
+    public int ClosedPositions {  get;  init;  }
+    public int WinningPositions {  get;  init;  }
+    public int LosingPositions {  get;  init;  }
+    public decimal WinRatePercent {  get;  init;  }
+    public decimal InitialBalance {  get;  init;  }
+    public decimal FinalBalance {  get;  init;  }
+    public decimal NetProfit {  get;  init;  }
+    public decimal ReturnPercent {  get;  init;  }
+    public decimal GrossProfit {  get;  init;  }
+    public decimal GrossLoss {  get;  init;  }
+    public decimal ProfitFactor {  get;  init;  }
+    public decimal MaximumDrawdownAmount {  get;  init;  }
+    public decimal MaximumDrawdownPercent {  get;  init;  }
+    public decimal TotalFees {  get;  init;  }
+    public decimal Expectancy {  get;  init;  }
+    public int PartialTakeProfits {  get;  init;  }
+}
+
+public sealed record BotSignalDecision(
+    DateTime TimeUtc, 
+    TradeSide Side, 
+    string Decision, 
+    string Reason, 
+    decimal ReferencePrice, 
+    string? SignalId);
+
+public sealed record BotBacktestResult<TOptions>
+{
+    public required string RunId {  get;  init;  }
+    public required string BotName {  get;  init;  }
+    public required TOptions Options {  get;  init;  }
+    public required DateTime StartedAtUtc {  get;  init;  }
+    public required DateTime CompletedAtUtc {  get;  init;  }
+    public required BotBacktestMetrics Metrics {  get;  init;  }
+    public required IReadOnlyList<BotPositionResult> Positions {  get;  init;  }
+    public required IReadOnlyList<BotExecution> Executions {  get;  init;  }
+    public required IReadOnlyList<BotSignalDecision> Decisions {  get;  init;  }
+    public required IReadOnlyList<BotEquityPoint> EquityCurve {  get;  init;  }
+    public required IReadOnlyList<MarketCandle> Candles {  get;  init;  }
+    public required IReadOnlyList<HistoricalBotSignal> Signals {  get;  init;  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\HistoricalBotSignal.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Bots.Common;
+
+public sealed record HistoricalBotSignal(
+    DateTime TimeUtc, 
+    TradeSide Side, 
+    string Source  =  "historical", 
+    string? SignalId  =  null);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\TpOnlyGridBacktestEngine.cs
+================================================================================
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.MarketData;
+using TradingSystem.Strategies.Grid;
+
+namespace TradingSystem.Backtesting.Bots.Common;
+
+public interface ITpOnlyGridBacktestOptions
+{
+    string BotName { get; }
+    string Symbol { get; }
+    decimal InitialBalance { get; }
+    decimal Quantity { get; }
+    int Leverage { get; }
+    decimal PriceDistance { get; }
+    decimal ProfitDistance { get; }
+    int OrderSideLimit { get; }
+    int CooldownSeconds { get; }
+    bool EnableLong { get; }
+    bool EnableShort { get; }
+    decimal EntryFeeRate { get; }
+    decimal ExitFeeRate { get; }
+    decimal SlippageBasisPoints { get; }
+    decimal TickSize { get; }
+    bool ForceCloseAtEnd { get; }
+}
+
+public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
+{
+    public BotBacktestResult<TOptions> Run<TOptions>(
+        IReadOnlyList<MarketCandle> sourceCandles,
+        IReadOnlyList<HistoricalBotSignal> sourceSignals,
+        TOptions options,
+        CancellationToken cancellationToken = default)
+        where TOptions : ITpOnlyGridBacktestOptions
+    {
+        Validate(sourceCandles, options);
+        var candles = sourceCandles.OrderBy(x => x.OpenTimeUtc).ToArray();
+        var signals = sourceSignals.OrderBy(x => x.TimeUtc).ToArray();
+        var active = new List<Position>();
+        var completed = new List<BotPositionResult>();
+        var executions = new List<BotExecution>();
+        var decisions = new List<BotSignalDecision>();
+        var equity = new List<BotEquityPoint>();
+        var lastSignalAt = new Dictionary<TradeSide, DateTime>();
+        var balance = options.InitialBalance;
+        var peak = balance;
+        var signalIndex = 0;
+
+        foreach (var candle in candles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.OpenTimeUtc)
+            {
+                var signal = signals[signalIndex++];
+                var positionSide = ToPositionSide(signal.Side);
+
+                if (signal.Side == TradeSide.Long && !options.EnableLong
+                    || signal.Side == TradeSide.Short && !options.EnableShort)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "SIDE_DISABLED", candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                if (lastSignalAt.TryGetValue(signal.Side, out var previous)
+                    && signal.TimeUtc - previous < TimeSpan.FromSeconds(options.CooldownSeconds))
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "SIGNAL_COOLDOWN", candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                var references = active
+                    .Select(x => new GridPositionReference(ToPositionSide(x.Side), x.TakeProfit, x.EntryTimeUtc))
+                    .ToArray();
+                var check = policy.Evaluate(
+                    positionSide,
+                    candle.Open,
+                    references,
+                    new(options.PriceDistance, options.ProfitDistance, options.OrderSideLimit));
+
+                if (!check.Allowed)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", check.Reason, candle.Open, signal.SignalId));
+                    continue;
+                }
+
+                var entry = BotBacktestMath.RoundToStep(
+                    BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints),
+                    options.TickSize);
+                var margin = entry * options.Quantity / options.Leverage;
+                var usedMargin = active.Sum(x => x.Margin);
+                var entryFee = entry * options.Quantity * options.EntryFeeRate;
+
+                if (margin + entryFee > balance - usedMargin)
+                {
+                    decisions.Add(new(signal.TimeUtc, signal.Side, "Block", "INSUFFICIENT_FREE_MARGIN", entry, signal.SignalId));
+                    continue;
+                }
+
+                var takeProfit = BotBacktestMath.RoundToStep(
+                    signal.Side == TradeSide.Long
+                        ? entry + options.ProfitDistance
+                        : entry - options.ProfitDistance,
+                    options.TickSize);
+
+                balance -= entryFee;
+                var position = new Position(
+                    Guid.NewGuid().ToString("N")[..8],
+                    signal.Side,
+                    candle.OpenTimeUtc,
+                    entry,
+                    takeProfit,
+                    options.Quantity,
+                    margin,
+                    entryFee);
+                active.Add(position);
+                executions.Add(new(position.Id, candle.OpenTimeUtc, "ENTRY", position.Side, entry, position.Quantity, 0, entryFee, signal.Source));
+                decisions.Add(new(signal.TimeUtc, signal.Side, "Open", check.Reason, entry, signal.SignalId));
+                lastSignalAt[signal.Side] = signal.TimeUtc;
+            }
+
+            foreach (var position in active.ToArray())
+            {
+                var hit = position.Side == TradeSide.Long
+                    ? candle.High >= position.TakeProfit
+                    : candle.Low <= position.TakeProfit;
+                if (hit)
+                    Close(position, position.TakeProfit, candle.CloseTimeUtc, "TAKE_PROFIT");
+            }
+
+            var unrealized = active.Sum(x => BotBacktestMath.UnrealizedPnl(x.Side, x.EntryPrice, candle.Close, x.Quantity));
+            var currentEquity = balance + unrealized;
+            peak = Math.Max(peak, currentEquity);
+            var drawdown = peak - currentEquity;
+            equity.Add(new(candle.CloseTimeUtc, balance, currentEquity, peak, drawdown, peak == 0 ? 0 : drawdown / peak * 100m));
+        }
+
+        if (options.ForceCloseAtEnd)
+        {
+            var last = candles[^1];
+            foreach (var position in active.ToArray())
+                Close(position, BotBacktestMath.ExitSlippage(last.Close, position.Side, options.SlippageBasisPoints), last.CloseTimeUtc, "BACKTEST_END");
+        }
+
+        return new BotBacktestResult<TOptions>
+        {
+            RunId = $"{options.BotName}_{options.Symbol}_{DateTime.UtcNow:yyyyMMdd_HHmmssfff}",
+            BotName = options.BotName,
+            Options = options,
+            StartedAtUtc = candles[0].OpenTimeUtc,
+            CompletedAtUtc = DateTime.UtcNow,
+            Metrics = BotBacktestMath.Metrics(signals.Length, decisions.Count(x => x.Decision == "Block"), options.InitialBalance, balance, completed, equity),
+            Positions = completed,
+            Executions = executions,
+            Decisions = decisions,
+            EquityCurve = equity,
+            Candles = candles,
+            Signals = signals
+        };
+
+        void Close(Position position, decimal rawPrice, DateTime time, string reason)
+        {
+            var price = BotBacktestMath.RoundToStep(rawPrice, options.TickSize);
+            var gross = BotBacktestMath.UnrealizedPnl(position.Side, position.EntryPrice, price, position.Quantity);
+            var exitFee = price * position.Quantity * options.ExitFeeRate;
+            balance += gross - exitFee;
+            active.Remove(position);
+            executions.Add(new(position.Id, time, "EXIT", position.Side, price, position.Quantity, gross, exitFee, reason));
+            completed.Add(new BotPositionResult
+            {
+                PositionId = position.Id,
+                Side = position.Side,
+                EntryTimeUtc = position.EntryTimeUtc,
+                EntryPrice = position.EntryPrice,
+                ExitTimeUtc = time,
+                ExitPrice = price,
+                Quantity = position.Quantity,
+                GrossPnl = gross,
+                Fees = position.EntryFee + exitFee,
+                NetPnl = gross - position.EntryFee - exitFee,
+                ExitReason = reason,
+                PartialTakeProfitReached = false
+            });
+        }
+    }
+
+    private static void Validate<TOptions>(IReadOnlyList<MarketCandle> candles, TOptions options)
+        where TOptions : ITpOnlyGridBacktestOptions
+    {
+        if (candles.Count < 2)
+            throw new InvalidOperationException("At least two candles are required.");
+        if (options.InitialBalance <= 0
+            || options.Quantity <= 0
+            || options.Leverage <= 0
+            || options.PriceDistance <= 0
+            || options.ProfitDistance <= 0
+            || options.OrderSideLimit <= 0
+            || options.TickSize <= 0
+            || options.EntryFeeRate < 0
+            || options.ExitFeeRate < 0
+            || options.SlippageBasisPoints < 0)
+            throw new ArgumentException("Invalid TP-only grid backtest options.");
+    }
+
+    private static PositionSide ToPositionSide(TradeSide side)
+        => side == TradeSide.Long ? PositionSide.Long : PositionSide.Short;
+
+    private sealed record Position(
+        string Id,
+        TradeSide Side,
+        DateTime EntryTimeUtc,
+        decimal EntryPrice,
+        decimal TakeProfit,
+        decimal Quantity,
+        decimal Margin,
+        decimal EntryFee);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;using TradingSystem.Backtesting.Bots.Bot8011;using TradingSystem.Backtesting.Bots.Bot8012;using TradingSystem.Backtesting.Bots.Bot8013;using TradingSystem.Backtesting.Bots.Bot8014;using TradingSystem.Backtesting.Bots.Bot8015;using TradingSystem.Backtesting.Bots.Bot8016;using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Strategies.Alligator;using TradingSystem.Strategies.Grid;using TradingSystem.Strategies.Protection;namespace TradingSystem.Backtesting.Bots;public static class DependencyInjection{public static IServiceCollection AddBotBacktesting(this IServiceCollection s){s.AddSingleton<GridSpacingPolicy>();s.AddSingleton<Stop3Policy>();s.AddSingleton<AlligatorEntryPolicy>();s.AddSingleton<TpOnlyGridBacktestEngine>();s.AddSingleton<Bot8011BacktestEngine>();s.AddSingleton<Bot8012BacktestEngine>();s.AddSingleton<Bot8013BacktestEngine>();s.AddSingleton<Bot8014BacktestEngine>();s.AddSingleton<Bot8015BacktestEngine>();s.AddSingleton<Bot8016BacktestEngine>();return s;}}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Optimization\GridSearchOptimizer.cs
+================================================================================
+using System.Collections.Concurrent;
+
+namespace TradingSystem.Backtesting.Bots.Optimization;
+
+public sealed record OptimizationResult<TOptions, TMetrics>(
+    TOptions Options,
+    TMetrics Metrics,
+    decimal Score);
+
+public sealed class GridSearchOptimizer
+{
+    public async Task<IReadOnlyList<OptimizationResult<TOptions, TMetrics>>> RunAsync<TOptions, TResult, TMetrics>(
+        IEnumerable<TOptions> candidates,
+        Func<TOptions, CancellationToken, Task<TResult>> run,
+        Func<TResult, TMetrics> metrics,
+        Func<TMetrics, decimal> score,
+        int top,
+        CancellationToken cancellationToken = default,
+        int? maximumDegreeOfParallelism = null)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(metrics);
+        ArgumentNullException.ThrowIfNull(score);
+
+        var candidateSet = candidates.ToArray();
+        if (candidateSet.Length == 0)
+            return [];
+
+        var rows = new ConcurrentBag<(int Sequence, OptimizationResult<TOptions, TMetrics> Result)>();
+        var parallelOptions = new ParallelOptions
+        {
+            CancellationToken = cancellationToken,
+            MaxDegreeOfParallelism = Math.Max(
+                1,
+                maximumDegreeOfParallelism ?? Math.Min(Environment.ProcessorCount, 8))
+        };
+
+        await Parallel.ForEachAsync(
+            candidateSet.Select((candidate, sequence) => (candidate, sequence)),
+            parallelOptions,
+            async (item, ct) =>
+            {
+                var result = await run(item.candidate, ct);
+                var metricValue = metrics(result);
+                rows.Add((
+                    item.sequence,
+                    new OptimizationResult<TOptions, TMetrics>(
+                        item.candidate,
+                        metricValue,
+                        score(metricValue))));
+            });
+
+        return rows
+            .OrderByDescending(x => x.Result.Score)
+            .ThenBy(x => x.Sequence)
+            .Take(Math.Max(1, top))
+            .Select(x => x.Result)
+            .ToArray();
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Signals\CsvHistoricalBotSignalSource.cs
+================================================================================
+using System.Globalization;
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Bots.Signals;
+
+public sealed class CsvHistoricalBotSignalSource(string filePath)
+{
+    public async Task<IReadOnlyList<HistoricalBotSignal>> LoadAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException("Signal CSV was not found.", filePath);
+
+        var result = new List<HistoricalBotSignal>();
+        using var stream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream);
+
+        var header = await reader.ReadLineAsync(cancellationToken);
+        if (header is null)
+            return [];
+
+        var separator = header.Contains(';') ? ';' : ',';
+        var lineNumber = 1;
+
+        while (await reader.ReadLineAsync(cancellationToken) is { } raw)
+        {
+            lineNumber++;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            var parts = raw.Split(separator, StringSplitOptions.TrimEntries);
+            if (parts.Length < 2)
+                throw new InvalidDataException($"Signal CSV row {lineNumber} requires at least time and side.");
+
+            if (!DateTime.TryParse(
+                    parts[0],
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var time))
+                throw new InvalidDataException($"Invalid signal time at row {lineNumber}: '{parts[0]}'.");
+
+            if (!TrySide(parts[1], out var side))
+                throw new InvalidDataException($"Invalid signal side at row {lineNumber}: '{parts[1]}'.");
+
+            result.Add(new HistoricalBotSignal(
+                DateTime.SpecifyKind(time, DateTimeKind.Utc),
+                side,
+                parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2] : "csv",
+                parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3] : null));
+        }
+
+        return result
+            .OrderBy(x => x.TimeUtc)
+            .ThenBy(x => x.SignalId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool TrySide(string value, out TradeSide side)
+    {
+        if (value.Equals("LONG", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("BUY", StringComparison.OrdinalIgnoreCase))
+        {
+            side = TradeSide.Long;
+            return true;
+        }
+
+        if (value.Equals("SHORT", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("SELL", StringComparison.OrdinalIgnoreCase))
+        {
+            side = TradeSide.Short;
+            return true;
+        }
+
+        side = default;
+        return false;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Signals\EmaCrossDemoSignalSource.cs
+================================================================================
+using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Domain.MarketData;
+
+namespace TradingSystem.Backtesting.Bots.Signals;
+
+public sealed class EmaCrossDemoSignalSource
+{
+    private readonly int _fastPeriod;
+    private readonly int _slowPeriod;
+
+    public EmaCrossDemoSignalSource(int fastPeriod = 20, int slowPeriod = 50)
+    {
+        if (fastPeriod <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fastPeriod));
+        if (slowPeriod <= fastPeriod)
+            throw new ArgumentOutOfRangeException(nameof(slowPeriod), "Slow period must be greater than fast period.");
+
+        _fastPeriod = fastPeriod;
+        _slowPeriod = slowPeriod;
+    }
+
+    public IReadOnlyList<HistoricalBotSignal> Generate(IReadOnlyList<MarketCandle> candles)
+    {
+        ArgumentNullException.ThrowIfNull(candles);
+
+        var ordered = candles
+            .Where(x => x.IsClosed)
+            .OrderBy(x => x.OpenTimeUtc)
+            .ToArray();
+
+        if (ordered.Length < _slowPeriod)
+            return [];
+
+        var result = new List<HistoricalBotSignal>();
+        decimal? fast = null;
+        decimal? slow = null;
+        decimal? previousFast = null;
+        decimal? previousSlow = null;
+        var fastAlpha = 2m / (_fastPeriod + 1m);
+        var slowAlpha = 2m / (_slowPeriod + 1m);
+
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var candle = ordered[index];
+            fast = fast is null ? candle.Close : fast + fastAlpha * (candle.Close - fast.Value);
+            slow = slow is null ? candle.Close : slow + slowAlpha * (candle.Close - slow.Value);
+
+            if (index >= _slowPeriod - 1 && previousFast.HasValue && previousSlow.HasValue)
+            {
+                if (previousFast <= previousSlow && fast > slow)
+                    result.Add(new(candle.CloseTimeUtc, TradeSide.Long, "EMA_DEMO"));
+                else if (previousFast >= previousSlow && fast < slow)
+                    result.Add(new(candle.CloseTimeUtc, TradeSide.Short, "EMA_DEMO"));
+            }
+
+            previousFast = fast;
+            previousSlow = slow;
+        }
+
+        return result;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\TradingSystem.Backtesting.Bots.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
+  <ProjectReference Include = "..\TradingSystem.Strategies\TradingSystem.Strategies.csproj" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Reporting\BacktestReportWriter.cs
+================================================================================
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using ClosedXML.Excel;
+using TradingSystem.Backtesting.Models;
+
+namespace TradingSystem.Backtesting.Reporting;
+
+public sealed class BacktestReportWriter
+{
+    private static readonly JsonSerializerOptions JsonOptions  =  new(JsonSerializerDefaults.Web) { WriteIndented  =  true };
+
+    public async Task<string> WriteAllAsync(BacktestResult result,  string rootOutputDirectory,  CancellationToken cancellationToken  =  default)
+    {
+        var dir  =  Path.Combine(rootOutputDirectory,  Sanitize(result.RunId));
+        Directory.CreateDirectory(dir);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "result.json"),  JsonSerializer.Serialize(result,  JsonOptions),  cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "trades.csv"),  BuildTradesCsv(result),  cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "report.html"),  BuildHtml(result),  cancellationToken);
+        WriteExcel(result,  Path.Combine(dir,  "report.xlsx"));
+        return dir;
+    }
+
+    private static string BuildTradesCsv(BacktestResult result)
+    {
+        var b  =  new StringBuilder("id, symbol, side, entry_time_utc, exit_time_utc, entry_price, exit_price, quantity, exit_reason, gross_pnl, entry_fee, exit_fee, funding, net_pnl, r_multiple\n");
+        foreach (var t in result.Trades)
+            b.AppendLine(string.Join(", ",  t.Id,  t.Symbol,  t.Side,  t.EntryTimeUtc.ToString("O"),  t.ExitTimeUtc.ToString("O"), 
+                F(t.EntryPrice),  F(t.ExitPrice),  F(t.Quantity),  t.ExitReason,  F(t.GrossPnl),  F(t.EntryFee),  F(t.ExitFee),  F(t.FundingCost),  F(t.NetPnl),  F(t.RMultiple)));
+        return b.ToString();
+    }
+
+    private static string BuildHtml(BacktestResult result)
+    {
+        var candleData  =  JsonSerializer.Serialize(result.Candles.Select(x  =>  new { t  =  x.OpenTimeUtc.ToString("O"),  o = x.Open, h = x.High, l = x.Low, c = x.Close }),  JsonOptions);
+        var equityData  =  JsonSerializer.Serialize(result.EquityCurve.Select(x  =>  new { t = x.TimeUtc.ToString("O"),  b = x.Balance,  d = x.DrawdownPercent }),  JsonOptions);
+        var tradeRows  =  string.Join("",  result.Trades.Select(t  =>  $"<tr><td>{t.Id}</td><td>{t.Side}</td><td>{t.EntryTimeUtc:u}</td><td>{t.EntryPrice:F2}</td><td>{t.ExitTimeUtc:u}</td><td>{t.ExitPrice:F2}</td><td>{t.ExitReason}</td><td class = '{(t.NetPnl >= 0 ? "win" : "loss")}'>{t.NetPnl:F2}</td></tr>"));
+        return $$"""
+<!doctype html><html><head><meta charset = "utf-8"><title>{{result.RunId}}</title>
+<style>body{font-family:Arial;margin:24px;background:#10151d;color:#e7edf4}.cards{display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px}.card, section{background:#19212c;padding:16px;border-radius:10px;margin-bottom:16px}.label{color:#91a0b3;font-size:12px}.value{font-size:22px;font-weight:bold}.win{color:#53d18b}.loss{color:#ff6b78}svg{width:100%;height:360px;background:#0d1219;border-radius:8px}table{width:100%;border-collapse:collapse}th, td{padding:8px;border-bottom:1px solid #2b3746;text-align:right}th:first-child, td:first-child{text-align:left}</style></head>
+<body><h1>{{result.Request.StrategyName}} — {{result.Request.Symbol}} {{result.Request.Interval}}</h1>
+<div class = "cards">{{Card("Final balance",  result.FinalBalance)}}{{Card("Net profit",  result.Metrics.NetProfit)}}{{Card("Win rate %",  result.Metrics.WinRatePercent)}}{{Card("Profit factor",  result.Metrics.ProfitFactor == decimal.MaxValue ? 999m : result.Metrics.ProfitFactor)}}{{Card("Max DD %",  result.Metrics.MaximumDrawdownPercent)}}{{Card("Trades",  result.Metrics.TotalTrades)}}</div>
+<section><h2>Equity curve</h2><svg id = "equity"></svg></section><section><h2>Price candles</h2><svg id = "price"></svg></section>
+<section><h2>Trades</h2><table><thead><tr><th>ID</th><th>Side</th><th>Entry time</th><th>Entry</th><th>Exit time</th><th>Exit</th><th>Reason</th><th>Net PnL</th></tr></thead><tbody>{{tradeRows}}</tbody></table></section>
+<script>const candles = {{candleData}}, equity = {{equityData}};
+function line(svgId, data, key){const s = document.getElementById(svgId), w = 1200, h = 340, p = 20;if(!data.length)return;const vals = data.map(x => +x[key]), min = Math.min(...vals), max = Math.max(...vals), span = max-min || 1;const pts = data.map((x, i) => `${p+i*(w-2*p)/Math.max(1, data.length-1)}, ${h-p-(+x[key]-min)*(h-2*p)/span}`).join(' ');s.setAttribute('viewBox', `0 0 ${w} ${h}`);s.innerHTML = `<polyline fill = "none" stroke = "#65a9ff" stroke-width = "2" points = "${pts}"/>`;}
+function candlesSvg(){const s = document.getElementById('price'), w = 1200, h = 340, p = 20;if(!candles.length)return;const lo = Math.min(...candles.map(x => +x.l)), hi = Math.max(...candles.map(x => +x.h)), span = hi-lo || 1, step = (w-2*p)/candles.length, bw = Math.max(1, step*.55);s.setAttribute('viewBox', `0 0 ${w} ${h}`);let out = '';candles.forEach((x, i) => {const X = p+i*step+step/2, y = v => h-p-(+v-lo)*(h-2*p)/span, up = +x.c>=+x.o, col = up?'#53d18b':'#ff6b78', top = Math.min(y(x.o), y(x.c)), bh = Math.max(1, Math.abs(y(x.o)-y(x.c)));out+=`<line x1 = "${X}" y1 = "${y(x.h)}" x2 = "${X}" y2 = "${y(x.l)}" stroke = "${col}"/><rect x = "${X-bw/2}" y = "${top}" width = "${bw}" height = "${bh}" fill = "${col}"/>`;});s.innerHTML = out;} line('equity', equity, 'b');candlesSvg();</script></body></html>
+""";
+    }
+
+    private static string Card(string label,  object value)  =>  $"<div class = 'card'><div class = 'label'>{label}</div><div class = 'value'>{value}</div></div>";
+
+    private static void WriteExcel(BacktestResult result,  string path)
+    {
+        using var wb  =  new XLWorkbook();
+        var summary  =  wb.Worksheets.Add("Summary");
+        var rows  =  new (string,  object)[] { ("Strategy", result.Request.StrategyName), ("Symbol", result.Request.Symbol), ("Initial balance", result.InitialBalance), ("Final balance", result.FinalBalance), ("Net profit", result.Metrics.NetProfit), ("Win rate %", result.Metrics.WinRatePercent), ("Profit factor", result.Metrics.ProfitFactor), ("Max drawdown %", result.Metrics.MaximumDrawdownPercent), ("Total trades", result.Metrics.TotalTrades), ("Total fees", result.Metrics.TotalFees) };
+        for (var i = 0;i<rows.Length;i++){summary.Cell(i+1, 1).Value = rows[i].Item1; summary.Cell(i+1, 2).Value = rows[i].Item2.ToString();}
+        summary.Columns().AdjustToContents();
+        var trades  =  wb.Worksheets.Add("Trades");
+        var headers  =  new[]{"Id", "Symbol", "Side", "Entry UTC", "Exit UTC", "Entry", "Exit", "Quantity", "Reason", "Gross PnL", "Entry fee", "Exit fee", "Net PnL", "R"};
+        for(var c = 0;c<headers.Length;c++) trades.Cell(1, c+1).Value = headers[c];
+        for(var r = 0;r<result.Trades.Count;r++){var t = result.Trades[r];var v = new object[]{t.Id, t.Symbol, t.Side.ToString(), t.EntryTimeUtc, t.ExitTimeUtc, t.EntryPrice, t.ExitPrice, t.Quantity, t.ExitReason.ToString(), t.GrossPnl, t.EntryFee, t.ExitFee, t.NetPnl, t.RMultiple};for(var c = 0;c<v.Length;c++)trades.Cell(r+2, c+1).Value = v[c]?.ToString();}
+        trades.Columns().AdjustToContents();
+        var eq  =  wb.Worksheets.Add("Equity"); eq.Cell(1, 1).Value = "Time UTC";eq.Cell(1, 2).Value = "Balance";eq.Cell(1, 3).Value = "Drawdown %";
+        for(var r = 0;r<result.EquityCurve.Count;r++){eq.Cell(r+2, 1).Value = result.EquityCurve[r].TimeUtc;eq.Cell(r+2, 2).Value = result.EquityCurve[r].Balance;eq.Cell(r+2, 3).Value = result.EquityCurve[r].DrawdownPercent;}
+        eq.Columns().AdjustToContents(); wb.SaveAs(path);
+    }
+
+    private static string F(decimal value)  =>  value.ToString(CultureInfo.InvariantCulture);
+    private static string Sanitize(string value)  =>  string.Concat(value.Select(ch  =>  Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Reporting\BotBacktestReportWriter.cs
+================================================================================
+using System.Globalization;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using TradingSystem.Backtesting.Bots.Common;
+
+namespace TradingSystem.Backtesting.Reporting;
+
+public sealed class BotBacktestReportWriter
+{
+    private const int MaximumChartPoints = 5_000;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    public async Task<string> WriteAsync<TOptions>(
+        BotBacktestResult<TOptions> result,
+        string outputRoot,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (string.IsNullOrWhiteSpace(outputRoot))
+            throw new ArgumentException("Output root is required.", nameof(outputRoot));
+
+        var directory = Path.Combine(outputRoot, Sanitize(result.RunId));
+        Directory.CreateDirectory(directory);
+
+        await WriteAtomicAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(result, JsonOptions), cancellationToken);
+        await WriteAtomicAsync(Path.Combine(directory, "positions.csv"), PositionsCsv(result), cancellationToken);
+        await WriteAtomicAsync(Path.Combine(directory, "executions.csv"), ExecutionsCsv(result), cancellationToken);
+        await WriteAtomicAsync(Path.Combine(directory, "decisions.csv"), DecisionsCsv(result), cancellationToken);
+        await WriteAtomicAsync(Path.Combine(directory, "report.html"), Html(result), cancellationToken);
+        return directory;
+    }
+
+    private static string PositionsCsv<TOptions>(BotBacktestResult<TOptions> result)
+    {
+        var builder = new StringBuilder("id,side,entry_time,entry_price,exit_time,exit_price,quantity,gross_pnl,fees,net_pnl,partial_tp,exit_reason\n");
+        foreach (var position in result.Positions)
+        {
+            builder.AppendLine(Csv(
+                position.PositionId,
+                position.Side,
+                position.EntryTimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                F(position.EntryPrice),
+                position.ExitTimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                F(position.ExitPrice),
+                F(position.Quantity),
+                F(position.GrossPnl),
+                F(position.Fees),
+                F(position.NetPnl),
+                position.PartialTakeProfitReached,
+                position.ExitReason));
+        }
+        return builder.ToString();
+    }
+
+    private static string ExecutionsCsv<TOptions>(BotBacktestResult<TOptions> result)
+    {
+        var builder = new StringBuilder("position_id,time,type,side,price,quantity,gross_pnl,fee,reason\n");
+        foreach (var execution in result.Executions)
+        {
+            builder.AppendLine(Csv(
+                execution.PositionId,
+                execution.TimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                execution.Type,
+                execution.Side,
+                F(execution.Price),
+                F(execution.Quantity),
+                F(execution.GrossPnl),
+                F(execution.Fee),
+                execution.Reason));
+        }
+        return builder.ToString();
+    }
+
+    private static string DecisionsCsv<TOptions>(BotBacktestResult<TOptions> result)
+    {
+        var builder = new StringBuilder("time,side,decision,reason,reference_price,signal_id\n");
+        foreach (var decision in result.Decisions)
+        {
+            builder.AppendLine(Csv(
+                decision.TimeUtc.ToString("O", CultureInfo.InvariantCulture),
+                decision.Side,
+                decision.Decision,
+                decision.Reason,
+                F(decision.ReferencePrice),
+                decision.SignalId));
+        }
+        return builder.ToString();
+    }
+
+    private static string Html<TOptions>(BotBacktestResult<TOptions> result)
+    {
+        var sampledEquity = Downsample(result.EquityCurve, MaximumChartPoints);
+        var equity = JsonSerializer.Serialize(
+            sampledEquity.Select(x => new { t = x.TimeUtc.ToString("O"), e = x.Equity }),
+            JsonOptions);
+        var metrics = result.Metrics;
+        var title = WebUtility.HtmlEncode($"{result.BotName} backtest");
+
+        return $$"""
+<!doctype html><html><head><meta charset="utf-8"><title>{{title}}</title>
+<style>body{font-family:Arial;background:#10151d;color:#e7edf4;margin:24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.card,section{background:#19212c;padding:16px;border-radius:10px;margin-bottom:16px}.label{color:#91a0b3;font-size:12px}.value{font-size:22px;font-weight:bold}svg{width:100%;height:360px;background:#0d1219}</style></head>
+<body><h1>{{title}}</h1><div class="cards">
+{{Card("Final balance", metrics.FinalBalance)}}{{Card("Net profit", metrics.NetProfit)}}{{Card("Return %", metrics.ReturnPercent)}}{{Card("Win rate %", metrics.WinRatePercent)}}{{Card("Profit factor", metrics.ProfitFactor == decimal.MaxValue ? "Infinity" : metrics.ProfitFactor)}}{{Card("Max DD %", metrics.MaximumDrawdownPercent)}}{{Card("Positions", metrics.ClosedPositions)}}{{Card("Blocked", metrics.BlockedSignals)}}
+</div><section><h2>Equity</h2><svg id="equity"></svg></section>
+<script>const d={{equity}};const s=document.getElementById('equity'),w=1200,h=340,p=20;if(d.length){const v=d.map(x=>+x.e),mi=Math.min(...v),ma=Math.max(...v),sp=ma-mi||1;const pts=d.map((x,i)=>`${p+i*(w-2*p)/Math.max(1,d.length-1)},${h-p-(+x.e-mi)*(h-2*p)/sp}`).join(' ');s.setAttribute('viewBox',`0 0 ${w} ${h}`);s.innerHTML=`<polyline fill="none" stroke="#65a9ff" stroke-width="2" points="${pts}"/>`;}</script></body></html>
+""";
+    }
+
+    private static IReadOnlyList<T> Downsample<T>(IReadOnlyList<T> values, int maximum)
+    {
+        if (values.Count <= maximum)
+            return values;
+
+        var result = new List<T>(maximum);
+        var step = (values.Count - 1d) / (maximum - 1d);
+        for (var index = 0; index < maximum; index++)
+            result.Add(values[(int)Math.Round(index * step)]);
+        return result;
+    }
+
+    private static async Task WriteAtomicAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, content, new UTF8Encoding(false), cancellationToken);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+    }
+
+    private static string Csv(params object?[] values)
+        => string.Join(',', values.Select(value => Escape(value?.ToString() ?? string.Empty)));
+
+    private static string Escape(string value)
+    {
+        if (value.IndexOfAny([',', '"', '\r', '\n']) < 0)
+            return value;
+        return $"\"{value.Replace("\"", "\"\"")}\"";
+    }
+
+    private static string Card(string label, object value)
+        => $"<div class='card'><div class='label'>{WebUtility.HtmlEncode(label)}</div><div class='value'>{WebUtility.HtmlEncode(Convert.ToString(value, CultureInfo.InvariantCulture))}</div></div>";
+
+    private static string F(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static string Sanitize(string value)
+        => string.Concat(value.Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Reporting\TradingSystem.Backtesting.Reporting.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Bots\TradingSystem.Backtesting.Bots.csproj" />
+    <PackageReference Include = "ClosedXML" Version = "0.104.2" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Cli\Program.cs
+================================================================================
+using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Application.MarketData;
+using TradingSystem.Backtesting;
+using TradingSystem.Backtesting.Engine;
+using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Reporting;
+using TradingSystem.Backtesting.Strategies;
+using TradingSystem.Binance.Market;
+using TradingSystem.HistoricalData;
+
+var arguments  =  CliArguments.Parse(args);
+var services  =  new ServiceCollection();
+services.AddBacktesting();
+services.AddSingleton<BacktestReportWriter>();
+using var provider  =  services.BuildServiceProvider();
+
+if (arguments.Has("list-strategies"))
+{
+    Console.WriteLine(string.Join(Environment.NewLine, 
+        provider.GetRequiredService<BacktestStrategyRegistry>().Names));
+    return;
+}
+
+var strategy  =  arguments.Get("strategy",  "EMA_CROSS");
+var symbol  =  arguments.Get("symbol",  "BTCUSDC").ToUpperInvariant();
+var interval  =  arguments.Get("interval",  "1h").ToLowerInvariant();
+var sourceName  =  arguments.Get("source",  "csv");
+var fromUtc  =  arguments.GetUtcDate("from");
+var toUtc  =  arguments.GetUtcDate("to");
+
+using var httpClient  =  new HttpClient
+{
+    BaseAddress  =  new Uri("https://fapi.binance.com"), 
+    Timeout  =  TimeSpan.FromSeconds(30)
+};
+
+IHistoricalCandleRangeSource source  =  sourceName.Equals("binance",  StringComparison.OrdinalIgnoreCase)
+    ? new BinanceHistoricalCandleRangeSource(httpClient)
+    : new CsvHistoricalCandleSource(arguments.Get("file",  "samples/BTCUSDC_1h_sample.csv"));
+
+Console.WriteLine($"Loading {symbol} {interval} candles from {sourceName}...");
+var candles  =  await source.LoadAsync(symbol,  interval,  fromUtc,  toUtc);
+Console.WriteLine($"Loaded {candles.Count:N0} candles.");
+
+var strategyParameters  =  arguments.Values
+    .Where(pair  =>  pair.Key.StartsWith("param.",  StringComparison.OrdinalIgnoreCase))
+    .ToDictionary(pair  =>  pair.Key[6..],  pair  =>  pair.Value,  StringComparer.OrdinalIgnoreCase);
+
+var request  =  new BacktestRequest
+{
+    StrategyName  =  strategy, 
+    Symbol  =  symbol, 
+    Interval  =  interval, 
+    StartUtc  =  fromUtc, 
+    EndUtc  =  toUtc, 
+    InitialBalance  =  arguments.GetDecimal("balance",  10_000m), 
+    RiskPerTradePercent  =  arguments.GetDecimal("risk",  1m), 
+    SlippageBasisPoints  =  arguments.GetDecimal("slippage-bps",  1m), 
+    EntryExecutionMode  =  arguments.GetEnum("entry-mode",  EntryExecutionMode.NextCandleOpen), 
+    ConflictPolicy  =  arguments.GetEnum("conflict-policy",  IntrabarConflictPolicy.WorstCase), 
+    StrategyParameters  =  strategyParameters
+};
+
+var rules  =  new SymbolTradingRules
+{
+    TickSize  =  arguments.GetDecimal("tick-size",  0.1m), 
+    QuantityStep  =  arguments.GetDecimal("quantity-step",  0.001m), 
+    MinimumQuantity  =  arguments.GetDecimal("min-quantity",  0.001m), 
+    MaximumQuantity  =  arguments.GetDecimal("max-quantity",  1_000m), 
+    MinimumNotional  =  arguments.GetDecimal("min-notional",  5m), 
+    ContractMultiplier  =  arguments.GetDecimal("contract-multiplier",  1m), 
+    Leverage  =  arguments.GetInt("leverage",  20)
+};
+
+var result  =  await provider.GetRequiredService<BacktestEngine>()
+    .RunAsync(request,  candles,  rules);
+var output  =  await provider.GetRequiredService<BacktestReportWriter>()
+    .WriteAllAsync(result,  arguments.Get("output",  "output"));
+
+Console.WriteLine($"Final balance: {result.FinalBalance:F2}");
+Console.WriteLine($"Net profit: {result.Metrics.NetProfit:F2}");
+Console.WriteLine($"Trades: {result.Metrics.TotalTrades}; Win rate: {result.Metrics.WinRatePercent:F2}%");
+Console.WriteLine($"Reports: {Path.GetFullPath(output)}");
+
+internal sealed class CliArguments
+{
+    private CliArguments(Dictionary<string,  string> values)  =>  Values  =  values;
+    public IReadOnlyDictionary<string,  string> Values {  get;  }
+    public bool Has(string key)  =>  Values.ContainsKey(key);
+    public string Get(string key,  string fallback)  =>  Values.TryGetValue(key,  out var value) ? value : fallback;
+    public int GetInt(string key,  int fallback)  =>  int.TryParse(Get(key,  ""),  NumberStyles.Integer,  CultureInfo.InvariantCulture,  out var value) ? value : fallback;
+    public decimal GetDecimal(string key,  decimal fallback)  =>  decimal.TryParse(Get(key,  ""),  NumberStyles.Any,  CultureInfo.InvariantCulture,  out var value) ? value : fallback;
+    public TEnum GetEnum<TEnum>(string key,  TEnum fallback) where TEnum : struct,  Enum
+         =>  Enum.TryParse<TEnum>(Get(key,  ""),  true,  out var value) ? value : fallback;
+    public DateTime? GetUtcDate(string key)
+    {
+        if (!DateTime.TryParse(Get(key,  ""),  CultureInfo.InvariantCulture, 
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,  out var value))
+            return null;
+        return DateTime.SpecifyKind(value,  DateTimeKind.Utc);
+    }
+    public static CliArguments Parse(string[] args)
+    {
+        var values  =  new Dictionary<string,  string>(StringComparer.OrdinalIgnoreCase);
+        for (var index  =  0; index < args.Length; index++)
+        {
+            if (!args[index].StartsWith("--",  StringComparison.Ordinal))
+                continue;
+            var key  =  args[index][2..];
+            var value  =  index + 1 < args.Length  &&  !args[index + 1].StartsWith("--",  StringComparison.Ordinal)
+                ? args[++index]
+                : "true";
+            values[key]  =  value;
+        }
+        return new CliArguments(values);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Cli\TradingSystem.Backtesting.Cli.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Application\TradingSystem.Application.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Reporting\TradingSystem.Backtesting.Reporting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Binance\TradingSystem.Binance.csproj" />
+    <ProjectReference Include = "..\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection" Version = "8.0.1" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotBacktesting.Cli\Program.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Backtesting.Bots;using TradingSystem.Backtesting.Bots.Bot8011;using TradingSystem.Backtesting.Bots.Bot8012;using TradingSystem.Backtesting.Bots.Bot8013;using TradingSystem.Backtesting.Bots.Bot8014;using TradingSystem.Backtesting.Bots.Bot8015;using TradingSystem.Backtesting.Bots.Bot8016;using TradingSystem.Backtesting.Bots.Signals;using TradingSystem.Backtesting.Reporting;using TradingSystem.HistoricalData;
+var a = Parse(args);var services = new ServiceCollection();services.AddBotBacktesting();services.AddSingleton<BotBacktestReportWriter>();using var provider = services.BuildServiceProvider();var bot = Get("bot", "BOT8011").ToUpperInvariant();var symbol = Get("symbol", "BTCUSDC");var interval = Get("interval", "1h");var source = new CsvHistoricalCandleSource(Get("candles", "samples/BTCUSDC_1h_sample.csv"));var candles = await source.LoadAsync(symbol, interval, Date("from"), Date("to"));var signalPath = Get("signals", "");var signals = File.Exists(signalPath)?await new CsvHistoricalBotSignalSource(signalPath).LoadAsync():new EmaCrossDemoSignalSource(Int("ema-fast", 20), Int("ema-slow", 50)).Generate(candles);var writer = provider.GetRequiredService<BotBacktestReportWriter>();var output = Get("output", "output/bots");
+object result = bot switch{
+ "BOT8011" => await provider.GetRequiredService<Bot8011BacktestEngine>().RunAsync(Decimal("balance", 10000m), new Bot8011BacktestOptions{Symbol = symbol}, candles, signals), 
+ "BOT8012" => provider.GetRequiredService<Bot8012BacktestEngine>().Run(candles, signals, new Bot8012BacktestOptions{Symbol = symbol, InitialBalance = Decimal("balance", 10000m)}), 
+ "BOT8013" => provider.GetRequiredService<Bot8013BacktestEngine>().Run(candles, signals, new Bot8013BacktestOptions{Symbol = symbol, InitialBalance = Decimal("balance", 10000m)}), 
+ "BOT8014" => provider.GetRequiredService<Bot8014BacktestEngine>().Run(candles, signals, new Bot8014BacktestOptions{Symbol = symbol, InitialBalance = Decimal("balance", 10000m)}), 
+ "BOT8015" => await provider.GetRequiredService<Bot8015BacktestEngine>().RunAsync(candles, signals, new Bot8015BacktestOptions{Symbol = symbol, InitialBalance = Decimal("balance", 10000m)}), 
+ "BOT8016" => provider.GetRequiredService<Bot8016BacktestEngine>().Run(candles, BuildIndicators(candles), new Bot8016BacktestOptions{Symbol = symbol, EntryTimeframe = interval, ExitTimeframe = interval, InitialBalance = Decimal("balance", 10000m)}), 
+ _ => throw new ArgumentException("--bot must be BOT8011-BOT8016")};
+var dir = await Write(result);Console.WriteLine($"{bot} report: {Path.GetFullPath(dir)}");
+async Task<string> Write(object x) => x switch{TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8011BacktestOptions> r => await writer.WriteAsync(r, output), TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8012BacktestOptions> r => await writer.WriteAsync(r, output), TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8013BacktestOptions> r => await writer.WriteAsync(r, output), TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8014BacktestOptions> r => await writer.WriteAsync(r, output), TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8015BacktestOptions> r => await writer.WriteAsync(r, output), TradingSystem.Backtesting.Bots.Common.BotBacktestResult<Bot8016BacktestOptions> r => await writer.WriteAsync(r, output), _ => throw new InvalidOperationException()};
+static IReadOnlyList<HistoricalAlligatorSnapshot> BuildIndicators(IReadOnlyList<TradingSystem.Domain.MarketData.MarketCandle> candles){var r = new List<HistoricalAlligatorSnapshot>();for(var i = 0;i<candles.Count;i++){var start = Math.Max(0, i-199);var avg = candles.Skip(start).Take(i-start+1).Average(x => x.Close);r.Add(new(candles[i].CloseTimeUtc, candles[i].Symbol, candles[i].Interval, avg, avg, avg, avg));}return r;}
+string Get(string k, string f) => a.TryGetValue(k, out var v)?v:f;int Int(string k, int f) => int.TryParse(Get(k, ""), out var v)?v:f;decimal Decimal(string k, decimal f) => decimal.TryParse(Get(k, ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)?v:f;DateTime? Date(string k) => DateTime.TryParse(Get(k, ""), out var v)?DateTime.SpecifyKind(v, DateTimeKind.Utc):null;static Dictionary<string, string> Parse(string[] x){var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);for(var i = 0;i<x.Length;i++){if(!x[i].StartsWith("--"))continue;var k = x[i][2..];var v = i+1<x.Length && !x[i+1].StartsWith("--")?x[++i]:"true";d[k] = v;}return d;}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotBacktesting.Cli\TradingSystem.BotBacktesting.Cli.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Bots\TradingSystem.Backtesting.Bots.csproj" />
+    <ProjectReference Include = "..\TradingSystem.Backtesting.Reporting\TradingSystem.Backtesting.Reporting.csproj" />
+    <ProjectReference Include = "..\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection" Version = "8.0.1" />
+  </ItemGroup>
+</Project>

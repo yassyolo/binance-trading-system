@@ -7,125 +7,273 @@ using TradingSystem.Domain.Positions;
 
 namespace TradingSystem.Redis.Positions;
 
-public sealed class RedisPositionStore(IConnectionMultiplexer redis,  RedisKeyFactory keys,  ILogger<RedisPositionStore> logger) : IPositionStore
+public sealed class RedisPositionStore(
+    IConnectionMultiplexer redis,
+    RedisKeyFactory keys,
+    ILogger<RedisPositionStore> logger)
+    : IPositionStore
 {
-    private readonly IDatabase _db = redis.GetDatabase();
-    public async Task SaveAsync(BotPosition p, CancellationToken ct){ct.ThrowIfCancellationRequested();await _db.HashSetAsync(keys.Position(p.BotName, p.ShortId), ToEntries(p));}
-    public async Task<BotPosition?> GetAsync(string bot, string id, CancellationToken ct){ct.ThrowIfCancellationRequested();var e = await _db.HashGetAllAsync(keys.Position(bot, id));return e.Length==0?null:FromEntries(e);}
-    public async Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string bot, CancellationToken ct)
+    private readonly IDatabase _database = redis.GetDatabase();
+
+    public async Task SaveAsync(BotPosition position, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var transaction = _database.CreateTransaction();
+        _ = transaction.HashSetAsync(keys.Position(position.BotName, position.ShortId), ToEntries(position));
+        _ = transaction.SetAddAsync(keys.PositionIndex(position.BotName), position.ShortId);
+
+        if (!await transaction.ExecuteAsync())
+            throw new InvalidOperationException($"Could not save position '{position.ShortId}' for bot '{position.BotName}'.");
+    }
+
+    public async Task<BotPosition?> GetAsync(string bot, string id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var entries = await _database.HashGetAllAsync(keys.Position(bot, id));
+        return entries.Length == 0 ? null : FromEntries(entries);
+    }
+
+    public async Task<IReadOnlyCollection<BotPosition>> GetAllAsync(
+        string bot,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var ids = await _database.SetMembersAsync(keys.PositionIndex(bot));
+
+        if (ids.Length == 0)
+            return await LoadLegacyPositionsAndBuildIndexAsync(bot, cancellationToken);
+
+        var result = new List<BotPosition>(ids.Length);
+        var missingIds = new List<RedisValue>();
+
+        foreach (var id in ids)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var entries = await _database.HashGetAllAsync(keys.Position(bot, id.ToString()));
+
+            if (entries.Length == 0)
+            {
+                missingIds.Add(id);
+                continue;
+            }
+
+            result.Add(FromEntries(entries));
+        }
+
+        if (missingIds.Count > 0)
+            await _database.SetRemoveAsync(keys.PositionIndex(bot), missingIds.ToArray());
+
+        return result;
+    }
+
+    public async Task DeleteAsync(string bot, string id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var transaction = _database.CreateTransaction();
+        _ = transaction.KeyDeleteAsync(keys.Position(bot, id));
+        _ = transaction.SetRemoveAsync(keys.PositionIndex(bot), id);
+
+        if (!await transaction.ExecuteAsync())
+            throw new InvalidOperationException($"Could not delete position '{id}' for bot '{bot}'.");
+    }
+
+    private async Task<IReadOnlyCollection<BotPosition>> LoadLegacyPositionsAndBuildIndexAsync(
+        string bot,
+        CancellationToken cancellationToken)
     {
         var result = new List<BotPosition>();
-        foreach(var endpoint in redis.GetEndPoints())
+
+        foreach (var endpoint in redis.GetEndPoints())
         {
-            IServer server; try{server = redis.GetServer(endpoint);}catch(Exception ex){logger.LogWarning(ex, "Could not access Redis endpoint {Endpoint}", endpoint);continue;}
-            if(!server.IsConnected) continue;
-            await foreach(var key in server.KeysAsync(pattern:keys.PositionPattern(bot)))
-            {ct.ThrowIfCancellationRequested();var e = await _db.HashGetAllAsync(key);if(e.Length>0)result.Add(FromEntries(e));}
+            IServer server;
+
+            try
+            {
+                server = redis.GetServer(endpoint);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not access Redis endpoint {Endpoint}", endpoint);
+                continue;
+            }
+
+            if (!server.IsConnected)
+                continue;
+
+            await foreach (var key in server.KeysAsync(pattern: keys.PositionPattern(bot)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var entries = await _database.HashGetAllAsync(key);
+
+                if (entries.Length == 0)
+                    continue;
+
+                var position = FromEntries(entries);
+                result.Add(position);
+                await _database.SetAddAsync(keys.PositionIndex(bot), position.ShortId);
+            }
         }
-        return result.GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).ToArray();
+
+        return result
+            .GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToArray();
     }
-    public Task DeleteAsync(string bot, string id, CancellationToken ct){ct.ThrowIfCancellationRequested();return _db.KeyDeleteAsync(keys.Position(bot, id));}
-    private static HashEntry[] ToEntries(BotPosition p) => 
+
+    private static HashEntry[] ToEntries(BotPosition position) =>
     [
-        new("short_id", p.ShortId), new("bot_name", p.BotName), new("symbol", p.Symbol), new("side", p.Side.ToString()), new("mode", p.Mode.ToString()), 
-        new("quantity", D(p.Quantity)), new("remaining_quantity", D(p.RemainingQuantity)), new("entry_price", D(p.EntryPrice)), 
-        new("parent_client_id", S(p.ParentClientId)), new("parent_order_id", S(p.ParentOrderId)), 
-        new("tp_client_id", S(p.TpClientId)), new("tp_order_id", S(p.TpOrderId)), new("tp_price", D(p.TpPrice)), new("tp_status", S(p.TpStatus)), new("tp_executed", B(p.TpExecuted)), 
-        new("sl_client_id", S(p.SlClientId)), new("sl_order_id", S(p.SlOrderId)), new("sl_price", D(p.SlPrice)), new("sl_status", S(p.SlStatus)), new("sl_executed", B(p.SlExecuted)), 
-        new("stop3_client_id", S(p.Stop3ClientId)), new("stop3_order_id", S(p.Stop3OrderId)), new("stop3_current", D(p.Stop3Current)), new("stop3_initial", D(p.Stop3Initial)), new("stop3_previous", D(p.Stop3Previous)), new("stop3_new_pending", D(p.Stop3NewPending)), new("stop3_status", S(p.Stop3Status)), new("stop3_created", B(p.Stop3Created)), new("stop3_pending", B(p.Stop3Pending)), new("trail_count", p.TrailCount), new("trailing_in_progress", B(p.TrailingInProgress)), 
-        new("close_client_id", S(p.CloseClientId)), new("close_order_id", S(p.CloseOrderId)), new("close_status", S(p.CloseStatus)), new("protective_active", B(p.ProtectiveActive)), new("manual_position", B(p.ManualPosition)), new("status", p.Status.ToString()), new("source", S(p.Source)), new("created_at", T(p.CreatedAtUtc)), new("updated_at", T(p.UpdatedAtUtc)), new("parent_filled_at", T(p.ParentFilledAtUtc)), new("tp_filled_at", T(p.TpFilledAtUtc)), new("sl_triggered_at", T(p.SlTriggeredAtUtc)), new("stop3_triggered_at", T(p.Stop3TriggeredAtUtc)), new("closed_at", T(p.ClosedAtUtc)), 
-        new("signal_candle_high", D(p.SignalCandleHigh)), new("signal_candle_low", D(p.SignalCandleLow)), new("signal_candle_close_time", p.SignalCandleCloseTime?.ToString(CultureInfo.InvariantCulture)??""), new("high_reached", B(p.HighReached))
+        new("short_id", position.ShortId),
+        new("bot_name", position.BotName),
+        new("symbol", position.Symbol),
+        new("side", position.Side.ToString()),
+        new("mode", position.Mode.ToString()),
+        new("quantity", Decimal(position.Quantity)),
+        new("remaining_quantity", Decimal(position.RemainingQuantity)),
+        new("entry_price", Decimal(position.EntryPrice)),
+        new("parent_client_id", String(position.ParentClientId)),
+        new("parent_order_id", String(position.ParentOrderId)),
+        new("tp_client_id", String(position.TpClientId)),
+        new("tp_order_id", String(position.TpOrderId)),
+        new("tp_price", Decimal(position.TpPrice)),
+        new("tp_status", String(position.TpStatus)),
+        new("tp_executed", Boolean(position.TpExecuted)),
+        new("sl_client_id", String(position.SlClientId)),
+        new("sl_order_id", String(position.SlOrderId)),
+        new("sl_price", Decimal(position.SlPrice)),
+        new("sl_status", String(position.SlStatus)),
+        new("sl_executed", Boolean(position.SlExecuted)),
+        new("stop3_client_id", String(position.Stop3ClientId)),
+        new("stop3_order_id", String(position.Stop3OrderId)),
+        new("stop3_current", Decimal(position.Stop3Current)),
+        new("stop3_initial", Decimal(position.Stop3Initial)),
+        new("stop3_previous", Decimal(position.Stop3Previous)),
+        new("stop3_new_pending", Decimal(position.Stop3NewPending)),
+        new("stop3_status", String(position.Stop3Status)),
+        new("stop3_created", Boolean(position.Stop3Created)),
+        new("stop3_pending", Boolean(position.Stop3Pending)),
+        new("trail_count", position.TrailCount),
+        new("trailing_in_progress", Boolean(position.TrailingInProgress)),
+        new("close_client_id", String(position.CloseClientId)),
+        new("close_order_id", String(position.CloseOrderId)),
+        new("close_status", String(position.CloseStatus)),
+        new("protective_active", Boolean(position.ProtectiveActive)),
+        new("manual_position", Boolean(position.ManualPosition)),
+        new("status", position.Status.ToString()),
+        new("source", String(position.Source)),
+        new("created_at", Time(position.CreatedAtUtc)),
+        new("updated_at", Time(position.UpdatedAtUtc)),
+        new("parent_filled_at", Time(position.ParentFilledAtUtc)),
+        new("tp_filled_at", Time(position.TpFilledAtUtc)),
+        new("sl_triggered_at", Time(position.SlTriggeredAtUtc)),
+        new("stop3_triggered_at", Time(position.Stop3TriggeredAtUtc)),
+        new("closed_at", Time(position.ClosedAtUtc)),
+        new("signal_candle_high", Decimal(position.SignalCandleHigh)),
+        new("signal_candle_low", Decimal(position.SignalCandleLow)),
+        new("signal_candle_close_time", position.SignalCandleCloseTime?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+        new("high_reached", Boolean(position.HighReached))
     ];
+
     private static BotPosition FromEntries(HashEntry[] entries)
     {
-        var values = entries.ToDictionary(
-            x => x.Name.ToString(),
-            x => x.Value.ToString());
-
-        var status = E(
-            values,
-            "status",
-            PositionStatus.New);
+        var values = entries.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
+        var status = EnumValue(values, "status", PositionStatus.New);
 
         return new BotPosition
         {
-            ShortId = G(values, "short_id"),
-            BotName = G(values, "bot_name"),
-            Symbol = G(values, "symbol"),
-
-            Side = E(
-                values,
-                "side",
-                PositionSide.Long),
-
-            Mode = E(
-                values,
-                "mode",
-                PositionMode.TpOnly),
-
-            Quantity = Dec(values, "quantity") ?? 0,
-            RemainingQuantity = Dec(values, "remaining_quantity") ?? 0,
-            EntryPrice = Dec(values, "entry_price"),
-
-            ParentClientId = N(values, "parent_client_id"),
-            ParentOrderId = N(values, "parent_order_id"),
-
-            TpClientId = N(values, "tp_client_id"),
-            TpOrderId = N(values, "tp_order_id"),
-            TpPrice = Dec(values, "tp_price"),
-            TpStatus = N(values, "tp_status"),
+            ShortId = Get(values, "short_id"),
+            BotName = Get(values, "bot_name"),
+            Symbol = Get(values, "symbol"),
+            Side = EnumValue(values, "side", PositionSide.Long),
+            Mode = EnumValue(values, "mode", PositionMode.TpOnly),
+            Quantity = DecimalValue(values, "quantity") ?? 0,
+            RemainingQuantity = DecimalValue(values, "remaining_quantity") ?? 0,
+            EntryPrice = DecimalValue(values, "entry_price"),
+            ParentClientId = Nullable(values, "parent_client_id"),
+            ParentOrderId = Nullable(values, "parent_order_id"),
+            TpClientId = Nullable(values, "tp_client_id"),
+            TpOrderId = Nullable(values, "tp_order_id"),
+            TpPrice = DecimalValue(values, "tp_price"),
+            TpStatus = Nullable(values, "tp_status"),
             TpExecuted = Bool(values, "tp_executed"),
-
-            SlClientId = N(values, "sl_client_id"),
-            SlOrderId = N(values, "sl_order_id"),
-            SlPrice = Dec(values, "sl_price"),
-            SlStatus = N(values, "sl_status"),
+            SlClientId = Nullable(values, "sl_client_id"),
+            SlOrderId = Nullable(values, "sl_order_id"),
+            SlPrice = DecimalValue(values, "sl_price"),
+            SlStatus = Nullable(values, "sl_status"),
             SlExecuted = Bool(values, "sl_executed"),
-
-            Stop3ClientId = N(values, "stop3_client_id"),
-            Stop3OrderId = N(values, "stop3_order_id"),
-            Stop3Current = Dec(values, "stop3_current"),
-            Stop3Initial = Dec(values, "stop3_initial"),
-            Stop3Previous = Dec(values, "stop3_previous"),
-            Stop3NewPending = Dec(values, "stop3_new_pending"),
-            Stop3Status = N(values, "stop3_status"),
+            Stop3ClientId = Nullable(values, "stop3_client_id"),
+            Stop3OrderId = Nullable(values, "stop3_order_id"),
+            Stop3Current = DecimalValue(values, "stop3_current"),
+            Stop3Initial = DecimalValue(values, "stop3_initial"),
+            Stop3Previous = DecimalValue(values, "stop3_previous"),
+            Stop3NewPending = DecimalValue(values, "stop3_new_pending"),
+            Stop3Status = Nullable(values, "stop3_status"),
             Stop3Created = Bool(values, "stop3_created"),
             Stop3Pending = Bool(values, "stop3_pending"),
             TrailCount = Int(values, "trail_count"),
             TrailingInProgress = Bool(values, "trailing_in_progress"),
-
-            CloseClientId = N(values, "close_client_id"),
-            CloseOrderId = N(values, "close_order_id"),
-            CloseStatus = N(values, "close_status"),
-
+            CloseClientId = Nullable(values, "close_client_id"),
+            CloseOrderId = Nullable(values, "close_order_id"),
+            CloseStatus = Nullable(values, "close_status"),
             ProtectiveActive = Bool(values, "protective_active"),
             ManualPosition = Bool(values, "manual_position"),
-
             Status = status,
-            Closed =
-                status == PositionStatus.Closed ||
-                Dt(values, "closed_at").HasValue,
-
-            Source = N(values, "source"),
-
-            CreatedAtUtc =
-                Dt(values, "created_at") ??
-                DateTime.UtcNow,
-
-            UpdatedAtUtc = Dt(values, "updated_at"),
-            ParentFilledAtUtc = Dt(values, "parent_filled_at"),
-            TpFilledAtUtc = Dt(values, "tp_filled_at"),
-            SlTriggeredAtUtc = Dt(values, "sl_triggered_at"),
-            Stop3TriggeredAtUtc = Dt(values, "stop3_triggered_at"),
-            ClosedAtUtc = Dt(values, "closed_at"),
-
-            SignalCandleHigh = Dec(values, "signal_candle_high"),
-            SignalCandleLow = Dec(values, "signal_candle_low"),
+            Closed = status == PositionStatus.Closed || Date(values, "closed_at").HasValue,
+            Source = Nullable(values, "source"),
+            CreatedAtUtc = Date(values, "created_at") ?? DateTime.UtcNow,
+            UpdatedAtUtc = Date(values, "updated_at"),
+            ParentFilledAtUtc = Date(values, "parent_filled_at"),
+            TpFilledAtUtc = Date(values, "tp_filled_at"),
+            SlTriggeredAtUtc = Date(values, "sl_triggered_at"),
+            Stop3TriggeredAtUtc = Date(values, "stop3_triggered_at"),
+            ClosedAtUtc = Date(values, "closed_at"),
+            SignalCandleHigh = DecimalValue(values, "signal_candle_high"),
+            SignalCandleLow = DecimalValue(values, "signal_candle_low"),
             SignalCandleCloseTime = Long(values, "signal_candle_close_time"),
             HighReached = Bool(values, "high_reached")
         };
     }
-    static string S(string? v) => v??""; static string D(decimal? v) => v?.ToString(CultureInfo.InvariantCulture)??"";static string D(decimal v) => v.ToString(CultureInfo.InvariantCulture);static string B(bool v) => v?"true":"false";static string T(DateTime? v) => v?.ToString("O", CultureInfo.InvariantCulture)??"";static string T(DateTime v) => v.ToString("O", CultureInfo.InvariantCulture);
-    static string G(Dictionary<string, string>m, string k, string d = "") => m.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)?v:d;static string? N(Dictionary<string, string>m, string k) => m.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)?v:null;
-    static decimal? Dec(Dictionary<string, string>m, string k) => decimal.TryParse(G(m, k), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)?v:null;static int Int(Dictionary<string, string>m, string k) => int.TryParse(G(m, k), out var v)?v:0;static long? Long(Dictionary<string, string>m, string k) => long.TryParse(G(m, k), out var v)?v:null;static bool Bool(Dictionary<string, string>m, string k) => bool.TryParse(G(m, k), out var v) && v;static DateTime? Dt(Dictionary<string, string>m, string k) => DateTime.TryParse(G(m, k), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal|DateTimeStyles.AdjustToUniversal, out var v)?v:null;static T E<T>(Dictionary<string, string>m, string k, T d)where T:struct, Enum => Enum.TryParse<T>(G(m, k), true, out var v)?v:d;
+
+    private static string String(string? value) => value ?? string.Empty;
+    private static string Decimal(decimal? value) => value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    private static string Decimal(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+    private static string Boolean(bool value) => value ? "true" : "false";
+    private static string Time(DateTime? value) => value?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty;
+    private static string Time(DateTime value) => value.ToString("O", CultureInfo.InvariantCulture);
+
+    private static string Get(Dictionary<string, string> values, string key, string fallback = "")
+        => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+    private static string? Nullable(Dictionary<string, string> values, string key)
+        => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+
+    private static decimal? DecimalValue(Dictionary<string, string> values, string key)
+        => decimal.TryParse(Get(values, key), NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    private static int Int(Dictionary<string, string> values, string key)
+        => int.TryParse(Get(values, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : 0;
+
+    private static long? Long(Dictionary<string, string> values, string key)
+        => long.TryParse(Get(values, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    private static bool Bool(Dictionary<string, string> values, string key)
+        => bool.TryParse(Get(values, key), out var value) && value;
+
+    private static DateTime? Date(Dictionary<string, string> values, string key)
+        => DateTime.TryParse(
+            Get(values, key),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var value)
+                ? value
+                : null;
+
+    private static T EnumValue<T>(Dictionary<string, string> values, string key, T fallback)
+        where T : struct, Enum
+        => Enum.TryParse<T>(Get(values, key), true, out var value) ? value : fallback;
 }

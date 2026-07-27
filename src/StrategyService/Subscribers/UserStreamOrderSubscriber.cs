@@ -1,2 +1,184 @@
-using System.Globalization;using System.Text.Json;using Microsoft.Extensions.Hosting;using StackExchange.Redis;using TradingSystem.Application.Events;using TradingSystem.Application.Orders;using TradingSystem.Binance.Execution;using TradingSystem.Contracts.Messaging;using TradingSystem.Observability.Environment;using TradingSystem.Observability.History;
-namespace StrategyService.Subscribers;public sealed class UserStreamOrderSubscriber(IConnectionMultiplexer redis, IEnumerable<IBotOrderEventHandler> handlers, IEventDeduplicationStore dedup, ITradingPipelineRecorder history, ITradingEnvironmentProvider environment, ILogger<UserStreamOrderSubscriber> logger):BackgroundService{readonly IReadOnlyDictionary<string, IBotOrderEventHandler> map = handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);protected override async Task ExecuteAsync(CancellationToken ct){var sub = redis.GetSubscriber();var ch = RedisChannel.Literal(RedisChannels.UserStreamOrder);await sub.SubscribeAsync(ch, async(_, m) => {if(m.HasValue)await Process(m!, ct);});try{await Task.Delay(Timeout.InfiniteTimeSpan, ct);}catch(OperationCanceledException)when(ct.IsCancellationRequested){}finally{await sub.UnsubscribeAsync(ch);}}async Task Process(string raw, CancellationToken ct){try{using var d = JsonDocument.Parse(raw);var b = d.RootElement.TryGetProperty("binance", out var w)?w:d.RootElement;var eventType = S(b, "e");if(eventType is not("ORDER_TRADE_UPDATE" or "ALGO_UPDATE"))return;var o = b.TryGetProperty("o", out var x)?x:b.TryGetProperty("ao", out x)?x:b;var cid = S(o, "c")??S(o, "clientOrderId")??S(o, "clientAlgoId")??S(o, "caid");if(!BinanceClientOrderId.TryParse(cid, out var bot, out var role, out var id) || !map.TryGetValue(bot, out var h))return;var status = S(o, "X")??S(o, "orderStatus")??S(o, "algoStatus")??S(o, "status");var oid = S(o, "i")??S(o, "orderId")??S(o, "algoId");var key = $"{eventType}:{oid}:{cid}:{status}";if(!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))return;var qty = D(o, "q");var executed = D(o, "z");var price = D(o, "p");await history.RecordOrderEventAsync(new(key, bot, id, cid, oid, role, status, S(o, "S"), S(o, "s"), environment.EnvironmentName, DateTime.UtcNow, price, qty, executed, raw), ct);if(role=="TP" && status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase)==true)await h.HandleTpFilledAsync(id, executed, ct);else if(role=="TP" && status is "CANCELED" or "EXPIRED" or "REJECTED")await h.HandleTpTerminalAsync(id, status, ct);else if(role=="SL" && Triggered(status))await h.HandleSlTriggeredAsync(id, ct);else if(role is "S3" or "STOP3" && Triggered(status))await h.HandleStop3TriggeredAsync(id, ct);}catch(Exception ex){logger.LogError(ex, "Order event processing failed.");}}static bool Triggered(string? x) => x is "FILLED" or "FINISHED" or "TRIGGERED";static string? S(JsonElement e, string p) => e.TryGetProperty(p, out var v)?v.ValueKind==JsonValueKind.String?v.GetString():v.GetRawText():null;static decimal D(JsonElement e, string p) => e.TryGetProperty(p, out var v) && decimal.TryParse(v.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var n)?n:0;}
+using System.Globalization;
+using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
+using TradingSystem.Application.Events;
+using TradingSystem.Application.Orders;
+using TradingSystem.Binance.Execution;
+using TradingSystem.Contracts.Messaging;
+using TradingSystem.HistoricalDatabase;
+using TradingSystem.Observability.Environment;
+using TradingSystem.Observability.History;
+using TradingSystem.Prometheus;
+
+namespace StrategyService.Subscribers;
+
+public sealed class UserStreamOrderSubscriber(
+    IConnectionMultiplexer redis,
+    IEnumerable<IBotOrderEventHandler> handlers,
+    IEventDeduplicationStore dedup,
+    ITradingPipelineRecorder history,
+    IHistoricalEventSink historicalEvents,
+    TradingMetrics metrics,
+    ITradingEnvironmentProvider environment,
+    ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
+{
+    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers =
+        handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        var subscriber = redis.GetSubscriber();
+        var channel = RedisChannel.Literal(RedisChannels.UserStreamOrder);
+
+        await subscriber.SubscribeAsync(channel, async (_, message) =>
+        {
+            if (message.HasValue)
+                await ProcessAsync(message!, cancellationToken);
+        });
+
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            await subscriber.UnsubscribeAsync(channel);
+        }
+    }
+
+    private async Task ProcessAsync(string raw, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            var binance = document.RootElement.TryGetProperty("binance", out var wrapper)
+                ? wrapper
+                : document.RootElement;
+
+            var eventType = GetString(binance, "e");
+            if (eventType is not ("ORDER_TRADE_UPDATE" or "ALGO_UPDATE"))
+                return;
+
+            var order = binance.TryGetProperty("o", out var node)
+                ? node
+                : binance.TryGetProperty("ao", out node)
+                    ? node
+                    : binance;
+
+            var clientId = GetString(order, "c")
+                           ?? GetString(order, "clientOrderId")
+                           ?? GetString(order, "clientAlgoId")
+                           ?? GetString(order, "caid");
+
+            if (!BinanceClientOrderId.TryParse(clientId, out var bot, out var role, out var shortId) ||
+                !_handlers.TryGetValue(bot, out var handler))
+            {
+                return;
+            }
+
+            var status = GetString(order, "X")
+                         ?? GetString(order, "orderStatus")
+                         ?? GetString(order, "algoStatus")
+                         ?? GetString(order, "status");
+            var orderId = GetString(order, "i")
+                          ?? GetString(order, "orderId")
+                          ?? GetString(order, "algoId");
+            var symbol = GetString(order, "s") ?? "unknown";
+            var key = $"{eventType}:{orderId}:{clientId}:{status}";
+
+            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), cancellationToken))
+                return;
+
+            var quantity = GetDecimal(order, "q");
+            var executed = GetDecimal(order, "z");
+            var price = GetDecimal(order, "p");
+
+            metrics.OrderEvents
+                .WithLabels(bot, symbol, role, status ?? "unknown")
+                .Inc();
+
+            await history.RecordOrderEventAsync(new OrderEventHistoryRecord(
+                key,
+                bot,
+                shortId,
+                clientId,
+                orderId,
+                role,
+                status,
+                GetString(order, "S"),
+                symbol,
+                environment.EnvironmentName,
+                DateTime.UtcNow,
+                price,
+                quantity,
+                executed,
+                raw), cancellationToken);
+
+            await historicalEvents.WriteAsync(new HistoricalEvent(
+                Guid.NewGuid(),
+                HistoricalEventType.OrderUpdate,
+                DateTime.UtcNow,
+                environment.EnvironmentName,
+                key,
+                bot,
+                null,
+                symbol,
+                shortId,
+                orderId,
+                GetString(order, "S"),
+                status,
+                price,
+                quantity,
+                null,
+                null,
+                new Dictionary<string, object?>
+                {
+                    ["event_type"] = eventType,
+                    ["role"] = role,
+                    ["client_id"] = clientId,
+                    ["executed_quantity"] = executed
+                },
+                raw), cancellationToken);
+
+            if (role == "TP" && status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase) == true)
+                await handler.HandleTpFilledAsync(shortId, executed, cancellationToken);
+            else if (role == "TP" && status is "CANCELED" or "EXPIRED" or "REJECTED")
+                await handler.HandleTpTerminalAsync(shortId, status, cancellationToken);
+            else if (role == "SL" && IsTriggered(status))
+                await handler.HandleSlTriggeredAsync(shortId, cancellationToken);
+            else if (role is "S3" or "STOP3" && IsTriggered(status))
+                await handler.HandleStop3TriggeredAsync(shortId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            metrics.ProcessingFailures
+                .WithLabels("user_stream_order", "unknown", exception.GetType().Name)
+                .Inc();
+            logger.LogError(exception, "Order event processing failed.");
+        }
+    }
+
+    private static bool IsTriggered(string? status) =>
+        status is "FILLED" or "FINISHED" or "TRIGGERED";
+
+    private static string? GetString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value)
+            ? value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : value.GetRawText()
+            : null;
+
+    private static decimal GetDecimal(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) &&
+        decimal.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : 0m;
+}

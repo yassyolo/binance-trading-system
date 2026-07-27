@@ -8,6 +8,7 @@ public static class DependencyInjection
     public static IServiceCollection AddTradingAnalytics(this IServiceCollection services)
     {
         services.AddSingleton<PerformanceAnalyticsService>();
+        
         return services;
     }
 }

@@ -1,0 +1,1227 @@
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\appsettings.json
+================================================================================
+{
+  "ConnectionStrings": {
+    "TradingHistory": "Host=localhost;Port=5432;Database=trading;Username=trading;Password=change-me"
+  },
+  "TradingHistory": {
+    "ConnectionStringName": "TradingHistory",
+    "CommandTimeoutSeconds": 30
+  },
+  "Authentication": {
+    "Issuer": "TradingDashboard",
+    "Audience": "TradingDashboard",
+    "SigningKey": "DEVELOPMENT-ONLY-CHANGE-THIS-SIGNING-KEY-32"
+  },
+  "Cors": {
+    "Origins": [
+      "http://localhost:5173"
+    ]
+  },
+  "AllowedHosts": "*",
+  "ServiceHeartbeat": {
+    "Enabled": true,
+    "Environment": "Demo",
+    "IntervalSeconds": 10,
+    "StaleAfterSeconds": 30
+  },
+  "Swagger": {
+    "Enabled": false
+  },
+  "ApiHardening": {
+    "MaximumRequestBodyBytes": 1048576,
+    "IdempotencyRetentionHours": 24
+  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\AuditMiddleware.cs
+================================================================================
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using TradingSystem.Operations;
+
+public sealed class AuditMiddleware(RequestDelegate next)
+{
+    private static readonly HashSet<string> SensitiveNames  =  new(StringComparer.OrdinalIgnoreCase)
+    {
+        "password",  "secret",  "token",  "apiKey",  "apiSecret",  "signingKey",  "authorization",  "connectionString"
+    };
+
+    public async Task InvokeAsync(HttpContext context,  IAuditLog audit,  ILogger<AuditMiddleware> logger)
+    {
+        if (context.Request.Method is "GET" or "HEAD" or "OPTIONS")
+        {
+            await next(context);
+            return;
+        }
+
+        context.Request.EnableBuffering();
+        string? body;
+        using (var reader  =  new StreamReader(context.Request.Body,  Encoding.UTF8,  false,  4096,  true))
+        {
+            body  =  await reader.ReadToEndAsync(context.RequestAborted);
+            context.Request.Body.Position  =  0;
+        }
+
+        var succeeded  =  false;
+        try
+        {
+            await next(context);
+            succeeded  =  true;
+        }
+        finally
+        {
+            var actor  =  context.User.Identity?.Name ?? context.User.FindFirst("sub")?.Value ?? "anonymous";
+            var action  =  $"{context.Request.Method} {context.Request.Path}";
+            var metadata  =  new Dictionary<string,  string>
+            {
+                ["statusCode"]  =  context.Response.StatusCode.ToString(), 
+                ["succeeded"]  =  succeeded.ToString(), 
+                ["userAgent"]  =  Truncate(context.Request.Headers.UserAgent.ToString(),  256)
+            };
+
+            try
+            {
+                await audit.WriteAsync(new(
+                    Guid.NewGuid(),  DateTime.UtcNow,  actor,  action,  "HttpRequest", 
+                    context.Request.RouteValues.Values.LastOrDefault()?.ToString(), 
+                    context.Request.Headers["X-Change-Reason"].FirstOrDefault(), 
+                    context.TraceIdentifier, 
+                    context.Connection.RemoteIpAddress?.ToString(), 
+                    null, 
+                    Redact(body), 
+                    metadata),  CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception,  "Audit event could not be persisted for {Action}. TraceId: {TraceId}",  action,  context.TraceIdentifier);
+            }
+        }
+    }
+
+    private static string? Redact(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        if (body.Length > 64_000) return JsonSerializer.Serialize(new { truncated  =  true,  originalLength  =  body.Length });
+
+        try
+        {
+            var node  =  JsonNode.Parse(body);
+            RedactNode(node);
+            return node?.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new { nonJsonPayload  =  true,  length  =  body.Length });
+        }
+    }
+
+    private static void RedactNode(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var property in obj.ToArray())
+            {
+                if (SensitiveNames.Contains(property.Key)) obj[property.Key]  =  "[REDACTED]";
+                else RedactNode(property.Value);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array) RedactNode(item);
+        }
+    }
+
+    private static string Truncate(string value,  int maximum)  =>  value.Length <= maximum ? value : value[..maximum];
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\ApiExceptions.cs
+================================================================================
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class ApiValidationException(IReadOnlyDictionary<string,  string[]> errors)
+    : Exception("One or more validation errors occurred.")
+{
+    public IReadOnlyDictionary<string,  string[]> Errors {  get;  }  =  errors;
+}
+
+public sealed class ApiConflictException(string message) : Exception(message);
+public sealed class ApiNotFoundException(string message) : Exception(message);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\CorrelationIdMiddleware.cs
+================================================================================
+using System.Diagnostics;
+
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class CorrelationIdMiddleware(RequestDelegate next)
+{
+    public const string HeaderName  =  "X-Correlation-ID";
+
+    public async Task InvokeAsync(HttpContext context,  ILogger<CorrelationIdMiddleware> logger)
+    {
+        var supplied  =  context.Request.Headers[HeaderName].FirstOrDefault();
+        var correlationId  =  IsSafe(supplied) ? supplied! : Guid.NewGuid().ToString("N");
+
+        context.TraceIdentifier  =  correlationId;
+        context.Response.Headers[HeaderName]  =  correlationId;
+        Activity.Current?.SetTag("correlation.id",  correlationId);
+
+        using (logger.BeginScope(new Dictionary<string,  object> { ["CorrelationId"]  =  correlationId }))
+            await next(context);
+    }
+
+    private static bool IsSafe(string? value)  => 
+        !string.IsNullOrWhiteSpace(value)  &&  value.Length <= 128  &&  value.All(c  =>  char.IsLetterOrDigit(c)  ||  c is '-' or '_' or '.');
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\GlobalExceptionHandler.cs
+================================================================================
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
+using Npgsql;
+
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class GlobalExceptionHandler(
+    IProblemDetailsService problemDetails,
+    ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+{
+    public async ValueTask<bool> TryHandleAsync(
+        HttpContext context,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        var descriptor = Describe(context, exception);
+
+        if (descriptor.Status >= 500)
+            logger.LogError(exception, "Unhandled API exception. TraceId: {TraceId}", context.TraceIdentifier);
+        else
+            logger.LogWarning(exception, "API request failed with {StatusCode}. TraceId: {TraceId}",
+                descriptor.Status, context.TraceIdentifier);
+
+        context.Response.StatusCode = descriptor.Status;
+        var problem = new ProblemDetails
+        {
+            Status = descriptor.Status,
+            Title = descriptor.Title,
+            Type = descriptor.Type,
+            Detail = descriptor.ExposeMessage ? exception.Message : descriptor.PublicDetail,
+            Instance = context.Request.Path
+        };
+        problem.Extensions["traceId"] = context.TraceIdentifier;
+        problem.Extensions["correlationId"] =
+            context.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString();
+        if (descriptor.Errors is not null)
+            problem.Extensions["errors"] = descriptor.Errors;
+
+        return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context,
+            ProblemDetails = problem
+        });
+    }
+
+    private static ErrorDescriptor Describe(HttpContext context, Exception exception) => exception switch
+    {
+        ApiValidationException validation => new(
+            StatusCodes.Status400BadRequest,
+            "Validation failed",
+            "https://trading-system/errors/validation",
+            true,
+            validation.Errors),
+        ApiConflictException => new(
+            StatusCodes.Status409Conflict,
+            "Conflict",
+            "https://trading-system/errors/conflict",
+            true),
+        ApiNotFoundException => new(
+            StatusCodes.Status404NotFound,
+            "Resource not found",
+            "https://trading-system/errors/not-found",
+            true),
+        UnauthorizedAccessException => new(
+            StatusCodes.Status403Forbidden,
+            "Forbidden",
+            "https://trading-system/errors/forbidden",
+            false,
+            PublicDetail: "You are not allowed to perform this operation."),
+        PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } => new(
+            StatusCodes.Status409Conflict,
+            "Duplicate request",
+            "https://trading-system/errors/duplicate",
+            false,
+            PublicDetail: "A conflicting resource already exists."),
+        OperationCanceledException when context.RequestAborted.IsCancellationRequested => new(
+            499,
+            "Request cancelled",
+            "https://trading-system/errors/cancelled",
+            false,
+            PublicDetail: "The client cancelled the request."),
+        _ => new(
+            StatusCodes.Status500InternalServerError,
+            "Unexpected server error",
+            "https://trading-system/errors/internal",
+            false,
+            PublicDetail: "An unexpected error occurred.")
+    };
+
+    private sealed record ErrorDescriptor(
+        int Status,
+        string Title,
+        string Type,
+        bool ExposeMessage,
+        IReadOnlyDictionary<string, string[]>? Errors = null,
+        string? PublicDetail = null);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\IdempotencyMiddleware.cs
+================================================================================
+using System.Security.Cryptography;
+using System.Text;
+using Dapper;
+using TradingSystem.Persistence.PostgreSql.Connections;
+
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class IdempotencyMiddleware(RequestDelegate next)
+{
+    public const string HeaderName = "X-Idempotency-Key";
+    private const int MaximumStoredResponseBytes = 1_048_576;
+
+    public async Task InvokeAsync(
+        HttpContext context,
+        ITradingDbConnectionFactory connections,
+        ILogger<IdempotencyMiddleware> logger)
+    {
+        if (!RequiresIdempotency(context.Request))
+        {
+            await next(context);
+            return;
+        }
+
+        var key = context.Request.Headers[HeaderName].FirstOrDefault();
+        if (!IsValidKey(key))
+            throw new ApiValidationException(new Dictionary<string, string[]>
+            {
+                [HeaderName] = ["A 16-128 character idempotency key is required for this operation."]
+            });
+
+        context.Request.EnableBuffering();
+        var requestBody = await ReadBodyAsync(context.Request, context.RequestAborted);
+        context.Request.Body.Position = 0;
+
+        var requestIdentity = string.Join('|',
+            context.Request.Method,
+            context.Request.Path.Value,
+            context.Request.QueryString.Value,
+            context.Request.ContentType,
+            requestBody);
+        var requestHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(requestIdentity)));
+        var actor = context.User.Identity?.Name ?? context.User.FindFirst("sub")?.Value ?? "anonymous";
+
+        await using var connection = await connections.OpenAsync(context.RequestAborted);
+        await RemoveExpiredAsync(connection, key!, actor, context.RequestAborted);
+
+        var inserted = await connection.ExecuteAsync(new CommandDefinition(@"
+            insert into trading_dashboard.api_idempotency_keys
+                (idempotency_key, actor, method, path, request_hash, status, created_at_utc, expires_at_utc)
+            values (@key, @actor, @method, @path, @requestHash, 'Processing', now(), now() + interval '24 hours')
+            on conflict (idempotency_key, actor) do nothing;",
+            new
+            {
+                key,
+                actor,
+                method = context.Request.Method,
+                path = context.Request.Path.Value,
+                requestHash
+            },
+            cancellationToken: context.RequestAborted));
+
+        if (inserted == 0)
+        {
+            var existing = await connection.QuerySingleAsync<ExistingRequest>(new CommandDefinition(@"
+                select request_hash RequestHash, status Status, response_status_code ResponseStatusCode,
+                       response_content_type ResponseContentType, response_body ResponseBody
+                from trading_dashboard.api_idempotency_keys
+                where idempotency_key = @key and actor = @actor;",
+                new { key, actor },
+                cancellationToken: context.RequestAborted));
+
+            if (!string.Equals(existing.RequestHash, requestHash, StringComparison.Ordinal))
+                throw new ApiConflictException(
+                    "The idempotency key was already used with a different request.");
+
+            if (existing.Status == "Completed" && existing.ResponseStatusCode.HasValue)
+            {
+                context.Response.StatusCode = existing.ResponseStatusCode.Value;
+                if (!string.IsNullOrWhiteSpace(existing.ResponseContentType))
+                    context.Response.ContentType = existing.ResponseContentType;
+                context.Response.Headers["X-Idempotent-Replay"] = "true";
+                if (existing.ResponseBody is { Length: > 0 })
+                    await context.Response.Body.WriteAsync(existing.ResponseBody, context.RequestAborted);
+                return;
+            }
+
+            throw new ApiConflictException("An identical request is already being processed.");
+        }
+
+        var originalBody = context.Response.Body;
+        await using var responseBuffer = new MemoryStream();
+        context.Response.Body = responseBuffer;
+
+        try
+        {
+            await next(context);
+
+            // Replaying an empty body for a large successful response is incorrect. Large
+            // responses are delivered normally, but the key is released so a later retry
+            // executes the operation instead of receiving a truncated replay.
+            if (responseBuffer.Length <= MaximumStoredResponseBytes)
+            {
+                var responseBytes = responseBuffer.ToArray();
+                await connection.ExecuteAsync(new CommandDefinition(@"
+                    update trading_dashboard.api_idempotency_keys
+                    set status = 'Completed', response_status_code = @statusCode,
+                        response_content_type = @contentType, response_body = @responseBody,
+                        completed_at_utc = now()
+                    where idempotency_key = @key and actor = @actor and status = 'Processing';",
+                    new
+                    {
+                        key,
+                        actor,
+                        statusCode = context.Response.StatusCode,
+                        contentType = context.Response.ContentType,
+                        responseBody = responseBytes
+                    },
+                    cancellationToken: context.RequestAborted));
+            }
+            else
+            {
+                await ReleaseAsync(connection, key!, actor, CancellationToken.None);
+                logger.LogWarning(
+                    "Response for idempotency key {IdempotencyKey} was {Length} bytes and was not cached.",
+                    key,
+                    responseBuffer.Length);
+            }
+
+            responseBuffer.Position = 0;
+            await responseBuffer.CopyToAsync(originalBody, context.RequestAborted);
+        }
+        catch
+        {
+            try
+            {
+                await ReleaseAsync(connection, key!, actor, CancellationToken.None);
+            }
+            catch (Exception cleanupError)
+            {
+                logger.LogWarning(cleanupError,
+                    "Could not release idempotency key {IdempotencyKey}.", key);
+            }
+            throw;
+        }
+        finally
+        {
+            context.Response.Body = originalBody;
+        }
+    }
+
+    private static bool RequiresIdempotency(HttpRequest request) =>
+        request.Method == HttpMethods.Post &&
+        (request.Path.StartsWithSegments("/api/v1/bots") ||
+         request.Path.StartsWithSegments("/api/v1/backtests") ||
+         request.Path.StartsWithSegments("/api/v1/optimizations") ||
+         request.Path.StartsWithSegments("/api/v1/replays") ||
+         request.Path.StartsWithSegments("/api/v1/paper"));
+
+    private static bool IsValidKey(string? key) =>
+        key is { Length: >= 16 and <= 128 } &&
+        key.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.');
+
+    private static async Task<string> ReadBodyAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body, Encoding.UTF8, false, 4096, true);
+        return await reader.ReadToEndAsync(cancellationToken);
+    }
+
+    private static Task RemoveExpiredAsync(
+        System.Data.Common.DbConnection connection,
+        string key,
+        string actor,
+        CancellationToken cancellationToken) =>
+        connection.ExecuteAsync(new CommandDefinition(@"
+            delete from trading_dashboard.api_idempotency_keys
+            where idempotency_key = @key and actor = @actor and expires_at_utc <= now();",
+            new { key, actor }, cancellationToken: cancellationToken));
+
+    private static Task ReleaseAsync(
+        System.Data.Common.DbConnection connection,
+        string key,
+        string actor,
+        CancellationToken cancellationToken) =>
+        connection.ExecuteAsync(new CommandDefinition(@"
+            delete from trading_dashboard.api_idempotency_keys
+            where idempotency_key = @key and actor = @actor and status = 'Processing';",
+            new { key, actor }, cancellationToken: cancellationToken));
+
+    private sealed record ExistingRequest(
+        string RequestHash,
+        string Status,
+        int? ResponseStatusCode,
+        string? ResponseContentType,
+        byte[]? ResponseBody);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\RequestLoggingMiddleware.cs
+================================================================================
+using System.Diagnostics;
+
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class RequestLoggingMiddleware(RequestDelegate next)
+{
+    public async Task InvokeAsync(HttpContext context,  ILogger<RequestLoggingMiddleware> logger)
+    {
+        var started  =  Stopwatch.GetTimestamp();
+        try
+        {
+            await next(context);
+        }
+        finally
+        {
+            var elapsed  =  Stopwatch.GetElapsedTime(started);
+            logger.LogInformation("HTTP {Method} {Path} responded {StatusCode} in {ElapsedMs:F1} ms for {User}", 
+                context.Request.Method,  context.Request.Path,  context.Response.StatusCode,  elapsed.TotalMilliseconds, 
+                context.User.Identity?.Name ?? "anonymous");
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\RequestValidation.cs
+================================================================================
+using TradingSystem.Dashboard.Contracts;
+
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public static class RequestValidation
+{
+    private static readonly HashSet<string> AllowedIntervals = new(
+        ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"],
+        StringComparer.OrdinalIgnoreCase);
+
+    public static void Validate(UpdateBotConfigurationRequest request)
+    {
+        var errors = NewErrors();
+        Positive(errors, nameof(request.ExpectedVersion), request.ExpectedVersion);
+        Required(errors, nameof(request.StrategyType), request.StrategyType, 128);
+        Symbol(errors, request.Symbol);
+        Required(errors, nameof(request.SignalSource), request.SignalSource, 64);
+        Positive(errors, nameof(request.Quantity), request.Quantity);
+        Range(errors, nameof(request.Leverage), request.Leverage, 1, 125);
+        PositiveWhenPresent(errors, nameof(request.PriceDistance), request.PriceDistance);
+        PositiveWhenPresent(errors, nameof(request.ProfitDistance), request.ProfitDistance);
+        if (request.OrderSideLimit is <= 0 or > 100)
+            Add(errors, nameof(request.OrderSideLimit), "OrderSideLimit must be between 1 and 100.");
+        Range(errors, nameof(request.CooldownSeconds), request.CooldownSeconds, 0, 86_400);
+        Required(errors, nameof(request.Reason), request.Reason, 500);
+        Throw(errors);
+    }
+
+    public static void Validate(BotCommandRequest request)
+    {
+        var errors = NewErrors();
+        Required(errors, nameof(request.Reason), request.Reason, 500);
+        var dangerous = request.Command is BotCommandType.EmergencyStop
+            or BotCommandType.ClosePosition
+            or BotCommandType.CancelTakeProfit
+            or BotCommandType.RecreateTakeProfit;
+        if (dangerous && !request.Confirmed)
+            Add(errors, nameof(request.Confirmed), "Confirmation is required for this command.");
+
+        var positionCommand = request.Command is BotCommandType.ClosePosition
+            or BotCommandType.CancelTakeProfit
+            or BotCommandType.RecreateTakeProfit;
+        if (positionCommand && string.IsNullOrWhiteSpace(request.PositionId))
+            Add(errors, nameof(request.PositionId), "PositionId is required for a position command.");
+        Throw(errors);
+    }
+
+    public static void Validate(BacktestRequest request)
+    {
+        var errors = NewErrors();
+        Bot(errors, request.BotName);
+        Symbol(errors, request.Symbol);
+        Period(errors, request.FromUtc, request.ToUtc);
+        Positive(errors, nameof(request.InitialBalance), request.InitialBalance);
+        Range(errors, nameof(request.CommissionPercent), request.CommissionPercent, 0, 10);
+        Range(errors, nameof(request.SlippagePercent), request.SlippagePercent, 0, 10);
+        Required(errors, nameof(request.SignalSource), request.SignalSource, 64);
+        if (request.Parameters is null)
+            Add(errors, nameof(request.Parameters), "Parameters are required.");
+        else if (request.Parameters.Count > 100)
+            Add(errors, nameof(request.Parameters), "No more than 100 parameters are allowed.");
+        Throw(errors);
+    }
+
+    public static void Validate(OptimizationRequest request)
+    {
+        var errors = NewErrors();
+        Bot(errors, request.BotName);
+        Symbol(errors, request.Symbol);
+        Period(errors, request.FromUtc, request.ToUtc);
+        Positive(errors, nameof(request.InitialBalance), request.InitialBalance);
+        Required(errors, nameof(request.SignalSource), request.SignalSource, 64);
+        Range(errors, nameof(request.TopResults), request.TopResults, 1, 1000);
+
+        if (request.Ranges is null || request.Ranges.Count is 0 or > 20)
+        {
+            Add(errors, nameof(request.Ranges), "Between 1 and 20 ranges are required.");
+        }
+        else
+        {
+            var duplicateNames = request.Ranges
+                .Where(range => !string.IsNullOrWhiteSpace(range.Name))
+                .GroupBy(range => range.Name, StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToArray();
+            if (duplicateNames.Length > 0)
+                Add(errors, nameof(request.Ranges),
+                    $"Range names must be unique: {string.Join(", ", duplicateNames)}.");
+
+            foreach (var range in request.Ranges)
+            {
+                if (string.IsNullOrWhiteSpace(range.Name) || range.Name.Length > 100)
+                    Add(errors, nameof(request.Ranges), "Every range needs a valid name.");
+                if (range.Step <= 0)
+                    Add(errors, nameof(request.Ranges), $"Step for {range.Name} must be greater than zero.");
+                if (range.To < range.From)
+                    Add(errors, nameof(request.Ranges),
+                        $"To for {range.Name} must be greater than or equal to From.");
+            }
+        }
+
+        if (request.WalkForward &&
+            (request.TrainBars is <= 0 || request.TestBars is <= 0 || request.StepBars is <= 0))
+            Add(errors, nameof(request.WalkForward),
+                "Positive TrainBars, TestBars and StepBars are required for walk-forward optimization.");
+        Throw(errors);
+    }
+
+    public static void ValidateBotName(string botName)
+    {
+        var errors = NewErrors();
+        Bot(errors, botName);
+        Throw(errors);
+    }
+
+    public static void ValidateChart(string symbol, string interval, DateTime fromUtc, DateTime toUtc)
+    {
+        var errors = NewErrors();
+        Symbol(errors, symbol);
+        Period(errors, fromUtc, toUtc);
+        if (string.IsNullOrWhiteSpace(interval) || !AllowedIntervals.Contains(interval.Trim()))
+            Add(errors, nameof(interval), "Unsupported candle interval.");
+        if (toUtc - fromUtc > TimeSpan.FromDays(366))
+            Add(errors, nameof(toUtc), "Chart range cannot exceed 366 days.");
+        Throw(errors);
+    }
+
+    public static int PageSize(int value, int defaultValue = 100, int maximum = 500)
+    {
+        if (value == 0)
+            return defaultValue;
+        if (value < 1 || value > maximum)
+            throw new ApiValidationException(new Dictionary<string, string[]>
+            {
+                ["take"] = [$"take must be between 1 and {maximum}."]
+            });
+        return value;
+    }
+
+    public static int Skip(int value)
+    {
+        if (value < 0)
+            throw new ApiValidationException(new Dictionary<string, string[]>
+            {
+                ["skip"] = ["skip cannot be negative."]
+            });
+        return value;
+    }
+
+    private static Dictionary<string, List<string>> NewErrors() =>
+        new(StringComparer.OrdinalIgnoreCase);
+    private static void Add(Dictionary<string, List<string>> errors, string key, string value) =>
+        (errors.TryGetValue(key, out var list) ? list : errors[key] = []).Add(value);
+    private static void Throw(Dictionary<string, List<string>> errors)
+    {
+        if (errors.Count > 0)
+            throw new ApiValidationException(errors.ToDictionary(item => item.Key, item => item.Value.ToArray()));
+    }
+    private static void Required(Dictionary<string, List<string>> errors, string name, string? value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value)) Add(errors, name, $"{name} is required.");
+        else if (value.Length > max) Add(errors, name, $"{name} cannot exceed {max} characters.");
+    }
+    private static void Positive(Dictionary<string, List<string>> errors, string name, decimal value)
+    {
+        if (value <= 0) Add(errors, name, $"{name} must be greater than zero.");
+    }
+    private static void Positive(Dictionary<string, List<string>> errors, string name, long value)
+    {
+        if (value <= 0) Add(errors, name, $"{name} must be greater than zero.");
+    }
+    private static void PositiveWhenPresent(Dictionary<string, List<string>> errors, string name, decimal? value)
+    {
+        if (value.HasValue && value.Value <= 0) Add(errors, name, $"{name} must be greater than zero.");
+    }
+    private static void Range(Dictionary<string, List<string>> errors, string name, decimal value, decimal min, decimal max)
+    {
+        if (value < min || value > max) Add(errors, name, $"{name} must be between {min} and {max}.");
+    }
+    private static void Range(Dictionary<string, List<string>> errors, string name, int value, int min, int max)
+    {
+        if (value < min || value > max) Add(errors, name, $"{name} must be between {min} and {max}.");
+    }
+    private static void Symbol(Dictionary<string, List<string>> errors, string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol) || symbol.Length > 24 || !symbol.All(char.IsLetterOrDigit))
+            Add(errors, nameof(symbol), "Symbol must contain 1-24 letters or digits.");
+    }
+    private static void Bot(Dictionary<string, List<string>> errors, string botName)
+    {
+        if (string.IsNullOrWhiteSpace(botName) || botName.Length > 64 ||
+            !botName.All(character => char.IsLetterOrDigit(character) || character is '-' or '_'))
+            Add(errors, nameof(botName), "Bot name contains invalid characters.");
+    }
+    private static void Period(Dictionary<string, List<string>> errors, DateTime from, DateTime to)
+    {
+        if (from >= to) Add(errors, nameof(to), "ToUtc must be later than FromUtc.");
+        if (to - from > TimeSpan.FromDays(3660)) Add(errors, nameof(to), "Requested period is too large.");
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\SecurityHeadersMiddleware.cs
+================================================================================
+namespace TradingSystem.Dashboard.Api.Hardening;
+
+public sealed class SecurityHeadersMiddleware(RequestDelegate next)
+{
+    public async Task InvokeAsync(HttpContext context)
+    {
+        context.Response.OnStarting(()  => 
+        {
+            var headers  =  context.Response.Headers;
+            headers["X-Content-Type-Options"]  =  "nosniff";
+            headers["X-API-Version"]  =  "1";
+            headers["X-Frame-Options"]  =  "DENY";
+            headers["Referrer-Policy"]  =  "no-referrer";
+            headers["Permissions-Policy"]  =  "camera = (),  microphone = (),  geolocation = ()";
+            headers["Content-Security-Policy"]  =  "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+            headers.Remove("Server");
+            return Task.CompletedTask;
+        });
+
+        await next(context);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Program.cs
+================================================================================
+using TradingSystem.PaperTrading;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using TradingSystem.Dashboard.Api.Hardening;
+using TradingSystem.Dashboard.Application;
+using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Operations;
+using TradingSystem.Persistence.PostgreSql.Configuration;
+using TradingSystem.Persistence.PostgreSql.Dashboard;
+using TradingSystem.EventStore;
+using TradingSystem.ReplayEngine;
+
+var builder  =  WebApplication.CreateBuilder(args);
+
+builder.Services.AddProblemDetails(options  => 
+{
+    options.CustomizeProblemDetails  =  context  => 
+    {
+        context.ProblemDetails.Extensions["traceId"]  =  context.HttpContext.TraceIdentifier;
+        context.ProblemDetails.Extensions["timestampUtc"]  =  DateTime.UtcNow;
+    };
+});
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options  => 
+{
+    options.SwaggerDoc("v1",  new OpenApiInfo
+    {
+        Title  =  "Trading System Dashboard API", 
+        Version  =  "v1", 
+        Description  =  "Operational and analytics API. Trading commands require Operator authorization and idempotency keys."
+    });
+    options.AddSecurityDefinition("Bearer",  new OpenApiSecurityScheme
+    {
+        Name  =  "Authorization", 
+        Type  =  SecuritySchemeType.Http, 
+        Scheme  =  "bearer", 
+        BearerFormat  =  "JWT", 
+        In  =  ParameterLocation.Header
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme { Reference  =  new OpenApiReference { Type  =  ReferenceType.SecurityScheme,  Id  =  "Bearer" } }]  =  []
+    });
+});
+builder.Services.AddHealthChecks();
+builder.Services.AddPostgresTradingHistory(builder.Configuration);
+builder.Services.AddServiceHeartbeat(builder.Configuration,  "DashboardApi");
+
+builder.Services.AddSingleton<PostgresDashboardStore>();
+builder.Services.AddSingleton<IDashboardQueryStore>(services  =>  services.GetRequiredService<PostgresDashboardStore>());
+builder.Services.AddSingleton<IBotConfigurationStore>(services  =>  services.GetRequiredService<PostgresDashboardStore>());
+builder.Services.AddSingleton<IBotCommandStore>(services  =>  services.GetRequiredService<PostgresDashboardStore>());
+builder.Services.AddSingleton<IDashboardJobStore>(services  =>  services.GetRequiredService<PostgresDashboardStore>());
+builder.Services.AddSingleton<IAlertCommandStore>(services  =>  services.GetRequiredService<PostgresDashboardStore>());
+
+var signingKey  =  builder.Configuration["Authentication:SigningKey"];
+if (string.IsNullOrWhiteSpace(signingKey)  ||  signingKey.Length < 32  || 
+    (!builder.Environment.IsDevelopment()  &&  signingKey.StartsWith("DEVELOPMENT-ONLY",  StringComparison.Ordinal)))
+    throw new InvalidOperationException("Authentication:SigningKey must be a secure secret with at least 32 characters.");
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options  => 
+    {
+        options.MapInboundClaims  =  false;
+        options.RequireHttpsMetadata  =  !builder.Environment.IsDevelopment();
+        options.TokenValidationParameters  =  new TokenValidationParameters
+        {
+            ValidateIssuer  =  true, 
+            ValidateAudience  =  true, 
+            ValidateLifetime  =  true, 
+            ValidateIssuerSigningKey  =  true, 
+            RequireExpirationTime  =  true, 
+            RequireSignedTokens  =  true, 
+            ClockSkew  =  TimeSpan.FromSeconds(30), 
+            ValidIssuer  =  builder.Configuration["Authentication:Issuer"] ?? "TradingDashboard", 
+            ValidAudience  =  builder.Configuration["Authentication:Audience"] ?? "TradingDashboard", 
+            IssuerSigningKey  =  new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(signingKey)), 
+            NameClaimType  =  ClaimTypes.Name, 
+            RoleClaimType  =  ClaimTypes.Role
+        };
+    });
+
+builder.Services.AddAuthorization(options  => 
+{
+    options.FallbackPolicy  =  new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+    options.AddPolicy("Viewer",  policy  =>  policy.RequireRole("Viewer",  "Operator",  "Administrator"));
+    options.AddPolicy("Operator",  policy  =>  policy.RequireRole("Operator",  "Administrator"));
+    options.AddPolicy("Administrator",  policy  =>  policy.RequireRole("Administrator"));
+});
+
+var corsOrigins  =  builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
+if (!builder.Environment.IsDevelopment()  &&  corsOrigins.Length == 0)
+    throw new InvalidOperationException("At least one explicit CORS origin is required outside Development.");
+
+builder.Services.AddCors(options  =>  options.AddPolicy("React",  policy  => 
+{
+    policy.WithOrigins(corsOrigins.Length == 0 ? ["http://localhost:5173"] : corsOrigins)
+        .WithMethods("GET",  "POST",  "PUT",  "PATCH",  "DELETE")
+        .WithHeaders("Authorization",  "Content-Type",  CorrelationIdMiddleware.HeaderName,  IdempotencyMiddleware.HeaderName)
+        .WithExposedHeaders(CorrelationIdMiddleware.HeaderName,  "X-Idempotent-Replay")
+        .SetPreflightMaxAge(TimeSpan.FromHours(1));
+}));
+
+builder.Services.AddRateLimiter(options  => 
+{
+    options.RejectionStatusCode  =  StatusCodes.Status429TooManyRequests;
+    options.OnRejected  =  async (context,  cancellationToken)  => 
+    {
+        context.HttpContext.Response.Headers["Retry-After"]  =  "60";
+        await Results.Problem(
+            statusCode: StatusCodes.Status429TooManyRequests, 
+            title: "Rate limit exceeded", 
+            type: "https://trading-system/errors/rate-limit", 
+            extensions: new Dictionary<string,  object?> { ["traceId"]  =  context.HttpContext.TraceIdentifier })
+            .ExecuteAsync(context.HttpContext);
+    };
+    options.AddPolicy("read",  context  =>  RateLimitPartition.GetFixedWindowLimiter(
+        context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous", 
+        _  =>  new FixedWindowRateLimiterOptions { PermitLimit  =  300,  Window  =  TimeSpan.FromMinutes(1),  QueueLimit  =  0 }));
+    options.AddPolicy("write",  context  =>  RateLimitPartition.GetFixedWindowLimiter(
+        context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous", 
+        _  =>  new FixedWindowRateLimiterOptions { PermitLimit  =  30,  Window  =  TimeSpan.FromMinutes(1),  QueueLimit  =  0 }));
+    options.AddPolicy("dangerous",  context  =>  RateLimitPartition.GetFixedWindowLimiter(
+        context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous", 
+        _  =>  new FixedWindowRateLimiterOptions { PermitLimit  =  10,  Window  =  TimeSpan.FromMinutes(1),  QueueLimit  =  0 }));
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options  => 
+{
+    options.ForwardedHeaders  =  ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit  =  2;
+});
+builder.WebHost.ConfigureKestrel(options  =>  options.Limits.MaxRequestBodySize  =  1_048_576);
+
+builder.Services.AddOptions<PaperTradingOptions>().Bind(builder.Configuration.GetSection(PaperTradingOptions.SectionName));
+
+var app  =  builder.Build();
+
+app.UseForwardedHeaders();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+app.UseExceptionHandler();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseCors("React");
+app.UseAuthentication();
+app.UseRateLimiter();
+app.UseAuthorization();
+app.UseMiddleware<IdempotencyMiddleware>();
+app.UseMiddleware<AuditMiddleware>();
+
+if (app.Environment.IsDevelopment()  ||  builder.Configuration.GetValue("Swagger:Enabled",  false))
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseWhen(context  =>  context.Request.Path.StartsWithSegments("/swagger"),  branch  => 
+        {
+            branch.Use(async (context,  next)  => 
+            {
+                if (context.User.Identity?.IsAuthenticated !=  true  ||  !context.User.IsInRole("Administrator"))
+                {
+                    context.Response.StatusCode  =  StatusCodes.Status404NotFound;
+                    return;
+                }
+                await next(context);
+            });
+        });
+    }
+    app.UseSwagger();
+    app.UseSwaggerUI(options  =>  options.DisplayRequestDuration());
+}
+
+string UserName(HttpContext context)  =>  context.User.Identity?.Name ?? context.User.FindFirstValue("sub") ?? "dashboard-user";
+var api  =  app.MapGroup("/api/v1").WithTags("Dashboard");
+
+api.MapGet("/timeline",  async (string? aggregateType,  string? aggregateId,  string? botName,  string? symbol,  string? positionId,  string? signalId,  string? correlationId,  string? eventType,  DateTime? fromUtc,  DateTime? toUtc,  long? afterGlobalPosition,  int skip,  int take,  ITradingTimelineReader timeline,  CancellationToken ct)  => 
+    await timeline.ReadAsync(new EventStoreQuery(aggregateType,  aggregateId,  botName,  symbol,  positionId,  signalId,  correlationId,  eventType,  fromUtc,  toUtc,  afterGlobalPosition,  RequestValidation.Skip(skip),  RequestValidation.PageSize(take)),  ct))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapGet("/event-streams/{aggregateType}/{aggregateId}",  async (string aggregateType,  string aggregateId,  long afterVersion,  int take,  ITradingEventStore store,  CancellationToken ct)  => 
+    await store.ReadStreamAsync(aggregateType,  aggregateId,  Math.Max(0,  afterVersion),  Math.Clamp(take,  1,  500),  ct))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapPost("/replays",  async (CreateReplayRequest request,  HttpContext http,  IReplayJobStore store,  CancellationToken ct)  => 
+{
+    if (string.IsNullOrWhiteSpace(request.Name)  ||  request.Name.Length > 150)
+        throw new ApiValidationException(new Dictionary<string,  string[]> { ["name"]  =  ["Replay name is required and must be at most 150 characters."] });
+    if (request.FromGlobalPosition.HasValue  &&  request.ToGlobalPosition.HasValue  &&  request.FromGlobalPosition > request.ToGlobalPosition)
+        throw new ApiValidationException(new Dictionary<string,  string[]> { ["range"]  =  ["FromGlobalPosition must not be greater than ToGlobalPosition."] });
+    if (request.FromUtc.HasValue  &&  request.ToUtc.HasValue  &&  request.FromUtc >= request.ToUtc)
+        throw new ApiValidationException(new Dictionary<string,  string[]> { ["range"]  =  ["FromUtc must be earlier than ToUtc."] });
+    if (request.Mode == ReplayMode.StrategyComparison  &&  (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId)  ||  string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
+        throw new ApiValidationException(new Dictionary<string,  string[]> { ["candidateStrategy"]  =  ["Strategy comparison requires candidate plugin id and version."] });
+    var id  =  await store.EnqueueAsync(request with { BatchSize  =  Math.Clamp(request.BatchSize,  1,  1000) },  UserName(http),  ct);
+    return Results.Accepted($"/api/v1/replays/{id}",  new { replayId  =  id });
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+
+api.MapGet("/replays",  (ReplayJobStatus? status,  int skip,  int take,  IReplayJobStore store,  CancellationToken ct)  => 
+    store.QueryAsync(status,  RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  ct))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapGet("/replays/{replayId:guid}",  async (Guid replayId,  IReplayJobStore store,  CancellationToken ct)  => 
+    await store.GetAsync(replayId,  ct) is { } job ? Results.Ok(job) : Results.NotFound())
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapGet("/replays/{replayId:guid}/result",  async (Guid replayId,  IReplayJobStore store,  CancellationToken ct)  => 
+    await store.GetSummaryAsync(replayId,  ct) is { } summary ? Results.Ok(summary) : Results.NotFound())
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapGet("/replays/{replayId:guid}/steps",  (Guid replayId,  long afterGlobalPosition,  int take,  IReplayJobStore store,  CancellationToken ct)  => 
+    store.GetStepsAsync(replayId,  Math.Max(0,  afterGlobalPosition),  Math.Clamp(take,  1,  500),  ct))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapPost("/replays/{replayId:guid}/cancel",  async (Guid replayId,  HttpContext http,  IReplayJobStore store,  CancellationToken ct)  => 
+{
+    await store.CancelAsync(replayId,  UserName(http),  ct);
+    return Results.Accepted();
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+
+api.MapGet("/overview",  (IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetOverviewAsync(ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/bots",  (IBotConfigurationStore store,  CancellationToken ct)  =>  store.GetAllAsync(ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/bots/{botName}",  (string botName,  IBotConfigurationStore store,  CancellationToken ct)  =>  { RequestValidation.ValidateBotName(botName); return store.GetAsync(botName,  ct); }).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapPut("/bots/{botName}/configuration",  async (string botName,  UpdateBotConfigurationRequest request,  HttpContext http,  IBotConfigurationStore store,  CancellationToken ct)  => 
+{
+    RequestValidation.ValidateBotName(botName); RequestValidation.Validate(request);
+    try { return Results.Ok(await store.UpdateAsync(botName,  request,  UserName(http),  ct)); }
+    catch (InvalidOperationException exception) { throw new ApiConflictException(exception.Message); }
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+api.MapPost("/bots/{botName}/commands",  async (string botName,  BotCommandRequest request,  HttpContext http,  IBotCommandStore store,  CancellationToken ct)  => 
+{
+    RequestValidation.ValidateBotName(botName); RequestValidation.Validate(request);
+    return Results.Accepted(value: await store.EnqueueAsync(botName,  request,  UserName(http),  ct));
+}).RequireAuthorization("Operator").RequireRateLimiting("dangerous");
+api.MapGet("/commands",  (string? botName,  int take,  IBotCommandStore store,  CancellationToken ct)  => 
+{
+    if (botName is not null) RequestValidation.ValidateBotName(botName);
+    return store.GetAsync(botName,  RequestValidation.PageSize(take),  ct);
+}).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/signals",  (string? botName,  string? symbol,  DateTime? fromUtc,  DateTime? toUtc,  int skip,  int take,  IDashboardQueryStore store,  CancellationToken ct)  => 
+    store.GetSignalsAsync(new(RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  botName,  symbol,  fromUtc,  toUtc),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/positions",  (string? botName,  string? symbol,  string? status,  int skip,  int take,  IDashboardQueryStore store,  CancellationToken ct)  => 
+    store.GetPositionsAsync(new(RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  botName,  symbol,  Status: status),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/trades",  (string? botName,  string? symbol,  int skip,  int take,  IDashboardQueryStore store,  CancellationToken ct)  => 
+    store.GetTradesAsync(new(RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  botName,  symbol),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/analytics",  (string? botName,  string? symbol,  DateTime? fromUtc,  DateTime? toUtc,  IDashboardQueryStore store,  CancellationToken ct)  => 
+    store.GetAnalyticsAsync(new(BotName: botName,  Symbol: symbol,  FromUtc: fromUtc,  ToUtc: toUtc),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/analytics/equity",  (string? botName,  IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetEquityAsync(new(BotName: botName),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/charts/{symbol}/{interval}",  (string symbol,  string interval,  DateTime fromUtc,  DateTime toUtc,  IDashboardQueryStore store,  CancellationToken ct)  => 
+{
+    RequestValidation.ValidateChart(symbol,  interval,  fromUtc,  toUtc);
+    return store.GetPriceChartAsync(symbol,  interval,  fromUtc,  toUtc,  ct);
+}).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapPost("/backtests",  async (BacktestRequest request,  HttpContext http,  IDashboardJobStore store,  CancellationToken ct)  => 
+{
+    RequestValidation.Validate(request);
+    return Results.Accepted(value: await store.EnqueueBacktestAsync(request,  UserName(http),  ct));
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+api.MapPost("/optimizations",  async (OptimizationRequest request,  HttpContext http,  IDashboardJobStore store,  CancellationToken ct)  => 
+{
+    RequestValidation.Validate(request);
+    return Results.Accepted(value: await store.EnqueueOptimizationAsync(request,  UserName(http),  ct));
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+api.MapGet("/runs",  (string? botName,  int skip,  int take,  IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetRunsAsync(new(RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  botName),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/optimizations/{runId:guid}/trials",  (Guid runId,  int take,  IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetOptimizationTrialsAsync(runId,  RequestValidation.PageSize(take),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/comparisons",  async (Guid leftRunId,  Guid rightRunId,  IDashboardQueryStore store,  CancellationToken ct)  =>  await store.CompareRunsAsync(leftRunId,  rightRunId,  ct) is { } comparison ? Results.Ok(comparison) : Results.NotFound()).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/health/components",  (IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetHealthAsync(ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/alerts",  (bool acknowledged,  int take,  IDashboardQueryStore store,  CancellationToken ct)  =>  store.GetAlertsAsync(acknowledged,  RequestValidation.PageSize(take),  ct)).RequireAuthorization("Viewer").RequireRateLimiting("read");
+api.MapGet("/audit",  (string? actor,  string? action,  DateTime? fromUtc,  DateTime? toUtc,  int skip,  int take,  IDashboardQueryStore store,  CancellationToken ct)  => 
+    store.GetAuditEventsAsync(actor,  action,  fromUtc,  toUtc,  RequestValidation.Skip(skip),  RequestValidation.PageSize(take),  ct)).RequireAuthorization("Operator").RequireRateLimiting("read");
+api.MapPost("/alerts/{id:long}/acknowledge",  async (long id,  HttpContext http,  IAlertCommandStore store,  CancellationToken ct)  => 
+{
+    if (id <= 0) throw new ApiValidationException(new Dictionary<string,  string[]> { ["id"]  =  ["Alert id must be positive."] });
+    await store.AcknowledgeAsync(id,  UserName(http),  ct); return Results.NoContent();
+}).RequireAuthorization("Operator").RequireRateLimiting("write");
+
+
+api.MapGet("/paper/account",  async (IPaperTradingStore store,  IOptions<PaperTradingOptions> options,  CancellationToken ct)  => 
+    Results.Ok(await store.GetAccountAsync(options.Value.InitialBalance,  ct)))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapGet("/paper/positions",  async (string? botName,  string? symbol,  PaperPositionStatus? status,  int? skip,  int? take,  IPaperTradingStore store,  CancellationToken ct)  => 
+    Results.Ok(await store.QueryAsync(botName,  symbol,  status,  Math.Max(0,  skip ?? 0),  Math.Clamp(take ?? 100,  1,  500),  ct)))
+    .RequireAuthorization("Viewer").RequireRateLimiting("read");
+
+api.MapPost("/paper/reset",  async (HttpContext context,  IPaperTradingStore store,  CancellationToken ct)  => 
+{
+    await store.ResetAsync(UserName(context),  ct);
+    return Results.Accepted();
+}).RequireAuthorization("Administrator").RequireRateLimiting("dangerous");
+
+app.MapHealthChecks("/health/live").AllowAnonymous().DisableRateLimiting();
+app.Run();
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Properties\launchSettings.json
+================================================================================
+{
+  "profiles": {
+    "TradingSystem.Dashboard.Api": {
+      "commandName": "Project", 
+      "launchBrowser": true, 
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }, 
+      "applicationUrl": "https://localhost:53303;http://localhost:53304"
+    }
+  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\TradingSystem.Dashboard.Api.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk.Web">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj"/><ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj"/><ProjectReference Include = "../TradingSystem.Persistence.PostgreSql/TradingSystem.Persistence.PostgreSql.csproj"/>  <ProjectReference Include = "../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
+  </ItemGroup>
+ <ItemGroup><PackageReference Include = "Microsoft.AspNetCore.OpenApi" Version = "8.0.8"/><PackageReference Include = "Swashbuckle.AspNetCore" Version = "6.6.2"/><PackageReference Include = "Microsoft.AspNetCore.Authentication.JwtBearer" Version = "8.0.8"/></ItemGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Application\Abstractions.cs
+================================================================================
+using TradingSystem.Dashboard.Contracts;
+namespace TradingSystem.Dashboard.Application;
+
+public sealed record DashboardQuery(int Skip  =  0,  int Take  =  100,  string? BotName  =  null,  string? Symbol  =  null,  DateTime? FromUtc  =  null,  DateTime? ToUtc  =  null,  string? Status  =  null);
+public interface IDashboardQueryStore
+{
+ Task<LiveOverviewDto> GetOverviewAsync(CancellationToken ct);
+ Task<IReadOnlyCollection<SignalRowDto>> GetSignalsAsync(DashboardQuery query,  CancellationToken ct);
+ Task<IReadOnlyCollection<PositionRowDto>> GetPositionsAsync(DashboardQuery query,  CancellationToken ct);
+ Task<IReadOnlyCollection<TradeHistoryRowDto>> GetTradesAsync(DashboardQuery query,  CancellationToken ct);
+ Task<AnalyticsSummaryDto> GetAnalyticsAsync(DashboardQuery query,  CancellationToken ct);
+ Task<IReadOnlyCollection<EquityPointDto>> GetEquityAsync(DashboardQuery query,  CancellationToken ct);
+ Task<PriceChartDto> GetPriceChartAsync(string symbol,  string interval,  DateTime fromUtc,  DateTime toUtc,  CancellationToken ct);
+ Task<IReadOnlyCollection<RunSummaryDto>> GetRunsAsync(DashboardQuery query,  CancellationToken ct);
+ Task<IReadOnlyCollection<OptimizationTrialDto>> GetOptimizationTrialsAsync(Guid runId,  int take,  CancellationToken ct);
+ Task<StrategyComparisonDto?> CompareRunsAsync(Guid leftRunId,  Guid rightRunId,  CancellationToken ct);
+ Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthAsync(CancellationToken ct);
+ Task<IReadOnlyCollection<AlertDto>> GetAlertsAsync(bool acknowledged,  int take,  CancellationToken ct);
+ Task<IReadOnlyCollection<AuditEventDto>> GetAuditEventsAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct);
+}
+public interface IBotConfigurationStore
+{
+ Task<IReadOnlyCollection<BotConfigurationDto>> GetAllAsync(CancellationToken ct);
+ Task<BotConfigurationDto?> GetAsync(string botName,  CancellationToken ct);
+ Task<BotConfigurationDto> UpdateAsync(string botName,  UpdateBotConfigurationRequest request,  string user,  CancellationToken ct);
+}
+public interface IBotCommandStore
+{
+ Task<BotCommandDto> EnqueueAsync(string botName,  BotCommandRequest request,  string user,  CancellationToken ct);
+ Task<IReadOnlyCollection<BotCommandDto>> GetAsync(string? botName,  int take,  CancellationToken ct);
+}
+public interface IDashboardJobStore
+{
+ Task<JobAcceptedDto> EnqueueBacktestAsync(BacktestRequest request,  string user,  CancellationToken ct);
+ Task<JobAcceptedDto> EnqueueOptimizationAsync(OptimizationRequest request,  string user,  CancellationToken ct);
+}
+public interface IAlertCommandStore { Task AcknowledgeAsync(long alertId,  string user,  CancellationToken ct); }
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Application\TradingSystem.Dashboard.Application.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Application\Validation.cs
+================================================================================
+using TradingSystem.Dashboard.Contracts;
+namespace TradingSystem.Dashboard.Application;
+public static class DashboardValidation
+{
+ public static void Validate(UpdateBotConfigurationRequest r)
+ {
+  if (r.ExpectedVersion < 1) throw new ArgumentException("ExpectedVersion is required.");
+  if (string.IsNullOrWhiteSpace(r.StrategyType)) throw new ArgumentException("StrategyType is required.");
+  if (string.IsNullOrWhiteSpace(r.Symbol)) throw new ArgumentException("Symbol is required.");
+  if (r.Quantity <= 0) throw new ArgumentException("Quantity must be positive.");
+  if (r.Leverage is < 1 or > 125) throw new ArgumentException("Leverage must be between 1 and 125.");
+  if (r.CooldownSeconds < 0) throw new ArgumentException("CooldownSeconds cannot be negative.");
+  if (r.PriceDistance <= 0  &&  r.PriceDistance is not null) throw new ArgumentException("PriceDistance must be positive.");
+  if (r.ProfitDistance <= 0  &&  r.ProfitDistance is not null) throw new ArgumentException("ProfitDistance must be positive.");
+  if (r.OrderSideLimit <= 0  &&  r.OrderSideLimit is not null) throw new ArgumentException("OrderSideLimit must be positive.");
+  if (string.IsNullOrWhiteSpace(r.Reason)) throw new ArgumentException("A change reason is required.");
+ }
+ public static void Validate(BotCommandRequest r)
+ {
+  if (string.IsNullOrWhiteSpace(r.Reason)) throw new ArgumentException("A command reason is required.");
+  if (r.Command is BotCommandType.EmergencyStop or BotCommandType.ClosePosition or BotCommandType.CancelTakeProfit or BotCommandType.RecreateTakeProfit  &&  !r.Confirmed)
+   throw new ArgumentException("This trading action requires explicit confirmation.");
+  if (r.Command is BotCommandType.ClosePosition or BotCommandType.CancelTakeProfit or BotCommandType.RecreateTakeProfit  &&  string.IsNullOrWhiteSpace(r.PositionId))
+   throw new ArgumentException("PositionId is required.");
+ }
+ public static void Validate(BacktestRequest r)
+ {
+  if (r.ToUtc <= r.FromUtc) throw new ArgumentException("Backtest period is invalid.");
+  if (r.InitialBalance <= 0) throw new ArgumentException("Initial balance must be positive.");
+  if (r.CommissionPercent < 0  ||  r.SlippagePercent < 0) throw new ArgumentException("Costs cannot be negative.");
+ }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Contracts\DashboardContracts.cs
+================================================================================
+namespace TradingSystem.Dashboard.Contracts;
+
+public enum BotRuntimeStatus { Stopped,  Running,  Paused,  EmergencyStopped,  Faulted }
+public enum TradingEnvironment { Demo,  Production }
+public enum BotCommandType { Start,  Stop,  Pause,  Resume,  EmergencyStop,  ClosePosition,  CancelTakeProfit,  RecreateTakeProfit }
+public enum BotCommandStatus { Pending,  Processing,  Completed,  Failed,  Rejected }
+
+public sealed record BotOverviewDto(
+    string BotName,  BotRuntimeStatus Status,  TradingEnvironment Environment, 
+    string SignalSource,  string? LastSignalSide,  DateTime? LastSignalAtUtc, 
+    string? LastDecision,  string? LastDecisionReason,  DateTime? LastDecisionAtUtc, 
+    int OpenPositions,  decimal UnrealizedPnl,  decimal RealizedPnlToday, 
+    string StrategyVersion,  DateTime? LastHeartbeatUtc);
+
+public sealed record LiveOverviewDto(
+    DateTime GeneratedAtUtc,  IReadOnlyCollection<BotOverviewDto> Bots, 
+    IReadOnlyCollection<ComponentHealthDto> Components, 
+    decimal RealizedPnlToday,  decimal UnrealizedPnl,  int OpenPositions, 
+    int CriticalAlerts);
+
+public sealed record ComponentHealthDto(string Component,  string Status,  DateTime? LastSeenUtc,  string? Details);
+public sealed record SignalRowDto(long Id,  string SignalId,  DateTime TimeUtc,  string BotName,  string Symbol,  string Source,  string Side,  decimal? Price,  string? Decision,  string? BlockReason,  string StrategyVersion,  string Environment);
+public sealed record PositionRowDto(string PositionId,  string BotName,  string Symbol,  string Side,  string Status,  decimal Quantity,  decimal? EntryPrice,  decimal? TakeProfitPrice,  decimal? CurrentPrice,  decimal UnrealizedPnl,  decimal? RealizedPnl,  DateTime OpenedAtUtc,  DateTime? ClosedAtUtc,  string StrategyVersion,  string Environment);
+public sealed record TradeHistoryRowDto(string PositionId,  string BotName,  string Symbol,  string Side,  decimal? EntryPrice,  decimal? ExitPrice,  decimal Quantity,  decimal? RealizedPnl,  decimal? Fees,  TimeSpan? Duration,  string? Source,  string StrategyVersion,  string Environment,  string? CloseReason,  DateTime OpenedAtUtc,  DateTime? ClosedAtUtc);
+public sealed record AnalyticsSummaryDto(decimal TotalPnl,  decimal DailyPnl,  decimal WeeklyPnl,  decimal MonthlyPnl,  decimal WinRate,  decimal AverageWin,  decimal AverageLoss,  decimal MaxDrawdownPercent,  decimal AverageHoldingMinutes,  int Signals,  int OpenedSignals,  int BlockedSignals,  IReadOnlyDictionary<string, int> BlockReasons,  decimal LongPnl,  decimal ShortPnl);
+public sealed record EquityPointDto(DateTime TimeUtc,  decimal Equity,  decimal DrawdownPercent);
+public sealed record PriceCandleDto(DateTime OpenTimeUtc,  decimal Open,  decimal High,  decimal Low,  decimal Close,  decimal Volume);
+public sealed record ChartMarkerDto(DateTime TimeUtc,  string Kind,  string Side,  decimal Price,  string? Label);
+public sealed record PriceChartDto(IReadOnlyCollection<PriceCandleDto> Candles,  IReadOnlyCollection<ChartMarkerDto> Markers);
+
+public sealed record BotConfigurationDto(string BotName,  string StrategyType,  string Symbol,  TradingEnvironment Environment,  string SignalSource,  bool EnableLong,  bool EnableShort,  decimal Quantity,  int Leverage,  decimal? PriceDistance,  decimal? ProfitDistance,  int? OrderSideLimit,  int CooldownSeconds,  long Version,  DateTime UpdatedAtUtc,  string UpdatedBy,  bool RestartRequired);
+public sealed record UpdateBotConfigurationRequest(long ExpectedVersion,  string StrategyType,  string Symbol,  TradingEnvironment Environment,  string SignalSource,  bool EnableLong,  bool EnableShort,  decimal Quantity,  int Leverage,  decimal? PriceDistance,  decimal? ProfitDistance,  int? OrderSideLimit,  int CooldownSeconds,  string Reason);
+public sealed record BotCommandRequest(BotCommandType Command,  string Reason,  bool Confirmed,  bool CancelOpenOrders  =  false,  bool CloseOpenPositions  =  false,  string? PositionId  =  null);
+public sealed record BotCommandDto(Guid CommandId,  string BotName,  BotCommandType Command,  BotCommandStatus Status,  string RequestedBy,  string Reason,  DateTime RequestedAtUtc,  DateTime? CompletedAtUtc,  string? Error);
+
+public sealed record BacktestRequest(string BotName,  string Symbol,  DateTime FromUtc,  DateTime ToUtc,  decimal InitialBalance,  string SignalSource,  decimal CommissionPercent,  decimal SlippagePercent,  IReadOnlyDictionary<string, string> Parameters);
+public sealed record OptimizationRangeDto(string Name,  decimal From,  decimal To,  decimal Step);
+public sealed record OptimizationRequest(string BotName,  string Symbol,  DateTime FromUtc,  DateTime ToUtc,  decimal InitialBalance,  string SignalSource,  IReadOnlyCollection<OptimizationRangeDto> Ranges,  int TopResults,  bool WalkForward,  int? TrainBars,  int? TestBars,  int? StepBars);
+public sealed record JobAcceptedDto(Guid JobId,  string Type,  string Status,  DateTime CreatedAtUtc);
+public sealed record RunSummaryDto(Guid RunId,  string RunType,  string BotName,  string StrategyVersion,  string Symbol,  string Interval,  DateTime StartedAtUtc,  DateTime? CompletedAtUtc,  string Status,  decimal? NetProfit,  decimal? WinRatePercent,  decimal? MaxDrawdownPercent,  decimal? Score);
+public sealed record OptimizationTrialDto(Guid TrialId,  int Rank,  IReadOnlyDictionary<string, string> Parameters,  decimal Score,  decimal NetProfit,  decimal DrawdownPercent,  decimal WinRatePercent,  int Trades,  bool Selected);
+public sealed record StrategyComparisonDto(Guid LeftRunId,  Guid RightRunId,  string LeftLabel,  string RightLabel,  decimal NetProfitDifference,  decimal DrawdownDifference,  decimal WinRateDifference,  decimal ScoreDifference);
+public sealed record AlertDto(long AlertId,  string Severity,  string Type,  string Message,  string? BotName,  string? PositionId,  DateTime CreatedAtUtc,  bool Acknowledged,  DateTime? AcknowledgedAtUtc,  string? AcknowledgedBy);
+
+public sealed record AuditEventDto(Guid AuditId, DateTime OccurredAtUtc, string Actor, string Action, string EntityType, string? EntityId, string? Reason, string? CorrelationId, string? IpAddress, string? OldValueJson, string? NewValueJson);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Contracts\TradingSystem.Dashboard.Contracts.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk" >
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+</Project>

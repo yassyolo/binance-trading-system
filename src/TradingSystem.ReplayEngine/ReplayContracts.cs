@@ -104,16 +104,6 @@ public interface IReplayStrategyEvaluator
 public sealed record ReplayCandidateDecision(string Decision,  string Reason,  string DataJson);
 public sealed record ReplayContext(Guid ReplayId,  DateTime VirtualTimeUtc,  ReplayAccumulator State);
 
-public sealed class ReplayVirtualClock
-{
-    public DateTime UtcNow {  get;  private set; }  =  DateTime.UnixEpoch;
-    public void AdvanceTo(DateTime value)
-    {
-        var normalized  =  DateTime.SpecifyKind(value,  DateTimeKind.Utc);
-        if (normalized > UtcNow) UtcNow  =  normalized;
-    }
-}
-
 public sealed class ReplayAccumulator
 {
     public long ProcessedEvents {  get;  set; }

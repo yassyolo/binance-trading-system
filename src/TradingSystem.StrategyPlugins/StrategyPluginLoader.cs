@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.Strategies;
 
@@ -10,42 +9,86 @@ namespace TradingSystem.StrategyPlugins;
 
 public static class StrategyPluginLoader
 {
-    public static IServiceCollection AddStrategyPluginSystem(this IServiceCollection services,  IConfiguration configuration)
+    public static IServiceCollection AddStrategyPluginSystem(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
-        var options  =  configuration.GetSection(StrategyPluginOptions.SectionName).Get<StrategyPluginOptions>() ?? new();
-        services.Configure<StrategyPluginOptions>(configuration.GetSection(StrategyPluginOptions.SectionName));
+        var section = configuration.GetSection(StrategyPluginOptions.SectionName);
+        var options = section.Get<StrategyPluginOptions>() ?? new StrategyPluginOptions();
 
-        if (options.Enabled  &&  options.LoadExternalAssemblies)
-            LoadExternalModules(services,  configuration,  options);
+        services.AddOptions<StrategyPluginOptions>()
+            .Bind(section)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<StrategyPluginOptions>, StrategyPluginOptionsValidator>();
 
-        services.AddSingleton<IStrategyPluginCatalog,  StrategyPluginCatalog>();
-        services.AddSingleton<ITradingStrategyResolver,  TradingStrategyResolver>();
+        if (options.Enabled && options.LoadExternalAssemblies)
+            LoadExternalModules(services, configuration, options);
+
+        services.AddSingleton<IStrategyPluginCatalog, StrategyPluginCatalog>();
+        services.AddSingleton<ITradingStrategyResolver, TradingStrategyResolver>();
         return services;
     }
 
-    private static void LoadExternalModules(IServiceCollection services,  IConfiguration configuration,  StrategyPluginOptions options)
+    private static void LoadExternalModules(
+        IServiceCollection services,
+        IConfiguration configuration,
+        StrategyPluginOptions options)
     {
-        var directory  =  Path.GetFullPath(options.PluginDirectory,  AppContext.BaseDirectory);
-        if (!Directory.Exists(directory))
-            return;
+        var directory = Path.GetFullPath(
+            options.PluginDirectory,
+            AppContext.BaseDirectory);
 
-        foreach (var path in Directory.EnumerateFiles(directory,  "*.dll",  SearchOption.TopDirectoryOnly))
+        if (!Directory.Exists(directory))
+        {
+            if (options.FailOnPluginLoadError)
+            {
+                throw new DirectoryNotFoundException(
+                    $"Strategy plugin directory '{directory}' does not exist.");
+            }
+
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     "*.dll",
+                     SearchOption.TopDirectoryOnly))
         {
             try
             {
-                var assembly  =  AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
-                foreach (var type in assembly.GetTypes().Where(x  =>  !x.IsAbstract  &&  typeof(IStrategyPluginModule).IsAssignableFrom(x)))
+                var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+                foreach (var type in GetLoadableTypes(assembly)
+                             .Where(type =>
+                                 !type.IsAbstract &&
+                                 typeof(IStrategyPluginModule).IsAssignableFrom(type)))
                 {
                     if (Activator.CreateInstance(type) is not IStrategyPluginModule module)
-                        throw new InvalidOperationException($"Could not create strategy plugin module '{type.FullName}'. A public parameterless constructor is required.");
-                    module.ConfigureServices(services,  configuration);
-                    services.AddSingleton(typeof(IStrategyPluginModule),  module);
+                    {
+                        throw new InvalidOperationException(
+                            $"Could not create strategy plugin module '{type.FullName}'. " +
+                            "A public parameterless constructor is required.");
+                    }
+
+                    module.ConfigureServices(services, configuration);
+                    services.AddSingleton(typeof(IStrategyPluginModule), module);
                 }
             }
             catch when (!options.FailOnPluginLoadError)
             {
-                // Optional plugin failures are ignored only when explicitly configured.
+                // The host is explicitly configured to continue without optional plugins.
             }
+        }
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException exception)
+        {
+            return exception.Types.OfType<Type>();
         }
     }
 }

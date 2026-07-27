@@ -1,0 +1,3159 @@
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\CentralRiskManager.cs
+================================================================================
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Risk;
+using TradingSystem.Application.Time;
+using TradingSystem.Domain.Enums;
+using TradingSystem.PortfolioManagement;
+
+namespace TradingSystem.RiskManagement;
+
+public sealed class CentralRiskManager(
+    IOptions<CentralRiskOptions> options,
+    IPortfolioSnapshotProvider portfolio,
+    IRiskOrderSizingProvider orderSizing,
+    IRiskStateProvider riskStateProvider,
+    IRiskAdmissionReservationStore reservations,
+    IClock clock,
+    ILogger<CentralRiskManager> logger) : ICentralRiskManager
+{
+    private readonly CentralRiskOptions _options = options.Value;
+    private readonly SemaphoreSlim _admissionGate = new(1, 1);
+
+    public async Task<RiskDecision> EvaluateOpenAsync(
+        RiskEvaluationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.Enabled)
+            return RiskDecision.Allow("Central risk management is disabled.");
+
+        await _admissionGate.WaitAsync(cancellationToken);
+        try
+        {
+            var now = clock.UtcNow;
+            var snapshot = await portfolio.GetSnapshotAsync(cancellationToken);
+            var sizing = await orderSizing.GetAsync(context.Signal.BotName, cancellationToken);
+
+            if (sizing is null || sizing.Quantity <= 0)
+            {
+                return RiskDecision.Block(
+                    "ORDER_SIZE_UNKNOWN",
+                    $"No risk order size is configured for bot '{context.Signal.BotName}'.");
+            }
+
+            var candidateNotional = context.MarkPrice * sizing.Quantity;
+            if (candidateNotional <= 0)
+                return RiskDecision.Block("INVALID_NOTIONAL", "Candidate order notional is invalid.");
+
+            if (sizing.MaximumNotional is > 0 && candidateNotional > sizing.MaximumNotional.Value)
+            {
+                return RiskDecision.Block(
+                    "BOT_NOTIONAL_LIMIT",
+                    $"Candidate notional {candidateNotional:F2} exceeds bot limit {sizing.MaximumNotional.Value:F2}.");
+            }
+
+            var riskState = await riskStateProvider.GetAsync(context.EvaluatedAtUtc, cancellationToken);
+
+            if (_options.BlockWhenReconciliationHasCriticalFindings &&
+                riskState.HasCriticalReconciliationFindings)
+            {
+                return RiskDecision.Block(
+                    "CRITICAL_RECONCILIATION",
+                    "Critical unresolved reconciliation findings exist.");
+            }
+
+            if (_options.MaximumDailyLoss > 0 &&
+                riskState.DailyRealizedPnl <= -_options.MaximumDailyLoss)
+            {
+                return RiskDecision.Block(
+                    "DAILY_LOSS_LIMIT",
+                    $"Daily realized PnL {riskState.DailyRealizedPnl:F2} reached the loss limit {-_options.MaximumDailyLoss:F2}.");
+            }
+
+            var dailyDrawdownPercent = riskState.DailyPeakEquity <= 0
+                ? 0m
+                : Math.Max(riskState.DailyPeakEquity - riskState.CurrentEquity, 0m)
+                  / riskState.DailyPeakEquity * 100m;
+
+            if (_options.MaximumDailyDrawdownPercent > 0 &&
+                dailyDrawdownPercent >= _options.MaximumDailyDrawdownPercent)
+            {
+                return RiskDecision.Block(
+                    "DAILY_DRAWDOWN_LIMIT",
+                    $"Daily drawdown {dailyDrawdownPercent:F2}% reached the limit {_options.MaximumDailyDrawdownPercent:F2}%.");
+            }
+
+            if (_options.MaximumConsecutiveLosses > 0 &&
+                riskState.ConsecutiveLosses >= _options.MaximumConsecutiveLosses)
+            {
+                return RiskDecision.Block(
+                    "CONSECUTIVE_LOSSES_LIMIT",
+                    $"Consecutive losses {riskState.ConsecutiveLosses} reached the limit {_options.MaximumConsecutiveLosses}.");
+            }
+
+            var activeReservations = reservations.GetActive(now);
+            var reservedCount = activeReservations.Count;
+            var reservedForBot = activeReservations.Count(x =>
+                x.BotName.Equals(context.Signal.BotName, StringComparison.OrdinalIgnoreCase));
+            var reservedForSymbol = activeReservations.Count(x =>
+                x.Symbol.Equals(context.Signal.Symbol, StringComparison.OrdinalIgnoreCase));
+            var reservedNotional = activeReservations.Sum(x => x.Notional);
+
+            if (snapshot.OpenPositions + reservedCount >= _options.MaximumOpenPositions)
+                return RiskDecision.Block("MAX_OPEN_POSITIONS", "Maximum total open positions reached.");
+
+            var botPositions = snapshot.Positions.Count(x =>
+                x.BotName.Equals(context.Signal.BotName, StringComparison.OrdinalIgnoreCase));
+            if (botPositions + reservedForBot >= _options.MaximumOpenPositionsPerBot)
+                return RiskDecision.Block("MAX_OPEN_POSITIONS_PER_BOT", $"Maximum positions for '{context.Signal.BotName}' reached.");
+
+            var symbolPositions = snapshot.Positions.Count(x =>
+                x.Symbol.Equals(context.Signal.Symbol, StringComparison.OrdinalIgnoreCase));
+            if (symbolPositions + reservedForSymbol >= _options.MaximumOpenPositionsPerSymbol)
+                return RiskDecision.Block("MAX_OPEN_POSITIONS_PER_SYMBOL", $"Maximum positions for '{context.Signal.Symbol}' reached.");
+
+            var projectedTotalNotional = snapshot.GrossNotional + reservedNotional + candidateNotional;
+            if (projectedTotalNotional > _options.MaximumEstimatedNotional)
+            {
+                return RiskDecision.Block(
+                    "MAX_ESTIMATED_NOTIONAL",
+                    $"Projected gross notional {projectedTotalNotional:F2} exceeds {_options.MaximumEstimatedNotional:F2}.");
+            }
+
+            var symbol = snapshot.Symbols.FirstOrDefault(x =>
+                x.Symbol.Equals(context.Signal.Symbol, StringComparison.OrdinalIgnoreCase));
+            var symbolReservations = activeReservations.Where(x =>
+                x.Symbol.Equals(context.Signal.Symbol, StringComparison.OrdinalIgnoreCase));
+
+            var currentSymbolGross = (symbol?.GrossNotional ?? 0m) + symbolReservations.Sum(x => x.Notional);
+            var projectedSymbolGross = currentSymbolGross + candidateNotional;
+            if (_options.MaximumGrossNotionalPerSymbol > 0 &&
+                projectedSymbolGross > _options.MaximumGrossNotionalPerSymbol)
+            {
+                return RiskDecision.Block(
+                    "MAX_SYMBOL_GROSS_NOTIONAL",
+                    $"Projected gross notional for '{context.Signal.Symbol}' is {projectedSymbolGross:F2}.");
+            }
+
+            var candidateSignedNotional = context.Signal.Side == PositionSide.Long
+                ? candidateNotional
+                : -candidateNotional;
+            var reservedSigned = symbolReservations.Sum(x =>
+                x.Side == PositionSide.Long ? x.Notional : -x.Notional);
+            var projectedSymbolNet = (symbol?.NetNotional ?? 0m) + reservedSigned + candidateSignedNotional;
+
+            if (_options.MaximumAbsoluteNetNotionalPerSymbol > 0 &&
+                Math.Abs(projectedSymbolNet) > _options.MaximumAbsoluteNetNotionalPerSymbol)
+            {
+                return RiskDecision.Block(
+                    "MAX_SYMBOL_NET_NOTIONAL",
+                    $"Projected net notional for '{context.Signal.Symbol}' is {projectedSymbolNet:F2}.");
+            }
+
+            reservations.Add(new RiskAdmissionReservation(
+                Guid.NewGuid(),
+                context.Signal.BotName,
+                context.Signal.Symbol,
+                context.Signal.Side,
+                sizing.Quantity,
+                candidateNotional,
+                now.AddSeconds(_options.AdmissionReservationSeconds)));
+
+            logger.LogInformation(
+                "Risk admission allowed. Bot = {Bot}, Symbol = {Symbol}, Side = {Side}, CandidateNotional = {Notional}, ProjectedGross = {ProjectedGross}",
+                context.Signal.BotName,
+                context.Signal.Symbol,
+                context.Signal.Side,
+                candidateNotional,
+                projectedTotalNotional);
+
+            return RiskDecision.Allow(
+                $"Risk checks passed. Candidate notional = {candidateNotional:F2}, projected gross = {projectedTotalNotional:F2}.");
+        }
+        finally
+        {
+            _admissionGate.Release();
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\CentralRiskOptions.cs
+================================================================================
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.RiskManagement;
+
+public sealed class CentralRiskOptions
+{
+    public const string SectionName = "CentralRisk";
+
+    public bool Enabled { get; set; } = true;
+    public int MaximumOpenPositions { get; set; } = 8;
+    public int MaximumOpenPositionsPerBot { get; set; } = 4;
+    public int MaximumOpenPositionsPerSymbol { get; set; } = 6;
+    public decimal MaximumEstimatedNotional { get; set; } = 100_000m;
+    public decimal MaximumGrossNotionalPerSymbol { get; set; }
+    public decimal MaximumAbsoluteNetNotionalPerSymbol { get; set; }
+    public decimal MaximumDailyLoss { get; set; } = 500m;
+    public decimal MaximumDailyDrawdownPercent { get; set; } = 5m;
+    public int MaximumConsecutiveLosses { get; set; } = 5;
+    public bool BlockWhenReconciliationHasCriticalFindings { get; set; } = true;
+    public int AdmissionReservationSeconds { get; set; } = 30;
+    public Dictionary<string, RiskBotProfile> BotProfiles { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class RiskBotProfile
+{
+    public decimal Quantity { get; set; }
+    public int Leverage { get; set; } = 1;
+    public decimal? MaximumNotional { get; set; }
+}
+
+public sealed record RiskStateSnapshot(
+    decimal DailyRealizedPnl,
+    decimal DailyPeakEquity,
+    decimal CurrentEquity,
+    int ConsecutiveLosses,
+    bool HasCriticalReconciliationFindings);
+
+public interface IRiskStateProvider
+{
+    Task<RiskStateSnapshot> GetAsync(DateTime atUtc, CancellationToken cancellationToken);
+}
+
+public sealed class EmptyRiskStateProvider : IRiskStateProvider
+{
+    public Task<RiskStateSnapshot> GetAsync(DateTime atUtc, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new RiskStateSnapshot(0m, 0m, 0m, 0, false));
+    }
+}
+
+
+
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\CentralRiskOptionsValidator.cs
+================================================================================
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.RiskManagement;
+
+public sealed class CentralRiskOptionsValidator : IValidateOptions<CentralRiskOptions>
+{
+    public ValidateOptionsResult Validate(string? name, CentralRiskOptions options)
+    {
+        var errors = new List<string>();
+
+        if (options.MaximumOpenPositions <= 0)
+            errors.Add("MaximumOpenPositions must be positive.");
+        if (options.MaximumOpenPositionsPerBot <= 0)
+            errors.Add("MaximumOpenPositionsPerBot must be positive.");
+        if (options.MaximumOpenPositionsPerSymbol <= 0)
+            errors.Add("MaximumOpenPositionsPerSymbol must be positive.");
+        if (options.MaximumEstimatedNotional <= 0)
+            errors.Add("MaximumEstimatedNotional must be positive.");
+        if (options.MaximumGrossNotionalPerSymbol < 0)
+            errors.Add("MaximumGrossNotionalPerSymbol cannot be negative.");
+        if (options.MaximumAbsoluteNetNotionalPerSymbol < 0)
+            errors.Add("MaximumAbsoluteNetNotionalPerSymbol cannot be negative.");
+        if (options.MaximumDailyLoss < 0)
+            errors.Add("MaximumDailyLoss cannot be negative.");
+        if (options.MaximumDailyDrawdownPercent is < 0 or > 100)
+            errors.Add("MaximumDailyDrawdownPercent must be between 0 and 100.");
+        if (options.MaximumConsecutiveLosses < 0)
+            errors.Add("MaximumConsecutiveLosses cannot be negative.");
+        if (options.AdmissionReservationSeconds <= 0)
+            errors.Add("AdmissionReservationSeconds must be positive.");
+
+        foreach (var (botName, profile) in options.BotProfiles)
+        {
+            if (string.IsNullOrWhiteSpace(botName))
+                errors.Add("Risk bot profile name cannot be empty.");
+            if (profile.Quantity <= 0)
+                errors.Add($"Risk profile '{botName}' Quantity must be positive.");
+            if (profile.Leverage is < 1 or > 125)
+                errors.Add($"Risk profile '{botName}' Leverage must be between 1 and 125.");
+            if (profile.MaximumNotional is <= 0)
+                errors.Add($"Risk profile '{botName}' MaximumNotional must be positive when configured.");
+        }
+
+        return errors.Count == 0
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail(errors);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Risk;
+using TradingSystem.PortfolioManagement;
+
+namespace TradingSystem.RiskManagement;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddCentralRiskManagement(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddPortfolioManagement(configuration);
+
+        services.AddOptions<CentralRiskOptions>()
+            .Bind(configuration.GetSection(CentralRiskOptions.SectionName))
+            .ValidateOnStart();
+
+        services.AddSingleton<IValidateOptions<CentralRiskOptions>, CentralRiskOptionsValidator>();
+        services.TryAddSingleton<IRiskStateProvider, EmptyRiskStateProvider>();
+        services.TryAddSingleton<IRiskOrderSizingProvider, ConfiguredRiskOrderSizingProvider>();
+        services.AddSingleton<IRiskAdmissionReservationStore, InMemoryRiskAdmissionReservationStore>();
+        services.RemoveAll<ICentralRiskManager>();
+        services.AddSingleton<ICentralRiskManager, CentralRiskManager>();
+
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\RiskAdmissionReservationStore.cs
+================================================================================
+using System.Collections.Concurrent;
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.RiskManagement;
+
+public sealed record RiskAdmissionReservation(
+    Guid ReservationId,
+    string BotName,
+    string Symbol,
+    PositionSide Side,
+    decimal Quantity,
+    decimal Notional,
+    DateTime ExpiresAtUtc);
+
+public interface IRiskAdmissionReservationStore
+{
+    IReadOnlyCollection<RiskAdmissionReservation> GetActive(DateTime nowUtc);
+    void Add(RiskAdmissionReservation reservation);
+}
+
+public sealed class InMemoryRiskAdmissionReservationStore : IRiskAdmissionReservationStore
+{
+    private readonly ConcurrentDictionary<Guid, RiskAdmissionReservation> _reservations = new();
+
+    public IReadOnlyCollection<RiskAdmissionReservation> GetActive(DateTime nowUtc)
+    {
+        foreach (var item in _reservations)
+        {
+            if (item.Value.ExpiresAtUtc <= nowUtc)
+                _reservations.TryRemove(item.Key, out _);
+        }
+
+        return _reservations.Values.ToArray();
+    }
+
+    public void Add(RiskAdmissionReservation reservation)
+    {
+        _reservations[reservation.ReservationId] = reservation;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\RiskSupportServices.cs
+================================================================================
+using Microsoft.Extensions.Options;
+using TradingSystem.BotRuntime.Configuration;
+
+namespace TradingSystem.RiskManagement;
+
+public sealed record RiskOrderSize(decimal Quantity, int Leverage, decimal? MaximumNotional);
+
+public interface IRiskOrderSizingProvider
+{
+    Task<RiskOrderSize?> GetAsync(string botName, CancellationToken cancellationToken);
+}
+
+public sealed class ConfiguredRiskOrderSizingProvider(
+    IBotRuntimeConfigurationProvider runtimeConfigurationProvider,
+    IOptions<CentralRiskOptions> options) : IRiskOrderSizingProvider
+{
+    private readonly CentralRiskOptions _options = options.Value;
+
+    public async Task<RiskOrderSize?> GetAsync(string botName, CancellationToken cancellationToken)
+    {
+        var runtime = await runtimeConfigurationProvider.GetAsync(botName, cancellationToken);
+        if (runtime is not null && runtime.Quantity > 0 && runtime.Leverage > 0)
+            return new RiskOrderSize(runtime.Quantity, runtime.Leverage, null);
+
+        return _options.BotProfiles.TryGetValue(botName, out var profile)
+            ? new RiskOrderSize(profile.Quantity, profile.Leverage, profile.MaximumNotional)
+            : null;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\TradingSystem.RiskManagement.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj"/>
+		<ProjectReference Include = "../TradingSystem.PortfolioManagement/TradingSystem.PortfolioManagement.csproj"/>
+		<ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj"/>
+		<PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0"/>
+		<PackageReference Include = "Microsoft.Extensions.Options" Version = "9.0.0"/>
+		<PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0"/>
+	</ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.Reconciliation;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddTradingReconciliation(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddOptions<ReconciliationOptions>()
+            .Bind(configuration.GetSection(ReconciliationOptions.SectionName))
+            .ValidateOnStart();
+
+        services.AddSingleton<IValidateOptions<ReconciliationOptions>, ReconciliationOptionsValidator>();
+        services.AddSingleton<PositionReconciliationService>();
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\PositionReconciliationService.cs
+================================================================================
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Positions;
+using TradingSystem.Domain.Positions;
+
+namespace TradingSystem.Reconciliation;
+
+public sealed class PositionReconciliationService(
+    IOptions<ReconciliationOptions> options,
+    IPositionStore localStore,
+    IExchangeStateProvider exchange,
+    IHealingActionExecutor healer,
+    IReconciliationFindingStore findingStore)
+{
+    private readonly ReconciliationOptions _options = options.Value;
+
+    public async Task<ReconciliationRunResult> RunAsync(CancellationToken cancellationToken)
+    {
+        var startedAtUtc = DateTime.UtcNow;
+        var findings = new List<ReconciliationFinding>();
+
+        foreach (var symbol in _options.Symbols.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var remote = await exchange.GetAsync(symbol, cancellationToken);
+            var localPositions = await LoadLocalPositionsAsync(symbol, cancellationToken);
+
+            DetectPositionQuantityFindings(symbol, localPositions, remote.Positions, findings);
+            DetectLocalPositionAndProtectiveOrderFindings(localPositions, remote, findings);
+            DetectOrphanOrders(symbol, localPositions, remote.Orders, findings);
+        }
+
+        var healedCount = await ExecuteAllowedHealingActionsAsync(findings, cancellationToken);
+        var result = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, healedCount);
+        await findingStore.SaveRunAsync(result, cancellationToken);
+        return result;
+    }
+
+    private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(
+        string symbol,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<BotPosition>();
+
+        foreach (var bot in _options.Bots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var positions = await localStore.GetAllAsync(bot, cancellationToken);
+            result.AddRange(positions.Where(position =>
+                !position.Closed &&
+                position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return result;
+    }
+
+    private void DetectPositionQuantityFindings(
+        string symbol,
+        IReadOnlyCollection<BotPosition> localPositions,
+        IReadOnlyCollection<ExchangePositionSnapshot> remotePositions,
+        ICollection<ReconciliationFinding> findings)
+    {
+        // Binance position risk is aggregated by symbol and position side in Hedge Mode.
+        // Therefore, compare aggregate local quantity to aggregate exchange quantity.
+        foreach (var side in new[] { "Long", "Short" })
+        {
+            var localForSide = localPositions
+                .Where(position => position.Side.ToString().Equals(side, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            var localQuantity = localForSide.Sum(position => Math.Abs(position.RemainingQuantity));
+            var remoteQuantity = remotePositions
+                .Where(position =>
+                    position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) &&
+                    position.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
+                .Sum(position => Math.Abs(position.Quantity));
+
+            if (localQuantity == 0 && remoteQuantity > _options.QuantityTolerance)
+            {
+                findings.Add(new ReconciliationFinding(
+                    Guid.NewGuid(), DateTime.UtcNow, "UNKNOWN", symbol, null,
+                    ReconciliationFindingType.OrphanExchangePosition,
+                    ReconciliationSeverity.Critical,
+                    $"Exchange {side} quantity {remoteQuantity} has no local owner.",
+                    HealingActionType.RequestManualReview,
+                    false));
+                continue;
+            }
+
+            if (Math.Abs(remoteQuantity - localQuantity) <= _options.QuantityTolerance)
+                continue;
+
+            var botNames = string.Join(", ", localForSide.Select(x => x.BotName).Distinct(StringComparer.OrdinalIgnoreCase));
+            findings.Add(new ReconciliationFinding(
+                Guid.NewGuid(), DateTime.UtcNow,
+                string.IsNullOrWhiteSpace(botNames) ? "UNKNOWN" : botNames,
+                symbol, null,
+                ReconciliationFindingType.QuantityMismatch,
+                ReconciliationSeverity.Critical,
+                $"Aggregated {side} quantity mismatch. Local = {localQuantity}, exchange = {remoteQuantity}.",
+                HealingActionType.RequestManualReview,
+                false));
+        }
+    }
+
+    private void DetectLocalPositionAndProtectiveOrderFindings(
+        IReadOnlyCollection<BotPosition> localPositions,
+        ExchangeStateSnapshot remote,
+        ICollection<ReconciliationFinding> findings)
+    {
+        var ordersByClientId = remote.Orders
+            .Where(order => !string.IsNullOrWhiteSpace(order.ClientOrderId))
+            .GroupBy(order => order.ClientOrderId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var position in localPositions)
+        {
+            var hasRelatedOrder = EnumerateClientOrderIds(position).Any(ordersByClientId.ContainsKey);
+            var hasRemoteSidePosition = remote.Positions.Any(remotePosition =>
+                remotePosition.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase) &&
+                remotePosition.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) &&
+                Math.Abs(remotePosition.Quantity) > _options.QuantityTolerance);
+
+            if (!hasRemoteSidePosition && !hasRelatedOrder)
+            {
+                findings.Add(New(
+                    position,
+                    ReconciliationFindingType.StaleLocalPosition,
+                    ReconciliationSeverity.Warning,
+                    "Local position has no exchange position or open orders.",
+                    HealingActionType.DeleteStaleLocalPosition,
+                    _options.AutoHealStaleLocalPositions));
+            }
+
+            if (!position.TpExecuted &&
+                !string.IsNullOrWhiteSpace(position.TpClientId) &&
+                !ordersByClientId.ContainsKey(position.TpClientId))
+            {
+                findings.Add(New(
+                    position,
+                    ReconciliationFindingType.MissingTakeProfit,
+                    ReconciliationSeverity.Critical,
+                    "Expected take-profit order is missing.",
+                    HealingActionType.RecreateTakeProfit,
+                    _options.AutoHealProtectiveOrders));
+            }
+
+            if (position.ProtectiveActive &&
+                !position.SlExecuted &&
+                !string.IsNullOrWhiteSpace(position.SlClientId) &&
+                !ordersByClientId.ContainsKey(position.SlClientId))
+            {
+                findings.Add(New(
+                    position,
+                    ReconciliationFindingType.MissingStopLoss,
+                    ReconciliationSeverity.Critical,
+                    "Expected stop-loss order is missing.",
+                    HealingActionType.RecreateStopLoss,
+                    _options.AutoHealProtectiveOrders));
+            }
+        }
+    }
+
+    private static void DetectOrphanOrders(
+        string symbol,
+        IReadOnlyCollection<BotPosition> localPositions,
+        IReadOnlyCollection<ExchangeOrderSnapshot> remoteOrders,
+        ICollection<ReconciliationFinding> findings)
+    {
+        var knownClientOrderIds = localPositions
+            .SelectMany(EnumerateClientOrderIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var order in remoteOrders.Where(order =>
+                     order.ClientOrderId.StartsWith("BOT", StringComparison.OrdinalIgnoreCase) &&
+                     !knownClientOrderIds.Contains(order.ClientOrderId)))
+        {
+            findings.Add(new ReconciliationFinding(
+                Guid.NewGuid(), DateTime.UtcNow, ResolveBot(order.ClientOrderId), symbol, null,
+                ReconciliationFindingType.OrphanExchangeOrder,
+                ReconciliationSeverity.Critical,
+                $"Exchange order '{order.ClientOrderId}' is not represented in local state.",
+                HealingActionType.RequestManualReview,
+                false));
+        }
+    }
+
+    private async Task<int> ExecuteAllowedHealingActionsAsync(
+        IEnumerable<ReconciliationFinding> findings,
+        CancellationToken cancellationToken)
+    {
+        var healedCount = 0;
+        foreach (var finding in findings.Where(finding => finding.AutoHealAllowed))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await healer.ExecuteAsync(finding, cancellationToken))
+                healedCount++;
+        }
+
+        return healedCount;
+    }
+
+    private static IEnumerable<string> EnumerateClientOrderIds(BotPosition position)
+    {
+        var values = new[]
+        {
+            position.ParentClientId,
+            position.TpClientId,
+            position.SlClientId,
+            position.Stop3ClientId,
+            position.CloseClientId
+        };
+
+        return values.Where(value => !string.IsNullOrWhiteSpace(value))!;
+    }
+
+    private static string ResolveBot(string clientOrderId)
+    {
+        var separator = clientOrderId.IndexOf('_');
+        return separator > 0
+            ? clientOrderId[..separator]
+            : clientOrderId.Length >= 7 ? clientOrderId[..7] : "UNKNOWN";
+    }
+
+    private static ReconciliationFinding New(
+        BotPosition position,
+        ReconciliationFindingType type,
+        ReconciliationSeverity severity,
+        string details,
+        HealingActionType action,
+        bool autoHealAllowed)
+        => new(
+            Guid.NewGuid(), DateTime.UtcNow, position.BotName, position.Symbol, position.ShortId,
+            type, severity, details, action, autoHealAllowed);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\Reconciliation.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using TradingSystem.Domain.Positions;
+
+namespace TradingSystem.Reconciliation;
+
+public enum ReconciliationSeverity { Information,  Warning,  Critical }
+public enum ReconciliationFindingType { StaleLocalPosition,  MissingLocalPosition,  MissingTakeProfit,  MissingStopLoss,  QuantityMismatch,  OrphanExchangePosition,  OrphanExchangeOrder }
+public enum HealingActionType { None,  DeleteStaleLocalPosition,  RestoreLocalPosition,  RecreateTakeProfit,  RecreateStopLoss,  MarkClosed,  RequestManualReview }
+
+public sealed record ExchangePositionSnapshot(string Symbol,  string Side,  decimal Quantity,  decimal EntryPrice);
+public sealed record ExchangeOrderSnapshot(string Symbol,  string ClientOrderId,  string Kind,  decimal Quantity,  decimal? TriggerPrice);
+public sealed record ExchangeStateSnapshot(IReadOnlyCollection<ExchangePositionSnapshot> Positions,  IReadOnlyCollection<ExchangeOrderSnapshot> Orders);
+public sealed record ReconciliationFinding(Guid Id,  DateTime DetectedAtUtc,  string BotName,  string Symbol,  string? ShortId, 
+    ReconciliationFindingType Type,  ReconciliationSeverity Severity,  string Details,  HealingActionType SuggestedAction,  bool AutoHealAllowed);
+public sealed record ReconciliationRunResult(DateTime StartedAtUtc,  DateTime CompletedAtUtc,  IReadOnlyCollection<ReconciliationFinding> Findings,  int HealedCount);
+
+public interface IExchangeStateProvider { Task<ExchangeStateSnapshot> GetAsync(string symbol,  CancellationToken cancellationToken); }
+public interface IReconciliationFindingStore
+{
+    Task SaveRunAsync(ReconciliationRunResult result,  CancellationToken cancellationToken);
+    Task<bool> HasUnresolvedCriticalAsync(CancellationToken cancellationToken);
+}
+public interface IHealingActionExecutor { Task<bool> ExecuteAsync(ReconciliationFinding finding,  CancellationToken cancellationToken); }
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\ReconciliationOptions.cs
+================================================================================
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.Reconciliation;
+
+public sealed record ReconciliationOptions
+{
+    public const string SectionName = "Reconciliation";
+
+    public bool Enabled { get; init; } = true;
+    public int IntervalSeconds { get; init; } = 30;
+    public bool AutoHealStaleLocalPositions { get; init; } = true;
+    public bool AutoHealProtectiveOrders { get; init; }
+    public decimal QuantityTolerance { get; init; } = 0.00000001m;
+    public string[] Bots { get; init; } = ["BOT8011", "BOT8012", "BOT8013", "BOT8014", "BOT8015", "BOT8016"];
+    public string[] Symbols { get; init; } = ["BTCUSDC"];
+}
+
+public sealed class ReconciliationOptionsValidator : IValidateOptions<ReconciliationOptions>
+{
+    public ValidateOptionsResult Validate(string? name, ReconciliationOptions options)
+    {
+        var errors = new List<string>();
+
+        if (options.IntervalSeconds is < 5 or > 86_400)
+            errors.Add("Reconciliation:IntervalSeconds must be between 5 and 86400.");
+
+        if (options.QuantityTolerance < 0)
+            errors.Add("Reconciliation:QuantityTolerance cannot be negative.");
+
+        if (options.Bots is null || options.Bots.Length == 0 || options.Bots.Any(string.IsNullOrWhiteSpace))
+            errors.Add("Reconciliation:Bots must contain at least one non-empty bot name.");
+
+        if (options.Symbols is null || options.Symbols.Length == 0 || options.Symbols.Any(string.IsNullOrWhiteSpace))
+            errors.Add("Reconciliation:Symbols must contain at least one non-empty symbol.");
+
+        if (options.Bots?.Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Bots?.Length)
+            errors.Add("Reconciliation:Bots cannot contain duplicates.");
+
+        if (options.Symbols?.Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Symbols?.Length)
+            errors.Add("Reconciliation:Symbols cannot contain duplicates.");
+
+        return errors.Count == 0
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail(errors);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\TradingSystem.Reconciliation.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+	<ItemGroup><ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj"/><ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj"/><PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0"/><PackageReference Include = "Microsoft.Extensions.Options" Version = "9.0.0"/><PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0"/></ItemGroup></Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\RecordedStrategyEvaluator.cs
+================================================================================
+using System.Text.Json;
+using TradingSystem.EventStore;
+
+namespace TradingSystem.ReplayEngine;
+
+public sealed class RecordedStrategyEvaluator : IReplayStrategyEvaluator
+{
+    public string PluginId  =>  "recorded-strategy";
+    public string Version  =>  "1.0.0";
+
+    public ValueTask<ReplayCandidateDecision?> EvaluateAsync(StoredTradingEvent sourceEvent,  ReplayContext context,  CancellationToken cancellationToken)
+    {
+        using var document  =  JsonDocument.Parse(sourceEvent.Event.PayloadJson);
+        var decision  =  document.RootElement.TryGetProperty("decision",  out var d) ? d.GetString() ?? "Unknown" : "Unknown";
+        var reason  =  document.RootElement.TryGetProperty("reason",  out var r) ? r.GetString() ?? "Recorded decision" : "Recorded decision";
+        return ValueTask.FromResult<ReplayCandidateDecision?>(new(decision,  reason,  "{}"));
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\ReplayContracts.cs
+================================================================================
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using TradingSystem.EventStore;
+
+namespace TradingSystem.ReplayEngine;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ReplayJobStatus { Pending,  Processing,  Paused,  Completed,  Failed,  Cancelled }
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ReplayMode { Timeline,  Projection,  StrategyComparison }
+
+public sealed record CreateReplayRequest(
+    string Name, 
+    ReplayMode Mode, 
+    long? FromGlobalPosition  =  null, 
+    long? ToGlobalPosition  =  null, 
+    DateTime? FromUtc  =  null, 
+    DateTime? ToUtc  =  null, 
+    string? BotName  =  null, 
+    string? Symbol  =  null, 
+    string? CorrelationId  =  null, 
+    string? CandidateStrategyPluginId  =  null, 
+    string? CandidateStrategyVersion  =  null, 
+    int BatchSize  =  250, 
+    bool StopOnError  =  true);
+
+public sealed record ReplayJob(
+    Guid ReplayId, 
+    string Name, 
+    ReplayMode Mode, 
+    ReplayJobStatus Status, 
+    string RequestedBy, 
+    CreateReplayRequest Request, 
+    long LastGlobalPosition, 
+    long ProcessedEvents, 
+    long FailedEvents, 
+    int ProgressPercent, 
+    string? ProgressStage, 
+    string? Error, 
+    DateTime CreatedAtUtc, 
+    DateTime? StartedAtUtc, 
+    DateTime? CompletedAtUtc, 
+    string? DeterministicHash);
+
+public sealed record ReplayStepResult(
+    Guid ReplayId, 
+    long GlobalPosition, 
+    Guid SourceEventId, 
+    string EventType, 
+    DateTime VirtualTimeUtc, 
+    bool Succeeded, 
+    string ResultJson, 
+    string? Error);
+
+public sealed record ReplaySummary(
+    Guid ReplayId, 
+    long ProcessedEvents, 
+    long FailedEvents, 
+    long Signals, 
+    long StrategyDecisions, 
+    long RiskAllowed, 
+    long RiskBlocked, 
+    long ExecutionsCompleted, 
+    long ExecutionsFailed, 
+    long PositionsOpened, 
+    long PositionsClosed, 
+    long CandidateMatches, 
+    long CandidateDifferences, 
+    string DeterministicHash);
+
+public interface IReplayJobStore
+{
+    Task<Guid> EnqueueAsync(CreateReplayRequest request,  string requestedBy,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReplayJob>> ClaimAsync(string workerId,  int take,  TimeSpan staleAfter,  CancellationToken cancellationToken);
+    Task<ReplayJob?> GetAsync(Guid replayId,  CancellationToken cancellationToken);
+    Task<ReplaySummary?> GetSummaryAsync(Guid replayId,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReplayStepResult>> GetStepsAsync(Guid replayId,  long afterGlobalPosition,  int take,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReplayJob>> QueryAsync(ReplayJobStatus? status,  int skip,  int take,  CancellationToken cancellationToken);
+    Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId,  CancellationToken cancellationToken);
+    Task SaveCheckpointAsync(Guid replayId,  long globalPosition,  ReplayAccumulator accumulator,  int progressPercent,  string progressStage,  CancellationToken cancellationToken);
+    Task SaveStepsAsync(IReadOnlyCollection<ReplayStepResult> steps,  CancellationToken cancellationToken);
+    Task CompleteAsync(Guid replayId,  ReplaySummary summary,  CancellationToken cancellationToken);
+    Task FailAsync(Guid replayId,  string error,  CancellationToken cancellationToken);
+    Task CancelAsync(Guid replayId,  string actor,  CancellationToken cancellationToken);
+    Task MarkCancelledAsync(Guid replayId,  CancellationToken cancellationToken);
+    Task<bool> IsCancellationRequestedAsync(Guid replayId,  CancellationToken cancellationToken);
+}
+
+public interface IReplayEventSource
+{
+    Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(CreateReplayRequest request,  long afterGlobalPosition,  int take,  CancellationToken cancellationToken);
+    Task<long> CountAsync(CreateReplayRequest request,  CancellationToken cancellationToken);
+}
+
+public interface IReplayStrategyEvaluator
+{
+    string PluginId {  get;  }
+    string Version {  get;  }
+    ValueTask<ReplayCandidateDecision?> EvaluateAsync(StoredTradingEvent sourceEvent,  ReplayContext context,  CancellationToken cancellationToken);
+}
+
+public sealed record ReplayCandidateDecision(string Decision,  string Reason,  string DataJson);
+public sealed record ReplayContext(Guid ReplayId,  DateTime VirtualTimeUtc,  ReplayAccumulator State);
+
+public sealed class ReplayAccumulator
+{
+    public long ProcessedEvents {  get;  set; }
+    public long FailedEvents {  get;  set; }
+    public long Signals {  get;  set; }
+    public long StrategyDecisions {  get;  set; }
+    public long RiskAllowed {  get;  set; }
+    public long RiskBlocked {  get;  set; }
+    public long ExecutionsCompleted {  get;  set; }
+    public long ExecutionsFailed {  get;  set; }
+    public long PositionsOpened {  get;  set; }
+    public long PositionsClosed {  get;  set; }
+    public long CandidateMatches {  get;  set; }
+    public long CandidateDifferences {  get;  set; }
+    public string HashSeed {  get;  set; }  =  string.Empty;
+
+    public void Apply(StoredTradingEvent item)
+    {
+        ProcessedEvents++;
+        switch (item.Event.EventType)
+        {
+            case TradingEventTypes.SignalReceived: Signals++; break;
+            case TradingEventTypes.StrategyDecisionTaken: StrategyDecisions++; break;
+            case TradingEventTypes.RiskDecisionTaken:
+                if (PayloadBoolean(item.Event.PayloadJson,  "allowed")) RiskAllowed++; else RiskBlocked++;
+                break;
+            case TradingEventTypes.ExecutionCompleted: ExecutionsCompleted++; break;
+            case TradingEventTypes.ExecutionFailed: ExecutionsFailed++; break;
+            case TradingEventTypes.PositionOpened: PositionsOpened++; break;
+            case TradingEventTypes.PositionClosed: PositionsClosed++; break;
+        }
+        var material  =  $"{HashSeed}|{item.GlobalPosition}|{item.Event.EventId:N}|{item.Event.EventType}|{item.Event.PayloadJson}";
+        HashSeed  =  Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+    }
+
+    private static bool PayloadBoolean(string json,  string property)
+    {
+        try
+        {
+            using var document  =  JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty(property,  out var value)  &&  value.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
+    }
+
+    public ReplaySummary ToSummary(Guid replayId)  =>  new(replayId,  ProcessedEvents,  FailedEvents,  Signals, 
+        StrategyDecisions,  RiskAllowed,  RiskBlocked,  ExecutionsCompleted,  ExecutionsFailed, 
+        PositionsOpened,  PositionsClosed,  CandidateMatches,  CandidateDifferences,  HashSeed);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\ReplayEngine.cs
+================================================================================
+using System.Text.Json;
+using TradingSystem.EventStore;
+
+namespace TradingSystem.ReplayEngine;
+
+public sealed class ReplayEngine(
+    IReplayEventSource source,
+    IReplayJobStore store,
+    IEnumerable<IReplayStrategyEvaluator> evaluators)
+{
+    private readonly IReadOnlyDictionary<string, IReplayStrategyEvaluator> _evaluators = evaluators
+        .ToDictionary(x => $"{x.PluginId}:{x.Version}", StringComparer.OrdinalIgnoreCase);
+
+    public async Task<ReplaySummary> RunAsync(
+        ReplayJob job,
+        Func<int, string, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        var request = Validate(job.Request);
+        var total = Math.Max(1L, await source.CountAsync(request, cancellationToken));
+        var state = await store.LoadCheckpointAsync(job.ReplayId, cancellationToken) ?? new ReplayAccumulator();
+        var clock = new ReplayVirtualClock();
+        var cursor = Math.Max(job.LastGlobalPosition, 0);
+        var evaluator = ResolveEvaluator(request);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await store.IsCancellationRequestedAsync(job.ReplayId, cancellationToken))
+            {
+                await store.MarkCancelledAsync(job.ReplayId, cancellationToken);
+                throw new OperationCanceledException("Replay cancellation was requested.", cancellationToken);
+            }
+
+            var batch = await source.ReadForwardAsync(
+                request,
+                cursor,
+                Math.Clamp(request.BatchSize, 1, 1000),
+                cancellationToken);
+
+            if (batch.Count == 0)
+                break;
+
+            var orderedBatch = batch.OrderBy(item => item.GlobalPosition).ToArray();
+            EnsureStrictlyForward(cursor, orderedBatch);
+            var steps = new List<ReplayStepResult>(orderedBatch.Length);
+
+            foreach (var item in orderedBatch)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    clock.AdvanceTo(item.Event.OccurredAtUtc);
+                    state.Apply(item);
+
+                    ReplayCandidateDecision? candidate = null;
+                    if (evaluator is not null && item.Event.EventType == TradingEventTypes.StrategyDecisionTaken)
+                    {
+                        candidate = await evaluator.EvaluateAsync(
+                            item,
+                            new ReplayContext(job.ReplayId, clock.UtcNow, state),
+                            cancellationToken);
+
+                        var recordedDecision = ReadDecision(item.Event.PayloadJson);
+                        if (candidate is not null &&
+                            string.Equals(recordedDecision, candidate.Decision, StringComparison.OrdinalIgnoreCase))
+                            state.CandidateMatches++;
+                        else
+                            state.CandidateDifferences++;
+                    }
+
+                    steps.Add(new ReplayStepResult(
+                        job.ReplayId,
+                        item.GlobalPosition,
+                        item.Event.EventId,
+                        item.Event.EventType,
+                        clock.UtcNow,
+                        true,
+                        JsonSerializer.Serialize(new { replayed = true, candidate }, EventJson.Options),
+                        null));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    state.FailedEvents++;
+                    steps.Add(new ReplayStepResult(
+                        job.ReplayId,
+                        item.GlobalPosition,
+                        item.Event.EventId,
+                        item.Event.EventType,
+                        clock.UtcNow,
+                        false,
+                        "{}",
+                        exception.Message));
+
+                    if (request.StopOnError)
+                    {
+                        await store.SaveStepsAsync(steps, cancellationToken);
+                        throw;
+                    }
+                }
+
+                cursor = item.GlobalPosition;
+            }
+
+            await store.SaveStepsAsync(steps, cancellationToken);
+            var percent = Math.Clamp((int)Math.Round(state.ProcessedEvents * 100d / total), 0, 99);
+            var stage = $"Replayed through global position {cursor}";
+            await store.SaveCheckpointAsync(job.ReplayId, cursor, state, percent, stage, cancellationToken);
+            if (progress is not null)
+                await progress(percent, stage);
+        }
+
+        var summary = state.ToSummary(job.ReplayId);
+        await store.CompleteAsync(job.ReplayId, summary, cancellationToken);
+        if (progress is not null)
+            await progress(100, "Completed");
+        return summary;
+    }
+
+    private IReplayStrategyEvaluator? ResolveEvaluator(CreateReplayRequest request)
+    {
+        if (request.Mode != ReplayMode.StrategyComparison)
+            return null;
+
+        var key = $"{request.CandidateStrategyPluginId}:{request.CandidateStrategyVersion}";
+        if (!_evaluators.TryGetValue(key, out var evaluator))
+            throw new InvalidOperationException($"Replay strategy evaluator '{key}' is not registered.");
+        return evaluator;
+    }
+
+    private static CreateReplayRequest Validate(CreateReplayRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new ArgumentException("Replay name is required.", nameof(request));
+        if (request.BatchSize is < 1 or > 1000)
+            throw new ArgumentOutOfRangeException(nameof(request), "Replay batch size must be between 1 and 1000.");
+        if (request.FromGlobalPosition.HasValue && request.ToGlobalPosition.HasValue &&
+            request.ToGlobalPosition < request.FromGlobalPosition)
+            throw new ArgumentException("ToGlobalPosition cannot be before FromGlobalPosition.", nameof(request));
+        if (request.FromUtc.HasValue && request.ToUtc.HasValue && request.ToUtc <= request.FromUtc)
+            throw new ArgumentException("ToUtc must be after FromUtc.", nameof(request));
+        if (request.Mode == ReplayMode.StrategyComparison &&
+            (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId) ||
+             string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
+            throw new ArgumentException("Candidate strategy plugin id and version are required for strategy comparison.", nameof(request));
+        return request;
+    }
+
+    private static void EnsureStrictlyForward(long cursor, IReadOnlyList<StoredTradingEvent> batch)
+    {
+        var previous = cursor;
+        foreach (var item in batch)
+        {
+            if (item.GlobalPosition <= previous)
+                throw new InvalidOperationException(
+                    $"Replay source returned non-forward global position {item.GlobalPosition} after {previous}.");
+            previous = item.GlobalPosition;
+        }
+    }
+
+    private static string? ReadDecision(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty("decision", out var value)
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\ReplayVirtualClock.cs
+================================================================================
+namespace TradingSystem.ReplayEngine;
+
+public sealed class ReplayVirtualClock
+{
+    public DateTime UtcNow { get; private set; } = DateTime.UnixEpoch;
+
+    public void AdvanceTo(DateTime value)
+    {
+        var normalized = value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+            _ => value
+        };
+
+        if (normalized > UtcNow)
+            UtcNow = normalized;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\TradingSystem.ReplayEngine.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.EventStore/TradingSystem.EventStore.csproj" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.EventStore\EventStoreContracts.cs
+================================================================================
+using System.Text.Json;
+
+namespace TradingSystem.EventStore;
+
+public static class TradingEventTypes
+{
+    public const string SignalReceived  =  "trading.signal.received";
+    public const string SignalRejected  =  "trading.signal.rejected";
+    public const string StrategyDecisionTaken  =  "trading.strategy.decision-taken";
+    public const string RiskDecisionTaken  =  "trading.risk.decision-taken";
+    public const string ExecutionRequested  =  "trading.execution.requested";
+    public const string ExecutionCompleted  =  "trading.execution.completed";
+    public const string ExecutionFailed  =  "trading.execution.failed";
+    public const string PositionOpened  =  "trading.position.opened";
+    public const string PositionClosed  =  "trading.position.closed";
+    public const string BotRuntimeChanged  =  "bot.runtime.changed";
+    public const string BotConfigurationChanged  =  "bot.configuration.changed";
+    public const string AlertRaised  =  "operations.alert.raised";
+    public const string AlertResolved  =  "operations.alert.resolved";
+    public const string JobStatusChanged  =  "jobs.status.changed";
+}
+
+public sealed record EventEnvelope(
+    Guid EventId, 
+    string EventType, 
+    int EventVersion, 
+    string AggregateType, 
+    string AggregateId, 
+    long AggregateVersion, 
+    DateTime OccurredAtUtc, 
+    DateTime RecordedAtUtc, 
+    string? BotName, 
+    string? Symbol, 
+    string? PositionId, 
+    string? SignalId, 
+    string? CorrelationId, 
+    string? CausationId, 
+    string? Actor, 
+    string PayloadJson, 
+    string MetadataJson);
+
+public sealed record AppendTradingEvent(
+    string EventType, 
+    string AggregateType, 
+    string AggregateId, 
+    object Payload, 
+    int EventVersion  =  1, 
+    DateTime? OccurredAtUtc  =  null, 
+    string? BotName  =  null, 
+    string? Symbol  =  null, 
+    string? PositionId  =  null, 
+    string? SignalId  =  null, 
+    string? CorrelationId  =  null, 
+    string? CausationId  =  null, 
+    string? Actor  =  null, 
+    IReadOnlyDictionary<string,  object?>? Metadata  =  null, 
+    Guid? EventId  =  null);
+
+public sealed record EventStoreQuery(
+    string? AggregateType  =  null, 
+    string? AggregateId  =  null, 
+    string? BotName  =  null, 
+    string? Symbol  =  null, 
+    string? PositionId  =  null, 
+    string? SignalId  =  null, 
+    string? CorrelationId  =  null, 
+    string? EventType  =  null, 
+    DateTime? FromUtc  =  null, 
+    DateTime? ToUtc  =  null, 
+    long? AfterGlobalPosition  =  null, 
+    int Skip  =  0, 
+    int Take  =  100);
+
+public sealed record StoredTradingEvent(long GlobalPosition,  EventEnvelope Event);
+
+public interface ITradingEventStore
+{
+    Task<StoredTradingEvent> AppendAsync(AppendTradingEvent request,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<StoredTradingEvent>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType,  string aggregateId,  long afterVersion,  int take,  CancellationToken cancellationToken);
+}
+
+public static class EventJson
+{
+    public static readonly JsonSerializerOptions Options  =  new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy  =  JsonNamingPolicy.CamelCase, 
+        WriteIndented  =  false
+    };
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.EventStore\TradingSystem.EventStore.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.Logging.Abstractions" Version = "9.0.0" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.EventStore\TradingTimeline.cs
+================================================================================
+namespace TradingSystem.EventStore;
+
+public sealed record TradingTimelineItem(
+    long GlobalPosition, 
+    Guid EventId, 
+    DateTime OccurredAtUtc, 
+    string EventType, 
+    string AggregateType, 
+    string AggregateId, 
+    string? BotName, 
+    string? Symbol, 
+    string? PositionId, 
+    string? SignalId, 
+    string? CorrelationId, 
+    string PayloadJson, 
+    string MetadataJson);
+
+public interface ITradingTimelineReader
+{
+    Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken);
+}
+
+public sealed class TradingTimelineReader(ITradingEventStore store) : ITradingTimelineReader
+{
+    public async Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken)
+         =>  (await store.ReadAsync(query,  cancellationToken))
+            .Select(x  =>  new TradingTimelineItem(
+                x.GlobalPosition,  x.Event.EventId,  x.Event.OccurredAtUtc,  x.Event.EventType, 
+                x.Event.AggregateType,  x.Event.AggregateId,  x.Event.BotName,  x.Event.Symbol, 
+                x.Event.PositionId,  x.Event.SignalId,  x.Event.CorrelationId, 
+                x.Event.PayloadJson,  x.Event.MetadataJson))
+            .ToArray();
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.JobOrchestration\Jobs.cs
+================================================================================
+using TradingSystem.Dashboard.Contracts;
+namespace TradingSystem.JobOrchestration;
+public enum DashboardJobStatus { Pending,  Processing,  Completed,  Failed,  Cancelled }
+public sealed record DashboardJob(Guid JobId, string Type, DashboardJobStatus Status, string RequestedBy, string RequestJson, int AttemptCount, DateTime CreatedAtUtc, DateTime? StartedAtUtc);
+public interface IDashboardJobQueue
+{
+ Task<IReadOnlyList<DashboardJob>> ClaimAsync(string type, string workerId, int batchSize, TimeSpan processingTimeout, CancellationToken ct);
+ Task ReportProgressAsync(Guid jobId, int percent, string stage, CancellationToken ct);
+ Task CompleteAsync(Guid jobId, Guid runId, CancellationToken ct);
+ Task FailAsync(Guid jobId, string error, int maxAttempts, TimeSpan retryDelay, CancellationToken ct);
+}
+public sealed record HistoricalDataGap(string Symbol, string Interval, DateTime FromUtc, DateTime ToUtc, int MissingCandles);
+public interface IHistoricalMarketDataStore
+{
+ Task<IReadOnlyList<TradingSystem.Domain.MarketData.MarketCandle>> LoadCandlesAsync(string symbol, string interval, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+ Task UpsertCandlesAsync(IReadOnlyCollection<TradingSystem.Domain.MarketData.MarketCandle> candles, CancellationToken ct);
+ Task ReplaceGapsAsync(string symbol, string interval, IReadOnlyCollection<HistoricalDataGap> gaps, CancellationToken ct);
+ Task<DateTime?> GetLatestOpenTimeAsync(string symbol, string interval, CancellationToken ct);
+ Task<bool> HasGapsAsync(string symbol, string interval, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+}
+public interface IHistoricalSignalStore
+{
+ Task<IReadOnlyList<TradingSystem.Backtesting.Bots.Common.HistoricalBotSignal>> LoadAsync(string botName, string symbol, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.JobOrchestration\TradingSystem.JobOrchestration.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" />
+    <ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj" />
+      <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\appsettings.json
+================================================================================
+{
+  "ConnectionStrings": {
+    "TradingHistory": "Host=localhost;Port=5432;Database=trading;Username=postgres;Password=postgres"
+  },
+  "TradingHistory": {
+    "ConnectionStringName": "TradingHistory",
+    "CommandTimeoutSeconds": 60
+  },
+  "JobWorkers": {
+    "Enabled": true,
+    "PollSeconds": 2,
+    "BatchSize": 2,
+    "ProcessingTimeoutMinutes": 30,
+    "MaximumAttempts": 3,
+    "Interval": "1m"
+  },
+  "HistoricalDataIngestion": {
+    "Enabled": true,
+    "Environment": "Demo",
+    "Symbols": [ "BTCUSDC" ],
+    "Intervals": [ "1m", "5m", "1h" ],
+    "PollMinutes": 5,
+    "InitialLookbackDays": 30,
+    "OverlapCandles": 3
+  },
+  "ServiceHeartbeat": {
+    "Enabled": true,
+    "Environment": "Demo",
+    "IntervalSeconds": 10,
+    "StaleAfterSeconds": 30
+  },
+  "AlertEngine": {
+    "Enabled": true,
+    "PollSeconds": 15
+  }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Execution\BacktestExecutionService.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;using System.Text.Json;using System.Text.Json.Nodes;using TradingSystem.Analytics.Abstractions;using TradingSystem.Analytics.Models;using TradingSystem.Backtesting.Bots.Bot8011;using TradingSystem.Backtesting.Bots.Bot8012;using TradingSystem.Backtesting.Bots.Bot8013;using TradingSystem.Backtesting.Bots.Bot8014;using TradingSystem.Backtesting.Bots.Bot8015;using TradingSystem.Backtesting.Bots.Bot8016;using TradingSystem.Backtesting.Bots.Common;using TradingSystem.Backtesting.Bots.Signals;using TradingSystem.Dashboard.Contracts;using TradingSystem.JobOrchestration;using TradingSystem.Optimization.Analytics;
+namespace TradingSystem.Jobs.Worker.Execution;
+public sealed class BacktestExecutionService(IServiceProvider services, IHistoricalMarketDataStore market, IHistoricalSignalStore signalStore, IPerformanceAnalyticsStore analytics)
+{
+ public async Task<Guid> ExecuteAsync(BacktestRequest request, string interval, CancellationToken ct){if(await market.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))throw new InvalidOperationException("Historical data contains unresolved candle gaps for the requested period.");var candles = await market.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct);if(candles.Count<2)throw new InvalidOperationException("Historical candles are missing for the requested period.");var signals = request.SignalSource.Equals("Internal", StringComparison.OrdinalIgnoreCase)?new EmaCrossDemoSignalSource().Generate(candles):await signalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);if(signals.Count==0)throw new InvalidOperationException("No historical signals were found for the requested source and period.");return request.BotName.ToUpperInvariant() switch{
+ "BOT8011" => await RunAsync(await Get<Bot8011BacktestEngine>().RunAsync(request.InitialBalance, Options(new Bot8011BacktestOptions{Symbol = request.Symbol}, request.Parameters), candles, signals), "1.0.0", interval, ct), 
+ "BOT8012" => await RunAsync(Get<Bot8012BacktestEngine>().Run(candles, signals, Options(new Bot8012BacktestOptions{Symbol = request.Symbol, InitialBalance = request.InitialBalance, EntryFeeRate = request.CommissionPercent/100m, ExitFeeRate = request.CommissionPercent/100m, SlippageBasisPoints = request.SlippagePercent*100m}, request.Parameters)), "1.0.0", interval, ct), 
+ "BOT8013" => await RunAsync(Get<Bot8013BacktestEngine>().Run(candles, signals, Options(new Bot8013BacktestOptions{Symbol = request.Symbol, InitialBalance = request.InitialBalance}, request.Parameters)), "1.0.0", interval, ct), 
+ "BOT8014" => await RunAsync(Get<Bot8014BacktestEngine>().Run(candles, signals, Options(new Bot8014BacktestOptions{Symbol = request.Symbol, InitialBalance = request.InitialBalance}, request.Parameters)), "1.0.0", interval, ct), 
+ "BOT8015" => await RunAsync(await Get<Bot8015BacktestEngine>().RunAsync(candles, signals, Options(new Bot8015BacktestOptions{Symbol = request.Symbol, InitialBalance = request.InitialBalance}, request.Parameters)), "1.0.0", interval, ct), 
+ "BOT8016" => await RunAsync(Get<Bot8016BacktestEngine>().Run(candles, BuildIndicators(candles), Options(new Bot8016BacktestOptions{Symbol = request.Symbol, EntryTimeframe = interval, ExitTimeframe = interval, InitialBalance = request.InitialBalance}, request.Parameters)), "1.0.0", interval, ct), 
+ _ => throw new ArgumentOutOfRangeException(nameof(request.BotName), "Supported bots are BOT8011-BOT8016.")};}
+ private T Get<T>() where T:notnull => services.GetRequiredService<T>();
+ private async Task<Guid> RunAsync<T>(BotBacktestResult<T> result, string version, string interval, CancellationToken ct){var mapped = BacktestPerformanceMapper.Map(result, version, interval);await analytics.CreateRunAsync(mapped.Run, ct);await analytics.SaveSnapshotAsync(mapped.Snapshot, ct);await analytics.SaveTradesAsync(mapped.Run.RunId, mapped.Trades, ct);return mapped.Run.RunId;}
+ private static T Options<T>(T seed, IReadOnlyDictionary<string, string> values){var json = JsonSerializer.SerializeToNode(seed)!.AsObject();foreach(var pair in values){var key = json.Select(x => x.Key).FirstOrDefault(x => x.Equals(pair.Key, StringComparison.OrdinalIgnoreCase));if(key is null)continue;json[key] = JsonValue.Create(pair.Value);}return JsonSerializer.Deserialize<T>(json.ToJsonString(), new JsonSerializerOptions{PropertyNameCaseInsensitive = true, NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString})!;}
+ private static IReadOnlyList<HistoricalAlligatorSnapshot> BuildIndicators(IReadOnlyList<TradingSystem.Domain.MarketData.MarketCandle> candles){var rows = new List<HistoricalAlligatorSnapshot>(candles.Count);for(var i = 0;i<candles.Count;i++){var start = Math.Max(0, i-199);var avg = candles.Skip(start).Take(i-start+1).Average(x => x.Close);rows.Add(new(candles[i].CloseTimeUtc, candles[i].Symbol, candles[i].Interval, avg, avg, avg, avg));}return rows;}
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Execution\OptimizationExecutionService.cs
+================================================================================
+using System.Text.Json;using TradingSystem.Analytics.Abstractions;using TradingSystem.Analytics.Models;using TradingSystem.Backtesting.Bots.Bot8012;using TradingSystem.Backtesting.Bots.Signals;using TradingSystem.Dashboard.Contracts;using TradingSystem.JobOrchestration;using TradingSystem.Optimization.Engine;using TradingSystem.Optimization.Models;using TradingSystem.Optimization.Scoring;
+namespace TradingSystem.Jobs.Worker.Execution;
+public sealed class OptimizationExecutionService(IHistoricalMarketDataStore market, IHistoricalSignalStore signalStore, Bot8012BacktestEngine engine, ParameterTuningEngine tuning, WalkForwardOptimizationEngine walkForward, IPerformanceAnalyticsStore analytics)
+{
+ public async Task<Guid> ExecuteAsync(OptimizationRequest request, string interval, CancellationToken ct)
+ {
+  if(!request.BotName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))throw new NotSupportedException("Dashboard range optimization currently supports BOT8012. Other bots keep their CLI parameter spaces until explicit range binders are added.");
+  if(await market.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))throw new InvalidOperationException("Historical data contains unresolved candle gaps for the requested period.");var candles = await market.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct);if(candles.Count<2)throw new InvalidOperationException("Historical candles are missing.");
+  var signals = request.SignalSource.Equals("Internal", StringComparison.OrdinalIgnoreCase)?new EmaCrossDemoSignalSource().Generate(candles):await signalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);if(signals.Count==0)throw new InvalidOperationException("No historical signals were found.");
+  var runId = Guid.NewGuid();var run = new PerformanceRun{RunId = runId, RunType = request.WalkForward?PerformanceRunType.WalkForward:PerformanceRunType.Optimization, BotName = request.BotName, StrategyVersion = "1.0.0", Symbol = request.Symbol, Interval = interval, StartedAtUtc = DateTime.UtcNow, Status = PerformanceRunStatus.Running, ParametersJson = JsonSerializer.Serialize(request)};await analytics.CreateRunAsync(run, ct);
+  try
+  {
+   var candidates = BuildCandidates(request).ToArray();if(candidates.Length==0)throw new InvalidOperationException("The parameter ranges produced no candidates.");
+   if(request.WalkForward)
+   {
+    var wf = await walkForward.RunAsync(request.BotName, candles, signals, candidates, (o, c, s, _) => Task.FromResult(engine.Run(c, s, o)), x => x.Metrics, new WalkForwardOptions{TrainingBars = request.TrainBars??10000, TestingBars = request.TestBars??2000, StepBars = request.StepBars??2000}, new OptimizationScoreWeights(), ct);
+    var windows = wf.Windows.Select(x => new WalkForwardWindow{WindowId = Guid.NewGuid(), RunId = runId, WindowNumber = x.WindowNumber, TrainFromUtc = x.TrainFromUtc, TrainToUtc = x.TrainToUtc, TestFromUtc = x.TestFromUtc, TestToUtc = x.TestToUtc, SelectedParametersJson = JsonSerializer.Serialize(x.SelectedOptions), InSampleScore = x.InSampleScore, OutOfSampleScore = x.OutOfSampleScore, InSampleMetrics = TradingSystem.Optimization.Analytics.BacktestPerformanceMapper.ToMetrics(x.InSampleMetrics), OutOfSampleMetrics = TradingSystem.Optimization.Analytics.BacktestPerformanceMapper.ToMetrics(x.OutOfSampleMetrics)}).ToArray();await analytics.SaveWalkForwardWindowsAsync(windows, ct);
+   }
+   else
+   {
+    var rows = await tuning.RunAsync(candidates, (o, _) => Task.FromResult(engine.Run(candles, signals, o)), x => x.Metrics, new OptimizationScoreWeights(), request.TopResults, ct);var trials = rows.Select((x, i) => new OptimizationTrial{TrialId = Guid.NewGuid(), OptimizationRunId = runId, Sequence = x.Sequence, ParametersJson = JsonSerializer.Serialize(x.Options), Score = x.Score, Metrics = TradingSystem.Optimization.Analytics.BacktestPerformanceMapper.ToMetrics(x.Metrics), Selected = i==0}).ToArray();await analytics.SaveOptimizationTrialsAsync(trials, ct);
+   }
+   await analytics.CompleteRunAsync(runId, PerformanceRunStatus.Completed, DateTime.UtcNow, null, ct);return runId;
+  }
+  catch(Exception ex){await analytics.CompleteRunAsync(runId, PerformanceRunStatus.Failed, DateTime.UtcNow, ex.Message, ct);throw;}
+ }
+ private static IEnumerable<Bot8012BacktestOptions> BuildCandidates(OptimizationRequest request)
+ {
+  var values = request.Ranges.ToDictionary(x => x.Name, x => Range(x).ToArray(), StringComparer.OrdinalIgnoreCase);
+  decimal[] V(string name, decimal fallback) => values.TryGetValue(name, out var x)?x:[fallback];
+  foreach(var profit in V("ProfitDistance", 200))foreach(var gap in V("PriceDistance", 400))foreach(var cooldown in V("CooldownSeconds", 180))foreach(var limit in V("OrderSideLimit", 2))yield return new Bot8012BacktestOptions{Symbol = request.Symbol, InitialBalance = request.InitialBalance, ProfitDistance = profit, PriceDistance = gap, CooldownSeconds = (int)cooldown, OrderSideLimit = (int)limit};
+ }
+ private static IEnumerable<decimal> Range(OptimizationRangeDto r){if(r.Step<=0 || r.To<r.From)throw new ArgumentException($"Invalid range {r.Name}.");for(var value = r.From;value<=r.To;value+=r.Step)yield return value;}
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\JobWorkerOptions.cs
+================================================================================
+namespace TradingSystem.Jobs.Worker;
+
+public sealed record JobWorkerOptions
+{
+    public const string SectionName = "JobWorkers";
+    public bool Enabled{ get; init; } = true;
+    public int PollSeconds{ get; init; } = 2;
+    public int BatchSize{ get; init; } = 2;
+    public int ProcessingTimeoutMinutes{ get; init; } = 30;
+    public int MaximumAttempts{ get; init; } = 3;
+    public string Interval{ get; init; } = "1m";
+}
+
+public sealed record HistoricalDataIngestionOptions
+{
+    public const string SectionName = "HistoricalDataIngestion";
+    public bool Enabled{ get; init; } = true;
+    public string Environment{ get; init; } = "Demo";
+    public string[] Symbols{ get; init; } = ["BTCUSDC"];
+    public string[] Intervals{ get; init; } = ["1m", "5m", "1h"];
+    public int PollMinutes{ get; init; } = 5;
+    public int InitialLookbackDays{ get; init; } = 30;
+    public int OverlapCandles{ get; init; } = 3;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Program.cs
+================================================================================
+using TradingSystem.Operations;
+using TradingSystem.Backtesting.Bots;
+using TradingSystem.Binance.Market;
+using TradingSystem.HistoricalData;
+using TradingSystem.JobOrchestration;
+using TradingSystem.Jobs.Worker;
+using TradingSystem.Jobs.Worker.Execution;
+using TradingSystem.Jobs.Worker.Workers;
+using TradingSystem.Optimization;
+using TradingSystem.Persistence.PostgreSql.Configuration;
+using TradingSystem.Persistence.PostgreSql.HistoricalData;
+using TradingSystem.Persistence.PostgreSql.Jobs;
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.Configure<JobWorkerOptions>(builder.Configuration.GetSection(JobWorkerOptions.SectionName));
+builder.Services.Configure<HistoricalDataIngestionOptions>(builder.Configuration.GetSection(HistoricalDataIngestionOptions.SectionName));
+builder.Services.AddPostgresTradingHistory(builder.Configuration);
+builder.Services.AddServiceHeartbeat(builder.Configuration, "TradingJobsWorker");
+builder.Services.AddAlertEngine(builder.Configuration);
+builder.Services.AddBotBacktesting();builder.Services.AddTradingOptimization();
+builder.Services.AddSingleton<IDashboardJobQueue, PostgresDashboardJobQueue>();
+builder.Services.AddSingleton<PostgresHistoricalMarketDataStore>();
+builder.Services.AddSingleton<IHistoricalMarketDataStore>(s => s.GetRequiredService<PostgresHistoricalMarketDataStore>());
+builder.Services.AddSingleton<IHistoricalSignalStore>(s => s.GetRequiredService<PostgresHistoricalMarketDataStore>());
+var ingestion = builder.Configuration.GetSection(HistoricalDataIngestionOptions.SectionName).Get<HistoricalDataIngestionOptions>()??new();
+var baseAddress = ingestion.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase)?"https://demo-fapi.binance.com":"https://fapi.binance.com";
+builder.Services.AddHttpClient<BinanceHistoricalCandleRangeSource>(c => {c.BaseAddress = new Uri(baseAddress);c.Timeout = TimeSpan.FromSeconds(60);});
+builder.Services.AddSingleton<TradingSystem.Application.MarketData.IHistoricalCandleRangeSource>(s => s.GetRequiredService<BinanceHistoricalCandleRangeSource>());
+builder.Services.AddSingleton<BacktestExecutionService>();
+builder.Services.AddSingleton<OptimizationExecutionService>();builder.Services.AddHostedService<BacktestingJobWorker>();
+builder.Services.AddHostedService<OptimizationJobWorker>();builder.Services.AddHostedService<HistoricalDataIngestionWorker>();
+builder.Services.AddHostedService<ReplayJobWorker>();
+await builder.Build().RunAsync();
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\TradingSystem.Jobs.Worker.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk.Worker">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+ <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+ <ItemGroup><PackageReference Include = "Microsoft.Extensions.Hosting" Version = "8.0.1" /></ItemGroup>
+ <ItemGroup>
+  <ProjectReference Include = "../TradingSystem.JobOrchestration/TradingSystem.JobOrchestration.csproj" />
+  <ProjectReference Include = "../TradingSystem.Persistence.PostgreSql/TradingSystem.Persistence.PostgreSql.csproj" />
+  <ProjectReference Include = "../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
+  <ProjectReference Include = "../TradingSystem.Optimization/TradingSystem.Optimization.csproj" />
+  <ProjectReference Include = "../TradingSystem.Analytics/TradingSystem.Analytics.csproj" />
+  <ProjectReference Include = "../TradingSystem.HistoricalData/TradingSystem.HistoricalData.csproj" />
+  <ProjectReference Include = "../TradingSystem.Binance/TradingSystem.Binance.csproj" />
+  <ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" />
+ </ItemGroup>
+  <ItemGroup><ProjectReference Include = "../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include = "../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Workers\BacktestingJobWorker.cs
+================================================================================
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+using TradingSystem.Dashboard.Contracts;
+using TradingSystem.JobOrchestration;
+using TradingSystem.Jobs.Worker.Execution;
+
+namespace TradingSystem.Jobs.Worker.Workers;
+
+public sealed class BacktestingJobWorker(
+    IDashboardJobQueue queue,
+    BacktestExecutionService executor,
+    IOptions<JobWorkerOptions> options,
+    ILogger<BacktestingJobWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = options.Value;
+        if (!settings.Enabled)
+            return;
+
+        var workerId = $"backtest:{Environment.MachineName}:{Guid.NewGuid():N}";
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, settings.PollSeconds)));
+        try
+        {
+            do
+            {
+                var jobs = await queue.ClaimAsync("Backtest", workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), stoppingToken);
+                foreach (var job in jobs)
+                    await ProcessAsync(job, settings, stoppingToken);
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal hosted-service shutdown; do not mark the current job as failed.
+        }
+    }
+
+    private async Task ProcessAsync(DashboardJob job, JobWorkerOptions settings, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await queue.ReportProgressAsync(job.JobId, 5, "Loading historical data", cancellationToken);
+            var request = JsonSerializer.Deserialize<BacktestRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                ?? throw new InvalidOperationException("Invalid backtest request.");
+            var runId = await executor.ExecuteAsync(request, settings.Interval, cancellationToken);
+            await queue.CompleteAsync(job.JobId, runId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Backtest job {JobId} failed", job.JobId);
+            var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
+            await queue.FailAsync(job.JobId, exception.Message, settings.MaximumAttempts, TimeSpan.FromSeconds(retrySeconds), cancellationToken);
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Workers\HistoricalDataIngestionWorker.cs
+================================================================================
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.MarketData;
+using TradingSystem.Domain.MarketData;
+using TradingSystem.JobOrchestration;
+
+namespace TradingSystem.Jobs.Worker.Workers;
+
+public sealed class HistoricalDataIngestionWorker(
+    IHistoricalCandleRangeSource source,
+    IHistoricalMarketDataStore store,
+    IOptions<HistoricalDataIngestionOptions> options,
+    ILogger<HistoricalDataIngestionWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = options.Value;
+        if (!settings.Enabled)
+            return;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(Math.Max(1, settings.PollMinutes)));
+        try
+        {
+            do
+            {
+                foreach (var symbol in settings.Symbols)
+                    foreach (var interval in settings.Intervals)
+                    {
+                        stoppingToken.ThrowIfCancellationRequested();
+                        try
+                        {
+                            await IngestAsync(symbol, interval, settings, stoppingToken);
+                        }
+                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception)
+                        {
+                            logger.LogError(exception, "Historical ingestion failed for {Symbol} {Interval}", symbol, interval);
+                        }
+                    }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal hosted-service shutdown.
+        }
+    }
+
+    private async Task IngestAsync(string symbol, string interval, HistoricalDataIngestionOptions settings, CancellationToken cancellationToken)
+    {
+        var duration = ParseInterval(interval);
+        var latest = await store.GetLatestOpenTimeAsync(symbol, interval, cancellationToken);
+        var overlap = TimeSpan.FromTicks(checked(duration.Ticks * Math.Max(1, settings.OverlapCandles)));
+        var from = latest?.Subtract(overlap) ?? DateTime.UtcNow.AddDays(-settings.InitialLookbackDays);
+        var to = DateTime.UtcNow;
+
+        var candles = await source.LoadAsync(symbol, interval, from, to, cancellationToken);
+        await store.UpsertCandlesAsync(candles, cancellationToken);
+        var all = await store.LoadCandlesAsync(symbol, interval, from, to, cancellationToken);
+        var gaps = DetectGaps(symbol, interval, all, duration);
+        await store.ReplaceGapsAsync(symbol, interval, gaps, cancellationToken);
+
+        logger.LogInformation("Historical data {Symbol} {Interval}: upserted {Count}, gaps {Gaps}", symbol, interval, candles.Count, gaps.Count);
+    }
+
+    public static IReadOnlyList<HistoricalDataGap> DetectGaps(string symbol, string interval, IReadOnlyList<MarketCandle> candles, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(duration));
+
+        var ordered = candles.OrderBy(x => x.OpenTimeUtc).ToArray();
+        var gaps = new List<HistoricalDataGap>();
+        for (var i = 1; i < ordered.Length; i++)
+        {
+            var expected = ordered[i - 1].OpenTimeUtc + duration;
+            if (ordered[i].OpenTimeUtc <= expected)
+                continue;
+
+            var missing = checked((int)((ordered[i].OpenTimeUtc - expected).Ticks / duration.Ticks));
+            gaps.Add(new HistoricalDataGap(symbol, interval, expected, ordered[i].OpenTimeUtc - duration, missing));
+        }
+
+        return gaps;
+    }
+
+    public static TimeSpan ParseInterval(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (value.Length < 2 || !int.TryParse(value[..^1], out var amount) || amount <= 0)
+            throw new ArgumentException($"Invalid interval '{value}'.", nameof(value));
+
+        return value[^1] switch
+        {
+            'm' => TimeSpan.FromMinutes(amount),
+            'h' => TimeSpan.FromHours(amount),
+            'd' => TimeSpan.FromDays(amount),
+            _ => throw new ArgumentOutOfRangeException(nameof(value), "Supported intervals use m, h or d.")
+        };
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Workers\OptimizationJobWorker.cs
+================================================================================
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+using TradingSystem.Dashboard.Contracts;
+using TradingSystem.JobOrchestration;
+using TradingSystem.Jobs.Worker.Execution;
+
+namespace TradingSystem.Jobs.Worker.Workers;
+
+public sealed class OptimizationJobWorker(
+    IDashboardJobQueue queue,
+    OptimizationExecutionService executor,
+    IOptions<JobWorkerOptions> options,
+    ILogger<OptimizationJobWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = options.Value;
+        if (!settings.Enabled)
+            return;
+
+        var workerId = $"optimization:{Environment.MachineName}:{Guid.NewGuid():N}";
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, settings.PollSeconds)));
+        try
+        {
+            do
+            {
+                var jobs = await queue.ClaimAsync("Optimization", workerId, 1, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), stoppingToken);
+                foreach (var job in jobs)
+                    await ProcessAsync(job, settings, stoppingToken);
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal hosted-service shutdown.
+        }
+    }
+
+    private async Task ProcessAsync(DashboardJob job, JobWorkerOptions settings, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await queue.ReportProgressAsync(job.JobId, 5, "Preparing parameter combinations", cancellationToken);
+            var request = JsonSerializer.Deserialize<OptimizationRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                ?? throw new InvalidOperationException("Invalid optimization request.");
+            var runId = await executor.ExecuteAsync(request, settings.Interval, cancellationToken);
+            await queue.CompleteAsync(job.JobId, runId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Optimization job {JobId} failed", job.JobId);
+            var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
+            await queue.FailAsync(job.JobId, exception.Message, settings.MaximumAttempts, TimeSpan.FromSeconds(retrySeconds), cancellationToken);
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Workers\ReplayJobWorker.cs
+================================================================================
+using Microsoft.Extensions.Options;
+using TradingSystem.ReplayEngine;
+
+namespace TradingSystem.Jobs.Worker.Workers;
+
+public sealed class ReplayJobWorker(
+    IReplayJobStore jobs, 
+    TradingSystem.ReplayEngine.ReplayEngine engine, 
+    IOptions<JobWorkerOptions> options, 
+    ILogger<ReplayJobWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings  =  options.Value;
+        if (!settings.Enabled) return;
+        var workerId  =  $"replay:{Environment.MachineName}:{Guid.NewGuid():N}";
+        using var timer  =  new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1,  settings.PollSeconds)));
+        do
+        {
+            var claimed  =  await jobs.ClaimAsync(workerId,  settings.BatchSize, 
+                TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes),  stoppingToken);
+            foreach (var job in claimed)
+                await ProcessAsync(job,  stoppingToken);
+        } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    private async Task ProcessAsync(ReplayJob job,  CancellationToken cancellationToken)
+    {
+        try
+        {
+            await engine.RunAsync(job,  null,  cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            if (await jobs.IsCancellationRequestedAsync(job.ReplayId,  CancellationToken.None))
+            {
+                await jobs.MarkCancelledAsync(job.ReplayId,  CancellationToken.None);
+                logger.LogInformation("Replay {ReplayId} was cancelled.",  job.ReplayId);
+                return;
+            }
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception,  "Replay {ReplayId} failed.",  job.ReplayId);
+            await jobs.FailAsync(job.ReplayId,  exception.Message,  CancellationToken.None);
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Commands\BotCommandModels.cs
+================================================================================
+using System.Text.Json;
+
+namespace TradingSystem.BotRuntime.Commands;
+
+public enum BotCommandType { Start,  Stop,  Pause,  Resume,  EmergencyStop,  ClosePosition,  CancelTakeProfit,  RecreateTakeProfit }
+public enum BotCommandStatus { Pending,  Processing,  Completed,  Failed,  Rejected }
+
+public sealed record BotCommand(
+    Guid CommandId, 
+    string BotName, 
+    BotCommandType Command, 
+    BotCommandStatus Status, 
+    string RequestedBy, 
+    string Reason, 
+    JsonDocument Payload, 
+    DateTime RequestedAtUtc, 
+    int AttemptCount);
+
+public interface IBotCommandQueue
+{
+    Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId,  int batchSize,  TimeSpan processingTimeout,  CancellationToken cancellationToken);
+    Task CompleteAsync(Guid commandId,  string workerId,  CancellationToken cancellationToken);
+    Task FailAsync(Guid commandId,  string workerId,  string error,  bool retryable,  CancellationToken cancellationToken);
+    Task RejectAsync(Guid commandId,  string workerId,  string reason,  CancellationToken cancellationToken);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Configuration\BotRuntimeConfiguration.cs
+================================================================================
+namespace TradingSystem.BotRuntime.Configuration;
+
+public sealed record BotRuntimeConfiguration(
+    string BotName, 
+    string StrategyType, 
+    string Symbol, 
+    string Environment, 
+    string SignalSource, 
+    bool EnableLong, 
+    bool EnableShort, 
+    decimal Quantity, 
+    int Leverage, 
+    decimal? PriceDistance, 
+    decimal? ProfitDistance, 
+    int? OrderSideLimit, 
+    int CooldownSeconds, 
+    long Version, 
+    DateTime UpdatedAtUtc, 
+    bool RestartRequired);
+
+public interface IBotRuntimeConfigurationStore
+{
+    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken cancellationToken);
+}
+
+public interface IBotRuntimeConfigurationProvider
+{
+    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken);
+    BotRuntimeConfiguration? GetCurrent(string botName);
+    void Set(BotRuntimeConfiguration configuration);
+    void Invalidate(string botName);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Configuration\CachedBotRuntimeConfigurationProvider.cs
+================================================================================
+using System.Collections.Concurrent;
+
+namespace TradingSystem.BotRuntime.Configuration;
+
+public sealed class CachedBotRuntimeConfigurationProvider(IBotRuntimeConfigurationStore store) : IBotRuntimeConfigurationProvider
+{
+    private readonly ConcurrentDictionary<string,  BotRuntimeConfiguration> _configurations  =  new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken)
+    {
+        if (_configurations.TryGetValue(botName,  out var current))
+            return current;
+        var loaded  =  await store.GetAsync(botName,  cancellationToken);
+        if (loaded is not null) Set(loaded);
+        return loaded;
+    }
+
+    public BotRuntimeConfiguration? GetCurrent(string botName)  =>  _configurations.GetValueOrDefault(botName);
+    public void Set(BotRuntimeConfiguration configuration)  =>  _configurations.AddOrUpdate(configuration.BotName,  configuration,  (_,  existing)  =>  configuration.Version >= existing.Version ? configuration : existing);
+    public void Invalidate(string botName)  =>  _configurations.TryRemove(botName,  out _);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Runtime\BotRuntimeModels.cs
+================================================================================
+namespace TradingSystem.BotRuntime.Runtime;
+
+public enum BotRuntimeStatus
+{
+    Stopped  =  0, 
+    Running  =  1, 
+    Paused  =  2, 
+    EmergencyStopped  =  3, 
+    Faulted  =  4
+}
+
+public sealed record BotRuntimeState(
+    string BotName, 
+    BotRuntimeStatus Status, 
+    long Version, 
+    DateTime UpdatedAtUtc, 
+    string UpdatedBy, 
+    string? Reason, 
+    bool ExecutionEnabled)
+{
+    public bool AcceptsNewSignals  =>  Status == BotRuntimeStatus.Running  &&  ExecutionEnabled;
+}
+
+public interface IBotRuntimeStateStore
+{
+    Task<BotRuntimeState?> GetAsync(string botName,  CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken cancellationToken);
+    Task<BotRuntimeState> TransitionAsync(string botName,  BotRuntimeStatus status,  long expectedVersion,  string user,  string reason,  bool executionEnabled,  CancellationToken cancellationToken);
+}
+
+public interface IBotRuntimeStateProvider
+{
+    Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken cancellationToken);
+    void Invalidate(string botName);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Runtime\CachedBotRuntimeStateProvider.cs
+================================================================================
+using Microsoft.Extensions.Caching.Memory;
+
+namespace TradingSystem.BotRuntime.Runtime;
+
+public sealed class CachedBotRuntimeStateProvider(IBotRuntimeStateStore store,  IMemoryCache cache) : IBotRuntimeStateProvider
+{
+    private static string Key(string botName)  =>  $"bot-runtime:{botName.ToUpperInvariant()}";
+
+    public async Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken cancellationToken)
+    {
+        if (cache.TryGetValue(Key(botName),  out BotRuntimeState? state)  &&  state is not null)
+            return state;
+
+        state  =  await store.GetAsync(botName,  cancellationToken)
+            ?? throw new InvalidOperationException($"Runtime state was not found for bot '{botName}'.");
+        cache.Set(Key(botName),  state,  TimeSpan.FromSeconds(15));
+        return state;
+    }
+
+    public void Invalidate(string botName)  =>  cache.Remove(Key(botName));
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\TradingSystem.BotRuntime.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+	<PropertyGroup><OutputType>Library</OutputType></PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj"/>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include = "Microsoft.Extensions.Caching.Memory" Version = "9.0.0"/>
+		<PackageReference Include = "Microsoft.Extensions.Logging.Abstractions" Version = "9.0.0"/></ItemGroup></Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using TradingSystem.Application.Execution;
+using TradingSystem.Application.Positions;
+
+namespace TradingSystem.PaperTrading;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddPaperTrading(this IServiceCollection services,  IConfiguration configuration,  bool addFillWorker  =  true)
+    {
+        services.AddOptions<PaperTradingOptions>()
+            .Bind(configuration.GetSection(PaperTradingOptions.SectionName))
+            .Validate(x  =>  x.InitialBalance > 0,  "Paper initial balance must be positive.")
+            .Validate(x  =>  x.CommissionPercent >= 0  &&  x.SlippagePercent >= 0,  "Paper costs cannot be negative.")
+            .ValidateOnStart();
+        services.AddSingleton<PaperTradeExecutor>();
+        services.AddSingleton<PaperActivePositionProvider>();
+        services.RemoveAll<ITradeExecutor>();
+        services.AddSingleton<ITradeExecutor,  EnvironmentAwareTradeExecutor>();
+        services.RemoveAll<IActivePositionProvider>();
+        services.AddSingleton<IActivePositionProvider,  EnvironmentAwareActivePositionProvider>();
+        if (addFillWorker) services.AddHostedService<PaperFillWorker>();
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\EnvironmentAwareTradeExecutor.cs
+================================================================================
+using TradingSystem.Application.Execution;
+using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.PaperTrading;
+
+public sealed class EnvironmentAwareTradeExecutor(
+    TradeExecutorRegistry liveExecutor, 
+    PaperTradeExecutor paperExecutor, 
+    IBotRuntimeConfigurationProvider configurations) : ITradeExecutor
+{
+    public async Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
+    {
+        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        return IsPaper(configuration)
+            ? await paperExecutor.OpenAsync(botName,  symbol,  side,  source,  cancellationToken)
+            : await liveExecutor.OpenAsync(botName,  symbol,  side,  source,  cancellationToken);
+    }
+
+    public async Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken cancellationToken)
+    {
+        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        return IsPaper(configuration)
+            ? await paperExecutor.CloseAsync(botName,  shortId,  reason,  cancellationToken)
+            : await liveExecutor.CloseAsync(botName,  shortId,  reason,  cancellationToken);
+    }
+
+    private static bool IsPaper(BotRuntimeConfiguration? configuration)  => 
+        configuration?.Environment.Equals("Paper",  StringComparison.OrdinalIgnoreCase) == true;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\PaperActivePositionProvider.cs
+================================================================================
+using TradingSystem.Application.Positions;
+using TradingSystem.BotRuntime.Configuration;
+
+namespace TradingSystem.PaperTrading;
+
+public sealed class PaperActivePositionProvider(IPaperTradingStore store)
+{
+    public async Task<IReadOnlyCollection<ActivePositionView>> GetAsync(string botName,  string symbol,  CancellationToken cancellationToken)
+    {
+        var positions  =  await store.QueryAsync(botName,  symbol,  PaperPositionStatus.Open,  0,  500,  cancellationToken);
+        return positions.Select(x  =>  new ActivePositionView
+        {
+            ShortId  =  x.ShortId, 
+            BotName  =  x.BotName, 
+            Symbol  =  x.Symbol, 
+            Side  =  x.Side, 
+            EntryPrice  =  x.EntryPrice, 
+            Quantity  =  x.Quantity, 
+            RemainingQuantity  =  x.Quantity, 
+            TpPrice  =  x.TakeProfitPrice, 
+            CreatedAtUtc  =  x.OpenedAtUtc
+        }).ToArray();
+    }
+}
+
+public sealed class EnvironmentAwareActivePositionProvider(
+    ActivePositionProviderRegistry liveProvider, 
+    PaperActivePositionProvider paperProvider, 
+    IBotRuntimeConfigurationProvider configurations) : IActivePositionProvider
+{
+    public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName,  string symbol,  CancellationToken cancellationToken)
+    {
+        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        return configuration?.Environment.Equals("Paper",  StringComparison.OrdinalIgnoreCase) == true
+            ? await paperProvider.GetAsync(botName,  symbol,  cancellationToken)
+            : await liveProvider.GetActivePositionsAsync(botName,  symbol,  cancellationToken);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\PaperFillWorker.cs
+================================================================================
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Engine;
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.PaperTrading;
+
+public sealed class PaperFillWorker(
+    IPaperTradingStore store, 
+    IMarketPriceProvider prices, 
+    PaperTradeExecutor executor, 
+    IOptions<PaperTradingOptions> options, 
+    ILogger<PaperFillWorker> logger) : BackgroundService
+{
+    private readonly PaperTradingOptions _options  =  options.Value;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (!_options.Enabled) return;
+        using var timer  =  new PeriodicTimer(TimeSpan.FromMilliseconds(Math.Max(250,  _options.PricePollMilliseconds)));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try { await ProcessAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception ex) { logger.LogError(ex,  "Paper fill cycle failed."); }
+        }
+    }
+
+    private async Task ProcessAsync(CancellationToken cancellationToken)
+    {
+        var positions  =  await store.GetOpenAsync(cancellationToken);
+        foreach (var group in positions.GroupBy(x  =>  x.Symbol,  StringComparer.OrdinalIgnoreCase))
+        {
+            var markPrice  =  await prices.GetMarkPriceAsync(group.Key,  cancellationToken);
+            foreach (var position in group)
+            {
+                var reason  =  ResolveCloseReason(position,  markPrice);
+                if (reason is null) continue;
+                await executor.CloseAsync(position.BotName,  position.ShortId,  reason,  cancellationToken);
+            }
+        }
+    }
+
+    public static string? ResolveCloseReason(PaperTradingPosition position,  decimal price)
+    {
+        if (position.Side == PositionSide.Long)
+        {
+            if (price >= position.TakeProfitPrice) return "PAPER_TAKE_PROFIT";
+            if (price <= position.StopLossPrice) return "PAPER_STOP_LOSS";
+        }
+        else
+        {
+            if (price <= position.TakeProfitPrice) return "PAPER_TAKE_PROFIT";
+            if (price >= position.StopLossPrice) return "PAPER_STOP_LOSS";
+        }
+        return null;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\PaperTradeExecutor.cs
+================================================================================
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Engine;
+using TradingSystem.Application.Execution;
+using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.PaperTrading;
+
+public sealed class PaperTradeExecutor(
+    IPaperTradingStore store, 
+    IMarketPriceProvider prices, 
+    IBotRuntimeConfigurationProvider configurations, 
+    IOptions<PaperTradingOptions> options)
+{
+    private readonly PaperTradingOptions _options  =  options.Value;
+
+    public async Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
+    {
+        if (!_options.Enabled)
+            return TradeExecutionResult.Failure("Paper trading is disabled.");
+
+        var open  =  await store.GetOpenAsync(cancellationToken);
+        if (open.Count >= _options.MaximumOpenPositions)
+            return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
+
+        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        if (configuration is null)
+            return TradeExecutionResult.Failure($"Runtime configuration for {botName} was not found.");
+
+        var markPrice  =  await prices.GetMarkPriceAsync(symbol,  cancellationToken);
+        if (markPrice <= 0)
+            return TradeExecutionResult.Failure($"Invalid mark price for {symbol}.");
+
+        var entryPrice  =  ApplySlippage(markPrice,  side,  opening: true);
+        var quantity  =  configuration.Quantity;
+        var takeProfitDistance  =  configuration.ProfitDistance;
+        var takeProfitPrice  =  takeProfitDistance is > 0
+            ? side == PositionSide.Long ? entryPrice + takeProfitDistance.Value : entryPrice - takeProfitDistance.Value
+            : ApplyPercent(entryPrice,  side,  _options.DefaultTakeProfitPercent,  favorable: true);
+        var stopLossPrice  =  ApplyPercent(entryPrice,  side,  _options.DefaultStopLossPercent,  favorable: false);
+        var fee  =  CalculateFee(entryPrice,  quantity);
+        var shortId  =  $"P{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000,  9999)}";
+
+        var position  =  new PaperTradingPosition(
+            Guid.NewGuid(),  shortId,  botName,  symbol.ToUpperInvariant(),  side,  quantity, 
+            entryPrice,  takeProfitPrice,  stopLossPrice,  fee,  null,  null,  null, 
+            PaperPositionStatus.Open,  string.IsNullOrWhiteSpace(source) ? "internal" : source, 
+            DateTime.UtcNow,  null,  null,  1);
+
+        await store.CreateAsync(position,  cancellationToken);
+        return TradeExecutionResult.Success(shortId,  $"Paper position opened at {entryPrice}.");
+    }
+
+    public async Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken cancellationToken)
+    {
+        var position  =  await store.GetAsync(botName,  shortId,  cancellationToken);
+        if (position is null)
+            return TradeExecutionResult.Failure($"Paper position {shortId} was not found.");
+        if (position.Status == PaperPositionStatus.Closed)
+            return TradeExecutionResult.Success(shortId,  "Paper position is already closed.");
+
+        var markPrice  =  await prices.GetMarkPriceAsync(position.Symbol,  cancellationToken);
+        var exitPrice  =  ApplySlippage(markPrice,  position.Side,  opening: false);
+        var exitFee  =  CalculateFee(exitPrice,  position.Quantity);
+        var pnl  =  CalculatePnl(position,  exitPrice,  exitFee);
+        var closed  =  await store.TryCloseAsync(position.PositionId,  position.Version,  exitPrice,  exitFee,  pnl,  reason,  DateTime.UtcNow,  cancellationToken);
+        return closed
+            ? TradeExecutionResult.Success(shortId,  reason)
+            : TradeExecutionResult.Failure("Paper position changed concurrently; close was not applied.");
+    }
+
+    internal decimal ApplySlippage(decimal price,  PositionSide side,  bool opening)
+    {
+        var pct  =  _options.SlippagePercent / 100m;
+        var buy  =  opening ? side == PositionSide.Long : side == PositionSide.Short;
+        return buy ? price * (1m + pct) : price * (1m - pct);
+    }
+
+    internal decimal CalculateFee(decimal price,  decimal quantity)  =>  price * quantity * (_options.CommissionPercent / 100m);
+
+    internal static decimal CalculateGrossPnl(PaperTradingPosition p,  decimal exitPrice)  => 
+        p.Side == PositionSide.Long
+            ? (exitPrice - p.EntryPrice) * p.Quantity
+            : (p.EntryPrice - exitPrice) * p.Quantity;
+
+    private decimal CalculatePnl(PaperTradingPosition p,  decimal exitPrice,  decimal exitFee)  => 
+        CalculateGrossPnl(p,  exitPrice) - p.EntryFee - exitFee;
+
+    private static decimal ApplyPercent(decimal price,  PositionSide side,  decimal percent,  bool favorable)
+    {
+        var change  =  price * percent / 100m;
+        var increase  =  favorable ? side == PositionSide.Long : side == PositionSide.Short;
+        return increase ? price + change : price - change;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\PaperTradingContracts.cs
+================================================================================
+using TradingSystem.Domain.Enums;
+
+namespace TradingSystem.PaperTrading;
+
+public enum PaperOrderStatus { Open  =  1,  Filled  =  2,  Cancelled  =  3,  Rejected  =  4 }
+public enum PaperPositionStatus { Open  =  1,  Closed  =  2 }
+
+public sealed record PaperTradingPosition(
+    Guid PositionId, 
+    string ShortId, 
+    string BotName, 
+    string Symbol, 
+    PositionSide Side, 
+    decimal Quantity, 
+    decimal EntryPrice, 
+    decimal TakeProfitPrice, 
+    decimal StopLossPrice, 
+    decimal EntryFee, 
+    decimal? ExitPrice, 
+    decimal? ExitFee, 
+    decimal? RealizedPnl, 
+    PaperPositionStatus Status, 
+    string Source, 
+    DateTime OpenedAtUtc, 
+    DateTime? ClosedAtUtc, 
+    string? CloseReason, 
+    long Version);
+
+public sealed record PaperTradingAccount(
+    decimal InitialBalance, 
+    decimal RealizedPnl, 
+    decimal Fees, 
+    decimal Equity, 
+    int OpenPositions, 
+    int ClosedPositions, 
+    DateTime CalculatedAtUtc);
+
+public interface IPaperTradingStore
+{
+    Task CreateAsync(PaperTradingPosition position,  CancellationToken cancellationToken);
+    Task<PaperTradingPosition?> GetAsync(string botName,  string shortId,  CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<PaperTradingPosition>> GetOpenAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(string? botName,  string? symbol,  PaperPositionStatus? status,  int skip,  int take,  CancellationToken cancellationToken);
+    Task<bool> TryCloseAsync(Guid positionId,  long expectedVersion,  decimal exitPrice,  decimal exitFee,  decimal realizedPnl,  string reason,  DateTime closedAtUtc,  CancellationToken cancellationToken);
+    Task<PaperTradingAccount> GetAccountAsync(decimal initialBalance,  CancellationToken cancellationToken);
+    Task ResetAsync(string actor,  CancellationToken cancellationToken);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\PaperTradingOptions.cs
+================================================================================
+namespace TradingSystem.PaperTrading;
+
+public sealed class PaperTradingOptions
+{
+    public const string SectionName  =  "PaperTrading";
+    public bool Enabled {  get;  set; }  =  true;
+    public decimal InitialBalance {  get;  set; }  =  10_000m;
+    public decimal CommissionPercent {  get;  set; }  =  0.04m;
+    public decimal SlippagePercent {  get;  set; }  =  0.01m;
+    public decimal DefaultTakeProfitPercent {  get;  set; }  =  0.50m;
+    public decimal DefaultStopLossPercent {  get;  set; }  =  0.75m;
+    public int PricePollMilliseconds {  get;  set; }  =  1000;
+    public int MaximumOpenPositions {  get;  set; }  =  100;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\TradingSystem.PaperTrading.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" />
+    <ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" />
+    <ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.Hosting.Abstractions" Version = "8.0.1" />
+    <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\Abstractions\IPerformanceAnalyticsStore.cs
+================================================================================
+using TradingSystem.Analytics.Models;
+
+namespace TradingSystem.Analytics.Abstractions;
+
+public interface IPerformanceAnalyticsStore
+{
+    Task CreateRunAsync(PerformanceRun run,  CancellationToken cancellationToken  =  default);
+    
+    Task CompleteRunAsync(Guid runId,  PerformanceRunStatus status,  DateTime completedAtUtc,  string? notes,  CancellationToken cancellationToken  =  default);
+    
+    Task SaveSnapshotAsync(PerformanceSnapshot snapshot,  CancellationToken cancellationToken  =  default);
+    
+    Task SaveTradesAsync(Guid runId,  IReadOnlyCollection<PerformanceTrade> trades,  CancellationToken cancellationToken  =  default);
+    
+    Task SaveOptimizationTrialsAsync(IReadOnlyCollection<OptimizationTrial> trials,  CancellationToken cancellationToken  =  default);
+    
+    Task SaveWalkForwardWindowsAsync(IReadOnlyCollection<WalkForwardWindow> windows,  CancellationToken cancellationToken  =  default);
+    
+    Task<IReadOnlyList<PerformanceSnapshot>> QuerySnapshotsAsync(PerformanceQuery query,  CancellationToken cancellationToken  =  default);
+    
+    Task<IReadOnlyList<PerformanceRun>> QueryRunsAsync(PerformanceQuery query,  CancellationToken cancellationToken  =  default);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Analytics.Services;
+
+namespace TradingSystem.Analytics;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddTradingAnalytics(this IServiceCollection services)
+    {
+        services.AddSingleton<PerformanceAnalyticsService>();
+        
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\Models\PerformanceModels.cs
+================================================================================
+namespace TradingSystem.Analytics.Models;
+
+public enum PerformanceRunType { Backtest,  WalkForward,  Optimization,  Live }
+public enum PerformanceRunStatus { Running,  Completed,  Failed,  Cancelled }
+
+public sealed record PerformanceMetricSet
+{
+    public int Signals {  get;  init;  }
+    public int OpenedPositions {  get;  init;  }
+    public int BlockedSignals {  get;  init;  }
+    public int ClosedPositions {  get;  init;  }
+    public int WinningPositions {  get;  init;  }
+    public int LosingPositions {  get;  init;  }
+    public decimal InitialBalance {  get;  init;  }
+    public decimal FinalBalance {  get;  init;  }
+    public decimal NetProfit {  get;  init;  }
+    public decimal ReturnPercent {  get;  init;  }
+    public decimal WinRatePercent {  get;  init;  }
+    public decimal ProfitFactor {  get;  init;  }
+    public decimal MaximumDrawdownAmount {  get;  init;  }
+    public decimal MaximumDrawdownPercent {  get;  init;  }
+    public decimal TotalFees {  get;  init;  }
+    public decimal Expectancy {  get;  init;  }
+}
+
+public sealed record PerformanceTrade
+{
+    public required string PositionId {  get;  init;  }
+    public required string Side {  get;  init;  }
+    public required DateTime EntryTimeUtc {  get;  init;  }
+    public required decimal EntryPrice {  get;  init;  }
+    public required DateTime ExitTimeUtc {  get;  init;  }
+    public required decimal ExitPrice {  get;  init;  }
+    public required decimal Quantity {  get;  init;  }
+    public required decimal GrossPnl {  get;  init;  }
+    public required decimal Fees {  get;  init;  }
+    public required decimal NetPnl {  get;  init;  }
+    public required string ExitReason {  get;  init;  }
+    
+    public bool PartialTakeProfitReached {  get;  init;  }
+}
+
+public sealed record PerformanceRun
+{
+    public required Guid RunId {  get;  init;  }
+    
+    public required PerformanceRunType RunType {  get;  init;  }
+    
+    public required string BotName {  get;  init;  }
+    
+    public required string StrategyVersion {  get;  init;  }
+    
+    public required string Symbol {  get;  init;  }
+    
+    public required string Interval {  get;  init;  }
+    
+    public required DateTime StartedAtUtc {  get;  init;  }
+    
+    public DateTime? CompletedAtUtc {  get;  init;  }
+    
+    public PerformanceRunStatus Status {  get;  init;  }
+    
+    public required string ParametersJson {  get;  init;  }
+    
+    public string? ParentRunId {  get;  init;  }
+    
+    public string? Notes {  get;  init;  }
+}
+
+public sealed record PerformanceSnapshot
+{
+    public required Guid RunId {  get;  init;  }
+    
+    public required string BotName {  get;  init;  }
+    
+    public required string Symbol {  get;  init;  }
+    
+    public required DateTime PeriodFromUtc {  get;  init;  }
+    
+    public required DateTime PeriodToUtc {  get;  init;  }
+   
+    public required PerformanceMetricSet Metrics {  get;  init;  }
+   
+    public decimal Score {  get;  init;  }
+}
+
+public sealed record OptimizationTrial
+{
+    public required Guid TrialId {  get;  init;  }
+   
+    public required Guid OptimizationRunId {  get;  init;  }
+   
+    public required int Sequence {  get;  init;  }
+    
+    public required string ParametersJson {  get;  init;  }
+   
+    public required decimal Score {  get;  init;  }
+   
+    public required PerformanceMetricSet Metrics {  get;  init;  }
+    
+    public bool Selected {  get;  init;  }
+}
+
+public sealed record WalkForwardWindow
+{
+    public required Guid WindowId {  get;  init;  }
+   
+    public required Guid RunId {  get;  init;  }
+   
+    public required int WindowNumber {  get;  init;  }
+    
+    public required DateTime TrainFromUtc {  get;  init;  }
+    
+    public required DateTime TrainToUtc {  get;  init;  }
+   
+    public required DateTime TestFromUtc {  get;  init;  }
+   
+    public required DateTime TestToUtc {  get;  init;  }
+    
+    public required string SelectedParametersJson {  get;  init;  }
+    
+    public required decimal InSampleScore {  get;  init;  }
+   
+    public required decimal OutOfSampleScore {  get;  init;  }
+   
+    public required PerformanceMetricSet InSampleMetrics {  get;  init;  }
+    
+    public required PerformanceMetricSet OutOfSampleMetrics {  get;  init;  }
+}
+
+public sealed record PerformanceQuery
+{
+    public string? BotName {  get;  init;  }
+    
+    public string? Symbol {  get;  init;  }
+    
+    public PerformanceRunType? RunType {  get;  init;  }
+   
+    public DateTime? FromUtc {  get;  init;  }
+   
+    public DateTime? ToUtc {  get;  init;  }
+   
+    public int Take {  get;  init;  }  =  100;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\Services\PerformanceAnalyticsService.cs
+================================================================================
+using TradingSystem.Analytics.Abstractions;
+using TradingSystem.Analytics.Models;
+
+namespace TradingSystem.Analytics.Services;
+
+public sealed class PerformanceAnalyticsService(IPerformanceAnalyticsStore store)
+{
+    public async Task SaveCompletedRunAsync(
+        PerformanceRun run,
+        PerformanceSnapshot snapshot,
+        IReadOnlyCollection<PerformanceTrade> trades,
+        CancellationToken cancellationToken = default)
+    {
+        if (run.RunId != snapshot.RunId)
+        {
+            throw new ArgumentException(
+                "The performance run and snapshot must have the same RunId.",
+                nameof(snapshot));
+        }
+
+        await store.CreateRunAsync(run, cancellationToken);
+        await store.SaveTradesAsync(run.RunId, trades, cancellationToken);
+        await store.SaveSnapshotAsync(snapshot, cancellationToken);
+
+        // The previous implementation was named SaveCompletedRunAsync but left the
+        // persisted run in its initial status. Mark it completed after all details
+        // have been stored successfully.
+        await store.CompleteRunAsync(
+            run.RunId,
+            PerformanceRunStatus.Completed,
+            run.CompletedAtUtc ?? snapshot.PeriodToUtc,
+            run.Notes,
+            cancellationToken);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\TradingSystem.Analytics.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup><PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.2" /></ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.Configuration;using Microsoft.Extensions.DependencyInjection;
+namespace TradingSystem.Operations;
+public static class DependencyInjection
+{
+ public static IServiceCollection AddServiceHeartbeat(this IServiceCollection services, IConfiguration c, string serviceName){services.Configure<ServiceHeartbeatOptions>(o => {c.GetSection(ServiceHeartbeatOptions.SectionName).Bind(o);o.ServiceName = serviceName;});services.AddHostedService<ServiceHeartbeatWorker>();return services;}
+ public static IServiceCollection AddAlertEngine(this IServiceCollection services, IConfiguration c){services.Configure<AlertEngineOptions>(c.GetSection(AlertEngineOptions.SectionName));services.AddHostedService<AlertEngineWorker>();return services;}
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\OperationalContracts.cs
+================================================================================
+namespace TradingSystem.Operations;
+
+public enum OperationalStatus { Healthy,  Degraded,  Unhealthy,  Stopped }
+public enum AlertSeverity { Information,  Warning,  Critical }
+
+public sealed record ServiceHeartbeat(
+    string ServiceName, 
+    string InstanceId, 
+    string Version, 
+    string Environment, 
+    OperationalStatus Status, 
+    DateTime StartedAtUtc, 
+    DateTime LastSeenAtUtc, 
+    int StaleAfterSeconds, 
+    IReadOnlyDictionary<string, string>? Details  =  null);
+
+public sealed record AlertCandidate(
+    string DeduplicationKey, 
+    AlertSeverity Severity, 
+    string Type, 
+    string Message, 
+    string? BotName  =  null, 
+    string? PositionId  =  null, 
+    IReadOnlyDictionary<string, string>? Metadata  =  null);
+
+public sealed record AuditEvent(
+    Guid AuditId, 
+    DateTime OccurredAtUtc, 
+    string Actor, 
+    string Action, 
+    string EntityType, 
+    string? EntityId, 
+    string? Reason, 
+    string? CorrelationId, 
+    string? IpAddress, 
+    string? OldValueJson, 
+    string? NewValueJson, 
+    IReadOnlyDictionary<string, string>? Metadata  =  null);
+
+public interface IServiceHeartbeatStore { Task UpsertAsync(ServiceHeartbeat heartbeat, CancellationToken ct); }
+public interface IAlertStore
+{
+    Task UpsertActiveAsync(AlertCandidate alert, CancellationToken ct);
+    Task ResolveMissingAsync(string sourcePrefix, IReadOnlyCollection<string> activeKeys, CancellationToken ct);
+}
+public interface IAlertCandidateSource { string SourcePrefix {  get;  } Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(CancellationToken ct); }
+public interface IAuditLog { Task WriteAsync(AuditEvent auditEvent, CancellationToken ct); }
+
+public sealed class ServiceHeartbeatOptions
+{
+    public const string SectionName = "ServiceHeartbeat";
+    public bool Enabled{ get; set;} = true;
+    public string ServiceName{ get; set;} = "UnknownService";
+    public string Environment{ get; set;} = "Demo";
+    public int IntervalSeconds{ get; set;} = 10;
+    public int StaleAfterSeconds{ get; set;} = 30;
+}
+public sealed class AlertEngineOptions
+{
+    public const string SectionName = "AlertEngine";
+    public bool Enabled{ get; set;} = true;
+    public int PollSeconds{ get; set;} = 15;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\OperationalWorkers.cs
+================================================================================
+using System.Reflection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.Operations;
+
+public sealed class ServiceHeartbeatWorker(
+    IServiceHeartbeatStore store,
+    IOptions<ServiceHeartbeatOptions> options,
+    ILogger<ServiceHeartbeatWorker> logger) : BackgroundService
+{
+    private readonly DateTime _startedAtUtc = DateTime.UtcNow;
+    private readonly string _instanceId = $"{Environment.MachineName}-{Environment.ProcessId}";
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = options.Value;
+        if (!settings.Enabled)
+            return;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(2, settings.IntervalSeconds)));
+        try
+        {
+            do
+            {
+                try
+                {
+                    var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+                    var details = new Dictionary<string, string>
+                    {
+                        ["processId"] = Environment.ProcessId.ToString(),
+                        ["machine"] = Environment.MachineName
+                    };
+                    await store.UpsertAsync(new ServiceHeartbeat(
+                        settings.ServiceName,
+                        _instanceId,
+                        version,
+                        settings.Environment,
+                        OperationalStatus.Healthy,
+                        _startedAtUtc,
+                        DateTime.UtcNow,
+                        Math.Max(settings.StaleAfterSeconds, settings.IntervalSeconds * 2),
+                        details), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(exception, "Failed to publish heartbeat for {ServiceName}", settings.ServiceName);
+                }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+    }
+}
+
+public sealed class AlertEngineWorker(
+    IEnumerable<IAlertCandidateSource> sources,
+    IAlertStore store,
+    IOptions<AlertEngineOptions> options,
+    ILogger<AlertEngineWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = options.Value;
+        if (!settings.Enabled)
+            return;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, settings.PollSeconds)));
+        try
+        {
+            do
+            {
+                foreach (var source in sources)
+                {
+                    try
+                    {
+                        var alerts = await source.LoadAsync(stoppingToken);
+                        foreach (var alert in alerts)
+                            await store.UpsertActiveAsync(alert, stoppingToken);
+                        await store.ResolveMissingAsync(source.SourcePrefix, alerts.Select(x => x.DeduplicationKey).ToArray(), stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        logger.LogError(exception, "Alert source {Source} failed", source.SourcePrefix);
+                    }
+                }
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\TradingSystem.Operations.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include = "Microsoft.Extensions.Hosting.Abstractions" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\DependencyInjection.cs
+================================================================================
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using TradingSystem.Observability.Environment;
+using TradingSystem.Observability.History;
+namespace TradingSystem.Observability;
+public static class DependencyInjection
+{
+    public static IServiceCollection AddTradingObservability(this IServiceCollection services)
+    {
+        services.TryAddSingleton<ITradingEnvironmentProvider, TradingEnvironmentProvider>();
+        services.TryAddSingleton<ITradingPipelineRecorder, NullTradingPipelineRecorder>();
+
+        return services;
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\Environment\ITradingEnvironmentProvider.cs
+================================================================================
+namespace TradingSystem.Observability.Environment;
+public interface ITradingEnvironmentProvider { string EnvironmentName {  get;  } }
+public sealed class TradingEnvironmentProvider:ITradingEnvironmentProvider
+{ 
+    public string EnvironmentName => System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim() is {Length:>0} x?x:"Demo"; 
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\History\HistoryRecords.cs
+================================================================================
+namespace TradingSystem.Observability.History;
+public sealed record SignalHistoryRecord(
+    string SignalId, 
+    string BotName, string StrategyVersion, string Symbol, string Side, string Source, string Environment, DateTime SignalTimeUtc, decimal? ReferencePrice, DateTime? CandleOpenTimeUtc, string? Interval, string? Reason, string? RawPayload, IReadOnlyDictionary<string, object?>? Metadata = null);
+public sealed record DecisionHistoryRecord(
+    string SignalId, 
+    string BotName, string StrategyVersion, string Symbol, string Side, string Decision, string? Reason, string Environment, DateTime DecidedAtUtc, decimal? MarkPrice, IReadOnlyDictionary<string, object?>? Parameters = null, IReadOnlyDictionary<string, object?>? Metadata = null);
+public sealed record PositionHistoryRecord(
+    string PositionId, 
+    string? SignalId, string BotName, string StrategyVersion, string Symbol, string Side, string? Source, string Environment, string Status, decimal Quantity, decimal? EntryPrice, decimal? TakeProfitPrice, DateTime OpenedAtUtc, DateTime? ClosedAtUtc, decimal? RealizedPnl, decimal? Fees, string? CloseReason, IReadOnlyDictionary<string, object?>? Metadata = null);
+public sealed record PositionEventHistoryRecord(
+    string PositionId, 
+    string BotName, string EventType, string? Status, DateTime OccurredAtUtc, decimal? Price, decimal? Quantity, IReadOnlyDictionary<string, object?>? Details = null);
+public sealed record OrderEventHistoryRecord(
+    string EventKey, 
+    string BotName, string? PositionId, string? ClientOrderId, string? ExchangeOrderId, string? OrderType, string? Status, string? Side, string? Symbol, string Environment, DateTime OccurredAtUtc, decimal? Price, decimal? Quantity, decimal? ExecutedQuantity, string? RawPayload);
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\History\ITradingPipelineRecorder.cs
+================================================================================
+namespace TradingSystem.Observability.History;
+
+public interface ITradingPipelineRecorder
+{
+    Task RecordSignalAsync(SignalHistoryRecord record, CancellationToken ct);
+    Task RecordDecisionAsync(DecisionHistoryRecord record, CancellationToken ct);
+    Task UpsertPositionAsync(PositionHistoryRecord record, CancellationToken ct);
+    Task RecordPositionEventAsync(PositionEventHistoryRecord record, CancellationToken ct);
+    Task RecordOrderEventAsync(OrderEventHistoryRecord record, CancellationToken ct);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\History\NullTradingPipelineRecorder.cs
+================================================================================
+namespace TradingSystem.Observability.History;
+
+public sealed class NullTradingPipelineRecorder:ITradingPipelineRecorder
+{
+    public Task RecordSignalAsync(SignalHistoryRecord r, CancellationToken ct) => Task.CompletedTask;
+    public Task RecordDecisionAsync(DecisionHistoryRecord r, CancellationToken ct) => Task.CompletedTask;
+    public Task UpsertPositionAsync(PositionHistoryRecord r, CancellationToken ct) => Task.CompletedTask;
+    public Task RecordPositionEventAsync(PositionEventHistoryRecord r, CancellationToken ct) => Task.CompletedTask;
+     public Task RecordOrderEventAsync(OrderEventHistoryRecord r, CancellationToken ct) => Task.CompletedTask;
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\TradingSystem.Observability.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
+  </ItemGroup>
+</Project>
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\StrategyPluginCatalog.cs
+================================================================================
+using TradingSystem.Application.Strategies;
+
+namespace TradingSystem.StrategyPlugins;
+
+public sealed class StrategyPluginCatalog : IStrategyPluginCatalog
+{
+    private readonly IReadOnlyDictionary<string,  StrategyPluginDescriptor> _plugins;
+
+    public StrategyPluginCatalog(IEnumerable<ITradingStrategy> strategies,  IEnumerable<IStrategyPluginModule> modules)
+    {
+        var descriptors  =  new List<StrategyPluginDescriptor>();
+        descriptors.AddRange(modules.Select(x  =>  x.Descriptor));
+
+        foreach (var strategy in strategies)
+        {
+            var metadata  =  strategy.Metadata;
+            var pluginId  =  string.IsNullOrWhiteSpace(metadata.PluginId) ? metadata.Name : metadata.PluginId;
+            if (descriptors.Any(x  =>  x.PluginId.Equals(pluginId,  StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            descriptors.Add(new StrategyPluginDescriptor(
+                pluginId, 
+                metadata.DisplayName ?? metadata.Name, 
+                metadata.Version, 
+                metadata.Name, 
+                strategy.GetType().Assembly.GetName().Name ?? "unknown", 
+                true, 
+                metadata.SupportedSymbols, 
+                metadata.Description));
+        }
+
+        _plugins  =  descriptors
+            .GroupBy(x  =>  x.PluginId,  StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x  =>  x.Key, 
+                x  =>  x.OrderByDescending(d  =>  ParseVersion(d.Version)).First(), 
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlyCollection<StrategyPluginDescriptor> GetAll()
+         =>  _plugins.Values.OrderBy(x  =>  x.DisplayName).ToArray();
+
+    public StrategyPluginDescriptor GetRequired(string pluginId)
+         =>  _plugins.TryGetValue(pluginId,  out var descriptor)
+            ? descriptor
+            : throw new InvalidOperationException($"Strategy plugin '{pluginId}' is not registered.");
+
+    private static Version ParseVersion(string value)  =>  Version.TryParse(value,  out var version) ? version : new Version(0,  0);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\StrategyPluginContracts.cs
+================================================================================
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Application.Strategies;
+
+namespace TradingSystem.StrategyPlugins;
+
+public sealed record StrategyPluginDescriptor(
+    string PluginId, 
+    string DisplayName, 
+    string Version, 
+    string StrategyName, 
+    string AssemblyName, 
+    bool IsBuiltIn, 
+    IReadOnlyCollection<string> SupportedSymbols, 
+    string? Description  =  null);
+
+public interface IStrategyPluginModule
+{
+    StrategyPluginDescriptor Descriptor {  get;  }
+    void ConfigureServices(IServiceCollection services,  IConfiguration configuration);
+}
+
+public interface IStrategyPluginCatalog
+{
+    IReadOnlyCollection<StrategyPluginDescriptor> GetAll();
+    StrategyPluginDescriptor GetRequired(string pluginId);
+}
+
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\StrategyPluginLoader.cs
+================================================================================
+using System.Reflection;
+using System.Runtime.Loader;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Strategies;
+
+namespace TradingSystem.StrategyPlugins;
+
+public static class StrategyPluginLoader
+{
+    public static IServiceCollection AddStrategyPluginSystem(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var section = configuration.GetSection(StrategyPluginOptions.SectionName);
+        var options = section.Get<StrategyPluginOptions>() ?? new StrategyPluginOptions();
+
+        services.AddOptions<StrategyPluginOptions>()
+            .Bind(section)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<StrategyPluginOptions>, StrategyPluginOptionsValidator>();
+
+        if (options.Enabled && options.LoadExternalAssemblies)
+            LoadExternalModules(services, configuration, options);
+
+        services.AddSingleton<IStrategyPluginCatalog, StrategyPluginCatalog>();
+        services.AddSingleton<ITradingStrategyResolver, TradingStrategyResolver>();
+        return services;
+    }
+
+    private static void LoadExternalModules(
+        IServiceCollection services,
+        IConfiguration configuration,
+        StrategyPluginOptions options)
+    {
+        var directory = Path.GetFullPath(
+            options.PluginDirectory,
+            AppContext.BaseDirectory);
+
+        if (!Directory.Exists(directory))
+        {
+            if (options.FailOnPluginLoadError)
+            {
+                throw new DirectoryNotFoundException(
+                    $"Strategy plugin directory '{directory}' does not exist.");
+            }
+
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     "*.dll",
+                     SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+                foreach (var type in GetLoadableTypes(assembly)
+                             .Where(type =>
+                                 !type.IsAbstract &&
+                                 typeof(IStrategyPluginModule).IsAssignableFrom(type)))
+                {
+                    if (Activator.CreateInstance(type) is not IStrategyPluginModule module)
+                    {
+                        throw new InvalidOperationException(
+                            $"Could not create strategy plugin module '{type.FullName}'. " +
+                            "A public parameterless constructor is required.");
+                    }
+
+                    module.ConfigureServices(services, configuration);
+                    services.AddSingleton(typeof(IStrategyPluginModule), module);
+                }
+            }
+            catch when (!options.FailOnPluginLoadError)
+            {
+                // The host is explicitly configured to continue without optional plugins.
+            }
+        }
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException exception)
+        {
+            return exception.Types.OfType<Type>();
+        }
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\StrategyPluginOptions.cs
+================================================================================
+namespace TradingSystem.StrategyPlugins;
+
+public sealed class StrategyPluginOptions
+{
+    public const string SectionName = "StrategyPlugins";
+
+    public bool Enabled { get; set; } = true;
+    public string PluginDirectory { get; set; } = "plugins/strategies";
+    public bool LoadExternalAssemblies { get; set; } = true;
+    public bool FailOnPluginLoadError { get; set; } = true;
+    public string DefaultVersion { get; set; } = "1.0.0";
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\StrategyPluginOptionsValidator.cs
+================================================================================
+using Microsoft.Extensions.Options;
+
+namespace TradingSystem.StrategyPlugins;
+
+public sealed class StrategyPluginOptionsValidator
+    : IValidateOptions<StrategyPluginOptions>
+{
+    public ValidateOptionsResult Validate(
+        string? name,
+        StrategyPluginOptions options)
+    {
+        var errors = new List<string>();
+
+        if (options.LoadExternalAssemblies &&
+            string.IsNullOrWhiteSpace(options.PluginDirectory))
+        {
+            errors.Add("StrategyPlugins:PluginDirectory is required when external assembly loading is enabled.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.DefaultVersion) ||
+            !Version.TryParse(options.DefaultVersion, out _))
+        {
+            errors.Add("StrategyPlugins:DefaultVersion must be a valid version, for example 1.0.0.");
+        }
+
+        return errors.Count == 0
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail(errors);
+    }
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\TradingStrategyResolver.cs
+================================================================================
+using TradingSystem.Application.Strategies;
+using TradingSystem.BotRuntime.Configuration;
+
+namespace TradingSystem.StrategyPlugins;
+
+public sealed class TradingStrategyResolver(
+    TradingStrategyRegistry registry, 
+    IBotRuntimeConfigurationProvider configurations) : ITradingStrategyResolver
+{
+    public async Task<ITradingStrategy> ResolveAsync(string botName,  CancellationToken cancellationToken)
+    {
+        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        if (!string.IsNullOrWhiteSpace(configuration?.StrategyType) && registry.TryGet(configuration.StrategyType,  out var configured))
+            return configured;
+
+        return registry.GetRequired(botName);
+    }
+
+    public ITradingStrategy ResolveByPluginId(string pluginId)  =>  registry.GetRequired(pluginId);
+}
+
+================================================================================
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\TradingSystem.StrategyPlugins.csproj
+================================================================================
+<Project Sdk = "Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" />
+    <ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" />
+    <PackageReference Include = "Microsoft.Extensions.Configuration.Abstractions" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.Configuration.Binder" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.Logging.Abstractions" Version = "9.0.0" />
+    <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
+  </ItemGroup>
+</Project>
