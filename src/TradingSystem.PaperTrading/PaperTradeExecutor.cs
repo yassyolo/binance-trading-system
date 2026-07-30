@@ -7,108 +7,347 @@ using TradingSystem.Domain.Enums;
 namespace TradingSystem.PaperTrading;
 
 public sealed class PaperTradeExecutor(
-    IPaperTradingStore store, 
-    IMarketPriceProvider prices, 
-    IBotRuntimeConfigurationProvider configurations, 
+    IPaperTradingStore store,
+    IMarketPriceProvider prices,
+    IBotRuntimeConfigurationProvider configurations,
     IOptions<PaperTradingOptions> options)
 {
-    private readonly PaperTradingOptions _options  =  options.Value;
+    private readonly PaperTradingOptions _options = options.Value;
 
-    public async Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken ct)
+    public async Task<TradeExecutionResult> OpenAsync(
+        string botName,
+        string symbol,
+        PositionSide side,
+        string? source,
+        CancellationToken ct)
     {
         if (!_options.Enabled)
-            return TradeExecutionResult.Failure("Paper trading is disabled.");
+        {
+            return TradeExecutionResult.Failure(
+                "Paper trading is disabled.");
+        }
 
-        var open  =  await store.GetOpenAsync(ct);
-        if (open.Count >= _options.MaximumOpenPositions)
-            return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
+        var openPositions = await store.GetOpenAsync(ct);
 
-        var configuration  =  await configurations.GetAsync(botName,  ct);
+        if (openPositions.Count >= _options.MaximumOpenPositions)
+        {
+            return TradeExecutionResult.Failure(
+                "Paper trading maximum open positions limit reached.");
+        }
+
+        var configuration = await configurations.GetAsync(
+            botName,
+            ct);
+
         if (configuration is null)
-            return TradeExecutionResult.Failure($"Runtime configuration for {botName} was not found.");
+        {
+            return TradeExecutionResult.Failure(
+                $"Runtime configuration for {botName} was not found.");
+        }
 
-        var markPrice  =  await prices.GetMarkPriceAsync(symbol,  ct);
+        if (configuration.Quantity <= 0)
+        {
+            return TradeExecutionResult.Failure(
+                $"Invalid paper trading quantity configured for {botName}.");
+        }
+
+        var normalizedSymbol = symbol.ToUpperInvariant();
+
+        var markPrice = await prices.GetMarkPriceAsync(
+            normalizedSymbol,
+            ct);
+
         if (markPrice <= 0)
-            return TradeExecutionResult.Failure($"Invalid mark price for {symbol}.");
+        {
+            return TradeExecutionResult.Failure(
+                $"Invalid mark price for {normalizedSymbol}.");
+        }
 
-        var entryPrice  =  ApplySlippage(markPrice,  side,  opening: true);
-        var quantity  =  configuration.Quantity;
-        var takeProfitDistance  =  configuration.ProfitDistance;
-        var takeProfitPrice  =  takeProfitDistance is > 0
-            ? side == PositionSide.Long ? entryPrice + takeProfitDistance.Value : entryPrice - takeProfitDistance.Value
-            : ApplyPercent(entryPrice,  side,  _options.DefaultTakeProfitPercent,  favorable: true);
-        var stopLossPrice  =  ApplyPercent(entryPrice,  side,  _options.DefaultStopLossPercent,  favorable: false);
-        var fee  =  CalculateFee(entryPrice,  quantity);
-        var shortId  =  $"P{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000,  9999)}";
+        var entryPrice = ApplySlippage(
+            markPrice,
+            side,
+            opening: true);
+
+        var quantity = configuration.Quantity;
+
+        var takeProfitPrice = ResolveTakeProfitPrice(
+            entryPrice,
+            side,
+            configuration.ProfitDistance);
+
+        var stopLossPrice = ApplyPercent(
+            entryPrice,
+            side,
+            _options.DefaultStopLossPercent,
+            favorable: false);
+
+        var entryFee = CalculateFee(
+            entryPrice,
+            quantity);
+
+        var shortId =
+            $"P{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
 
         var position = new PaperTradingPosition
         {
             PositionId = Guid.NewGuid(),
             ShortId = shortId,
             BotName = botName,
-            Symbol = symbol.ToUpperInvariant(),
+            Symbol = normalizedSymbol,
             Side = side,
             Quantity = quantity,
             EntryPrice = entryPrice,
             TakeProfitPrice = takeProfitPrice,
             StopLossPrice = stopLossPrice,
-            EntryFee = fee,
+            EntryFee = entryFee,
             ExitPrice = null,
             ExitFee = null,
             RealizedPnl = null,
             Status = PaperPositionStatus.Open,
             Source = string.IsNullOrWhiteSpace(source)
-        ? "internal"
-        : source,
+                ? "internal"
+                : source,
             OpenedAtUtc = DateTime.UtcNow,
             ClosedAtUtc = null,
             CloseReason = null,
             Version = 1
         };
 
-        await store.CreateAsync(position,  ct);
-        return TradeExecutionResult.Success(shortId,  $"Paper position opened at {entryPrice}.");
+        await store.CreateAsync(
+            position,
+            ct);
+
+        return TradeExecutionResult.Success(
+            shortId,
+            $"Paper position opened at {entryPrice}.");
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken ct)
+    /// <summary>
+    /// Closes a paper position manually using the latest available mark price.
+    /// </summary>
+    public async Task<TradeExecutionResult> CloseAsync(
+        string botName,
+        string shortId,
+        string reason,
+        CancellationToken ct)
     {
-        var position  =  await store.GetAsync(botName,  shortId,  ct);
-        if (position is null)
-            return TradeExecutionResult.Failure($"Paper position {shortId} was not found.");
-        if (position.Status == PaperPositionStatus.Closed)
-            return TradeExecutionResult.Success(shortId,  "Paper position is already closed.");
+        var position = await store.GetAsync(
+            botName,
+            shortId,
+            ct);
 
-        var markPrice  =  await prices.GetMarkPriceAsync(position.Symbol,  ct);
-        var exitPrice  =  ApplySlippage(markPrice,  position.Side,  opening: false);
-        var exitFee  =  CalculateFee(exitPrice,  position.Quantity);
-        var pnl  =  CalculatePnl(position,  exitPrice,  exitFee);
-        var closed  =  await store.TryCloseAsync(position.PositionId,  position.Version,  exitPrice,  exitFee,  pnl,  reason,  DateTime.UtcNow,  ct);
+        var validationResult = ValidatePositionForClose(
+            position,
+            shortId);
+
+        if (validationResult is not null)
+            return validationResult;
+
+        var markPrice = await prices.GetMarkPriceAsync(
+            position!.Symbol,
+            ct);
+
+        if (markPrice <= 0)
+        {
+            return TradeExecutionResult.Failure(
+                $"Invalid mark price for {position.Symbol}.");
+        }
+
+        return await ClosePositionAtPriceAsync(
+            position,
+            markPrice,
+            reason,
+            ct);
+    }
+
+    /// <summary>
+    /// Closes a paper position using a supplied trigger price.
+    /// Intended for TP/SL workers that already obtained the market price
+    /// used to detect the exit condition.
+    /// </summary>
+    public async Task<TradeExecutionResult> CloseAtPriceAsync(
+        string botName,
+        string shortId,
+        decimal triggerPrice,
+        string reason,
+        CancellationToken ct)
+    {
+        if (triggerPrice <= 0)
+        {
+            return TradeExecutionResult.Failure(
+                "Paper position trigger price must be positive.");
+        }
+
+        var position = await store.GetAsync(
+            botName,
+            shortId,
+            ct);
+
+        var validationResult = ValidatePositionForClose(
+            position,
+            shortId);
+
+        if (validationResult is not null)
+            return validationResult;
+
+        return await ClosePositionAtPriceAsync(
+            position!,
+            triggerPrice,
+            reason,
+            ct);
+    }
+
+    private async Task<TradeExecutionResult> ClosePositionAtPriceAsync(
+        PaperTradingPosition position,
+        decimal marketPrice,
+        string reason,
+        CancellationToken ct)
+    {
+        var exitPrice = ApplySlippage(
+            marketPrice,
+            position.Side,
+            opening: false);
+
+        var exitFee = CalculateFee(
+            exitPrice,
+            position.Quantity);
+
+        var realizedPnl = CalculatePnl(
+            position,
+            exitPrice,
+            exitFee);
+
+        var closed = await store.TryCloseAsync(
+            position.PositionId,
+            position.Version,
+            exitPrice,
+            exitFee,
+            realizedPnl,
+            reason,
+            DateTime.UtcNow,
+            ct);
+
         return closed
-            ? TradeExecutionResult.Success(shortId,  reason)
-            : TradeExecutionResult.Failure("Paper position changed concurrently; close was not applied.");
+            ? TradeExecutionResult.Success(
+                position.ShortId,
+                reason)
+            : TradeExecutionResult.Failure(
+                "Paper position changed concurrently; close was not applied.");
     }
 
-    internal decimal ApplySlippage(decimal price,  PositionSide side,  bool opening)
+    private static TradeExecutionResult? ValidatePositionForClose(
+        PaperTradingPosition? position,
+        string shortId)
     {
-        var pct  =  _options.SlippagePercent / 100m;
-        var buy  =  opening ? side == PositionSide.Long : side == PositionSide.Short;
-        return buy ? price * (1m + pct) : price * (1m - pct);
+        if (position is null)
+        {
+            return TradeExecutionResult.Failure(
+                $"Paper position {shortId} was not found.");
+        }
+
+        if (position.Status == PaperPositionStatus.Closed)
+        {
+            return TradeExecutionResult.Success(
+                shortId,
+                "Paper position is already closed.");
+        }
+
+        if (position.Status != PaperPositionStatus.Open)
+        {
+            return TradeExecutionResult.Failure(
+                $"Paper position {shortId} is not open.");
+        }
+
+        if (position.Quantity <= 0)
+        {
+            return TradeExecutionResult.Failure(
+                $"Paper position {shortId} has invalid quantity.");
+        }
+
+        return null;
     }
 
-    internal decimal CalculateFee(decimal price,  decimal quantity)  =>  price * quantity * (_options.CommissionPercent / 100m);
-
-    internal static decimal CalculateGrossPnl(PaperTradingPosition p,  decimal exitPrice)  => 
-        p.Side == PositionSide.Long
-            ? (exitPrice - p.EntryPrice) * p.Quantity
-            : (p.EntryPrice - exitPrice) * p.Quantity;
-
-    private decimal CalculatePnl(PaperTradingPosition p,  decimal exitPrice,  decimal exitFee)  => 
-        CalculateGrossPnl(p,  exitPrice) - p.EntryFee - exitFee;
-
-    private static decimal ApplyPercent(decimal price,  PositionSide side,  decimal percent,  bool favorable)
+    private decimal ResolveTakeProfitPrice(
+        decimal entryPrice,
+        PositionSide side,
+        decimal? takeProfitDistance)
     {
-        var change  =  price * percent / 100m;
-        var increase  =  favorable ? side == PositionSide.Long : side == PositionSide.Short;
-        return increase ? price + change : price - change;
+        if (takeProfitDistance is > 0)
+        {
+            return side == PositionSide.Long
+                ? entryPrice + takeProfitDistance.Value
+                : entryPrice - takeProfitDistance.Value;
+        }
+
+        return ApplyPercent(
+            entryPrice,
+            side,
+            _options.DefaultTakeProfitPercent,
+            favorable: true);
+    }
+
+    internal decimal ApplySlippage(
+        decimal price,
+        PositionSide side,
+        bool opening)
+    {
+        var slippageRate = _options.SlippagePercent / 100m;
+
+        var isBuyOperation = opening
+            ? side == PositionSide.Long
+            : side == PositionSide.Short;
+
+        return isBuyOperation
+            ? price * (1m + slippageRate)
+            : price * (1m - slippageRate);
+    }
+
+    internal decimal CalculateFee(
+        decimal price,
+        decimal quantity)
+    {
+        return price *
+               quantity *
+               (_options.CommissionPercent / 100m);
+    }
+
+    internal static decimal CalculateGrossPnl(
+        PaperTradingPosition position,
+        decimal exitPrice)
+    {
+        return position.Side == PositionSide.Long
+            ? (exitPrice - position.EntryPrice) * position.Quantity
+            : (position.EntryPrice - exitPrice) * position.Quantity;
+    }
+
+    private decimal CalculatePnl(
+        PaperTradingPosition position,
+        decimal exitPrice,
+        decimal exitFee)
+    {
+        var grossPnl = CalculateGrossPnl(
+            position,
+            exitPrice);
+
+        return grossPnl -
+               position.EntryFee -
+               exitFee;
+    }
+
+    private static decimal ApplyPercent(
+        decimal price,
+        PositionSide side,
+        decimal percent,
+        bool favorable)
+    {
+        var change = price * percent / 100m;
+
+        var shouldIncrease = favorable
+            ? side == PositionSide.Long
+            : side == PositionSide.Short;
+
+        return shouldIncrease
+            ? price + change
+            : price - change;
     }
 }

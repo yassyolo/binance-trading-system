@@ -65,7 +65,7 @@ builder.Services.AddBot8016(builder.Configuration);
 
 builder.Services.AddHostedService<UserStreamOrderSubscriber>();
 builder.Services.AddHostedService<HealingSnapshotSubscriber>();
-//builder.Services.AddHostedService<PaperPositionCloseWorker>();
+builder.Services.AddHostedService<PaperPositionCloseWorker>();
 
 builder.Services.AddHistoricalDatabase(builder.Configuration);
 builder.Services.AddTradingPrometheus(builder.Configuration);

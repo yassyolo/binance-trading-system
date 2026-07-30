@@ -1,7 +1,6 @@
-namespace TradingSystem.Operations;
+using TradingSystem.Operations.Enums;
 
-public enum OperationalStatus { Healthy,  Degraded,  Unhealthy,  Stopped }
-public enum AlertSeverity { Information,  Warning,  Critical }
+namespace TradingSystem.Operations;
 
 public sealed record ServiceHeartbeat(
     string ServiceName, 
@@ -38,26 +37,45 @@ public sealed record AuditEvent(
     IReadOnlyDictionary<string, string>? Metadata  =  null);
 
 public interface IServiceHeartbeatStore { Task UpsertAsync(ServiceHeartbeat heartbeat, CancellationToken ct); }
+
 public interface IAlertStore
 {
     Task UpsertActiveAsync(AlertCandidate alert, CancellationToken ct);
     Task ResolveMissingAsync(string sourcePrefix, IReadOnlyCollection<string> activeKeys, CancellationToken ct);
 }
-public interface IAlertCandidateSource { string SourcePrefix {  get;  } Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(CancellationToken ct); }
-public interface IAuditLog { Task WriteAsync(AuditEvent auditEvent, CancellationToken ct); }
+
+public interface IAlertCandidateSource 
+{ 
+    string SourcePrefix { get; } 
+    
+    Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(CancellationToken ct); 
+}
+
+public interface IAuditLog 
+{ 
+    Task WriteAsync(AuditEvent auditEvent, CancellationToken ct); 
+}
 
 public sealed class ServiceHeartbeatOptions
 {
     public const string SectionName = "ServiceHeartbeat";
+    
     public bool Enabled{ get; set;} = true;
+    
     public string ServiceName{ get; set;} = "UnknownService";
+    
     public string Environment{ get; set;} = "Demo";
+    
     public int IntervalSeconds{ get; set;} = 10;
+    
     public int StaleAfterSeconds{ get; set;} = 30;
 }
+
 public sealed class AlertEngineOptions
 {
     public const string SectionName = "AlertEngine";
+    
     public bool Enabled{ get; set;} = true;
+    
     public int PollSeconds{ get; set;} = 15;
 }

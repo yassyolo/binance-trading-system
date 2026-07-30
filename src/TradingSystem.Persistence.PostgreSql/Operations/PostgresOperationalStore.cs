@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
 using TradingSystem.Operations;
+using TradingSystem.Operations.Enums;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.Operations;
