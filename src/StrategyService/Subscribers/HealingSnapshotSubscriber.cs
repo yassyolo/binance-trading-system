@@ -12,26 +12,23 @@ namespace StrategyService.Subscribers;
 public sealed class HealingSnapshotSubscriber(
     IConnectionMultiplexer redis,
     HealingServiceRegistry registry,
-    ILogger<HealingSnapshotSubscriber> logger
-) : BackgroundService
+    ILogger<HealingSnapshotSubscriber> logger) : 
+    BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken token)
     {
         var sub = redis.GetSubscriber();
-        await sub.SubscribeAsync(
-            RedisChannel.Literal(RedisChannels.Healing),
+        await sub.SubscribeAsync(RedisChannel.Literal(RedisChannels.Healing),
             async (_, m) =>
             {
                 if (!m.HasValue)
                     return;
                 try
                 {
-                    var s = JsonSerializer.Deserialize<HealingSnapshotMessage>(
-                        m.ToString(),
-                        JsonDefaults.Messaging // Use the correct options property
-                    );
+                    var s = JsonSerializer.Deserialize<HealingSnapshotMessage>(m.ToString(), JsonDefaults.Messaging);
                     if (s is null)
                         return;
+                    
                     foreach (var service in registry.ForSymbol(s.Symbol))
                         await service.HealAsync(s, token);
                 }
@@ -46,8 +43,7 @@ public sealed class HealingSnapshotSubscriber(
             await Task.Delay(Timeout.InfiniteTimeSpan, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
+        {}
         finally
         {
             await sub.UnsubscribeAsync(RedisChannel.Literal(RedisChannels.Healing));

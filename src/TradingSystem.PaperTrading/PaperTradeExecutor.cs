@@ -14,20 +14,20 @@ public sealed class PaperTradeExecutor(
 {
     private readonly PaperTradingOptions _options  =  options.Value;
 
-    public async Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken ct)
     {
         if (!_options.Enabled)
             return TradeExecutionResult.Failure("Paper trading is disabled.");
 
-        var open  =  await store.GetOpenAsync(cancellationToken);
+        var open  =  await store.GetOpenAsync(ct);
         if (open.Count >= _options.MaximumOpenPositions)
             return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
 
-        var configuration  =  await configurations.GetAsync(botName,  cancellationToken);
+        var configuration  =  await configurations.GetAsync(botName,  ct);
         if (configuration is null)
             return TradeExecutionResult.Failure($"Runtime configuration for {botName} was not found.");
 
-        var markPrice  =  await prices.GetMarkPriceAsync(symbol,  cancellationToken);
+        var markPrice  =  await prices.GetMarkPriceAsync(symbol,  ct);
         if (markPrice <= 0)
             return TradeExecutionResult.Failure($"Invalid mark price for {symbol}.");
 
@@ -41,29 +41,48 @@ public sealed class PaperTradeExecutor(
         var fee  =  CalculateFee(entryPrice,  quantity);
         var shortId  =  $"P{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(1000,  9999)}";
 
-        var position  =  new PaperTradingPosition(
-            Guid.NewGuid(),  shortId,  botName,  symbol.ToUpperInvariant(),  side,  quantity, 
-            entryPrice,  takeProfitPrice,  stopLossPrice,  fee,  null,  null,  null, 
-            PaperPositionStatus.Open,  string.IsNullOrWhiteSpace(source) ? "internal" : source, 
-            DateTime.UtcNow,  null,  null,  1);
+        var position = new PaperTradingPosition
+        {
+            PositionId = Guid.NewGuid(),
+            ShortId = shortId,
+            BotName = botName,
+            Symbol = symbol.ToUpperInvariant(),
+            Side = side,
+            Quantity = quantity,
+            EntryPrice = entryPrice,
+            TakeProfitPrice = takeProfitPrice,
+            StopLossPrice = stopLossPrice,
+            EntryFee = fee,
+            ExitPrice = null,
+            ExitFee = null,
+            RealizedPnl = null,
+            Status = PaperPositionStatus.Open,
+            Source = string.IsNullOrWhiteSpace(source)
+        ? "internal"
+        : source,
+            OpenedAtUtc = DateTime.UtcNow,
+            ClosedAtUtc = null,
+            CloseReason = null,
+            Version = 1
+        };
 
-        await store.CreateAsync(position,  cancellationToken);
+        await store.CreateAsync(position,  ct);
         return TradeExecutionResult.Success(shortId,  $"Paper position opened at {entryPrice}.");
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken ct)
     {
-        var position  =  await store.GetAsync(botName,  shortId,  cancellationToken);
+        var position  =  await store.GetAsync(botName,  shortId,  ct);
         if (position is null)
             return TradeExecutionResult.Failure($"Paper position {shortId} was not found.");
         if (position.Status == PaperPositionStatus.Closed)
             return TradeExecutionResult.Success(shortId,  "Paper position is already closed.");
 
-        var markPrice  =  await prices.GetMarkPriceAsync(position.Symbol,  cancellationToken);
+        var markPrice  =  await prices.GetMarkPriceAsync(position.Symbol,  ct);
         var exitPrice  =  ApplySlippage(markPrice,  position.Side,  opening: false);
         var exitFee  =  CalculateFee(exitPrice,  position.Quantity);
         var pnl  =  CalculatePnl(position,  exitPrice,  exitFee);
-        var closed  =  await store.TryCloseAsync(position.PositionId,  position.Version,  exitPrice,  exitFee,  pnl,  reason,  DateTime.UtcNow,  cancellationToken);
+        var closed  =  await store.TryCloseAsync(position.PositionId,  position.Version,  exitPrice,  exitFee,  pnl,  reason,  DateTime.UtcNow,  ct);
         return closed
             ? TradeExecutionResult.Success(shortId,  reason)
             : TradeExecutionResult.Failure("Paper position changed concurrently; close was not applied.");

@@ -11,7 +11,7 @@ public sealed class BinanceHistoricalCandleSource(HttpClient httpClient) : IHist
         string symbol,
         string interval,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);
@@ -23,8 +23,8 @@ public sealed class BinanceHistoricalCandleSource(HttpClient httpClient) : IHist
         var url = $"fapi/v1/klines?symbol={Uri.EscapeDataString(normalizedSymbol)}" +
                   $"&interval={Uri.EscapeDataString(normalizedInterval)}&limit={limit}";
 
-        using var response = await httpClient.GetAsync(url, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await httpClient.GetAsync(url, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
             throw new BinanceApiException(response.StatusCode, content, "load latest candles");
 

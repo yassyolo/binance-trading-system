@@ -17,23 +17,16 @@ public sealed class TradingEngineHistoryNotifier(
     ITradingPipelineRecorder history,
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
-    ITradingEnvironmentProvider environment) : ITradingEngineNotifier
+    ITradingEnvironmentProvider environment) : 
+    ITradingEngineNotifier
 {
-    public async Task DecisionMadeAsync(
-        TradeSignal signal,
-        decimal markPrice,
-        StrategyDecision decision,
-        CancellationToken cancellationToken)
+    public async Task DecisionMadeAsync(TradeSignal signal, decimal markPrice, StrategyDecision decision, CancellationToken ct)
     {
         var strategy = strategies.GetRequired(signal.BotName);
         var decisionName = decision.ShouldOpen ? "Open" : "Block";
 
-        metrics.SignalsReceived
-            .WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown")
-            .Inc();
-        metrics.Decisions
-            .WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName)
-            .Inc();
+        metrics.SignalsReceived.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown").Inc();
+        metrics.Decisions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName).Inc();
 
         await history.RecordDecisionAsync(new DecisionHistoryRecord(
             signal.SignalId,
@@ -49,7 +42,7 @@ public sealed class TradingEngineHistoryNotifier(
             new Dictionary<string, object?>
             {
                 ["positions_to_close"] = decision.PositionsToClose
-            }), cancellationToken);
+            }), ct);
 
         await historicalEvents.WriteAsync(new HistoricalEvent(
             Guid.NewGuid(),
@@ -72,31 +65,19 @@ public sealed class TradingEngineHistoryNotifier(
             {
                 ["positions_to_close"] = decision.PositionsToClose,
                 ["source"] = signal.Source
-            }), cancellationToken);
+            }), ct);
 
-        await notifications.DecisionMadeAsync(signal, markPrice, decision, cancellationToken);
+        await notifications.DecisionMadeAsync(signal, markPrice, decision, ct);
     }
 
-    public async Task ExecutionCompletedAsync(
-        TradeSignal signal,
-        TradeExecutionResult result,
-        CancellationToken cancellationToken)
+    public async Task ExecutionCompletedAsync(TradeSignal signal, TradeExecutionResult result, CancellationToken ct)
     {
-        metrics.Executions
-            .WithLabels(
-                signal.BotName,
-                signal.Symbol,
-                signal.Side.ToString(),
-                result.Succeeded ? "success" : "failure")
-            .Inc();
+        metrics.Executions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), result.Succeeded ? "success" : "failure").Inc();
 
         string? strategyVersion = null;
         if (result.Succeeded && !string.IsNullOrWhiteSpace(result.ShortId))
         {
-            var position = await positions.GetAsync(
-                signal.BotName,
-                result.ShortId,
-                cancellationToken);
+            var position = await positions.GetAsync(signal.BotName, result.ShortId, ct);
 
             if (position is not null)
             {
@@ -120,7 +101,7 @@ public sealed class TradingEngineHistoryNotifier(
                     position.ClosedAtUtc,
                     null,
                     null,
-                    position.CloseStatus), cancellationToken);
+                    position.CloseStatus), ct);
             }
         }
 
@@ -144,19 +125,14 @@ public sealed class TradingEngineHistoryNotifier(
             new Dictionary<string, object?>
             {
                 ["exception_type"] = result.Exception?.GetType().Name
-            }), cancellationToken);
+            }), ct);
 
-        await notifications.ExecutionCompletedAsync(signal, result, cancellationToken);
+        await notifications.ExecutionCompletedAsync(signal, result, ct);
     }
 
-    public async Task ProcessingFailedAsync(
-        TradeSignal signal,
-        Exception exception,
-        CancellationToken cancellationToken)
+    public async Task ProcessingFailedAsync(TradeSignal signal, Exception exception, CancellationToken ct)
     {
-        metrics.ProcessingFailures
-            .WithLabels("trading_engine", signal.BotName, exception.GetType().Name)
-            .Inc();
+        metrics.ProcessingFailures.WithLabels("trading_engine", signal.BotName, exception.GetType().Name).Inc();
 
         await historicalEvents.WriteAsync(new HistoricalEvent(
             Guid.NewGuid(),
@@ -178,8 +154,8 @@ public sealed class TradingEngineHistoryNotifier(
             new Dictionary<string, object?>
             {
                 ["exception_type"] = exception.GetType().FullName
-            }), cancellationToken);
+            }), ct);
 
-        await notifications.ProcessingFailedAsync(signal, exception, cancellationToken);
+        await notifications.ProcessingFailedAsync(signal, exception, ct);
     }
 }

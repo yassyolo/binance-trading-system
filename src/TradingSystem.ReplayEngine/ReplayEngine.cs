@@ -8,36 +8,29 @@ public sealed class ReplayEngine(
     IReplayJobStore store,
     IEnumerable<IReplayStrategyEvaluator> evaluators)
 {
-    private readonly IReadOnlyDictionary<string, IReplayStrategyEvaluator> _evaluators = evaluators
-        .ToDictionary(x => $"{x.PluginId}:{x.Version}", StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, IReplayStrategyEvaluator> _evaluators = evaluators.ToDictionary(x => $"{x.PluginId}:{x.Version}", StringComparer.OrdinalIgnoreCase);
 
-    public async Task<ReplaySummary> RunAsync(
-        ReplayJob job,
-        Func<int, string, Task>? progress,
-        CancellationToken cancellationToken)
+    public async Task<ReplaySummary> RunAsync(ReplayJob job, Func<int, string, Task>? progress, CancellationToken ct)
     {
         var request = Validate(job.Request);
-        var total = Math.Max(1L, await source.CountAsync(request, cancellationToken));
-        var state = await store.LoadCheckpointAsync(job.ReplayId, cancellationToken) ?? new ReplayAccumulator();
+        var total = Math.Max(1L, await source.CountAsync(request, ct));
+        var state = await store.LoadCheckpointAsync(job.ReplayId, ct) ?? new ReplayAccumulator();
         var clock = new ReplayVirtualClock();
         var cursor = Math.Max(job.LastGlobalPosition, 0);
         var evaluator = ResolveEvaluator(request);
 
         while (true)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (await store.IsCancellationRequestedAsync(job.ReplayId, cancellationToken))
+            ct.ThrowIfCancellationRequested();
+            
+            if (await store.IsCancellationRequestedAsync(job.ReplayId, ct))
             {
-                await store.MarkCancelledAsync(job.ReplayId, cancellationToken);
-                throw new OperationCanceledException("Replay cancellation was requested.", cancellationToken);
+                await store.MarkCancelledAsync(job.ReplayId, ct);
+                
+                throw new OperationCanceledException("Replay cancellation was requested.", ct);
             }
 
-            var batch = await source.ReadForwardAsync(
-                request,
-                cursor,
-                Math.Clamp(request.BatchSize, 1, 1000),
-                cancellationToken);
-
+            var batch = await source.ReadForwardAsync(request, cursor, Math.Clamp(request.BatchSize, 1, 1000), ct);
             if (batch.Count == 0)
                 break;
 
@@ -47,7 +40,7 @@ public sealed class ReplayEngine(
 
             foreach (var item in orderedBatch)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
                 try
                 {
                     clock.AdvanceTo(item.Event.OccurredAtUtc);
@@ -56,14 +49,11 @@ public sealed class ReplayEngine(
                     ReplayCandidateDecision? candidate = null;
                     if (evaluator is not null && item.Event.EventType == TradingEventTypes.StrategyDecisionTaken)
                     {
-                        candidate = await evaluator.EvaluateAsync(
-                            item,
-                            new ReplayContext(job.ReplayId, clock.UtcNow, state),
-                            cancellationToken);
+                        candidate = await evaluator.EvaluateAsync(item, new ReplayContext(job.ReplayId, clock.UtcNow, state), ct);
 
                         var recordedDecision = ReadDecision(item.Event.PayloadJson);
-                        if (candidate is not null &&
-                            string.Equals(recordedDecision, candidate.Decision, StringComparison.OrdinalIgnoreCase))
+                        
+                        if (candidate is not null && string.Equals(recordedDecision, candidate.Decision, StringComparison.OrdinalIgnoreCase))
                             state.CandidateMatches++;
                         else
                             state.CandidateDifferences++;
@@ -79,7 +69,7 @@ public sealed class ReplayEngine(
                         JsonSerializer.Serialize(new { replayed = true, candidate }, EventJson.Options),
                         null));
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -98,7 +88,7 @@ public sealed class ReplayEngine(
 
                     if (request.StopOnError)
                     {
-                        await store.SaveStepsAsync(steps, cancellationToken);
+                        await store.SaveStepsAsync(steps, ct);
                         throw;
                     }
                 }
@@ -106,18 +96,23 @@ public sealed class ReplayEngine(
                 cursor = item.GlobalPosition;
             }
 
-            await store.SaveStepsAsync(steps, cancellationToken);
+            await store.SaveStepsAsync(steps, ct);
             var percent = Math.Clamp((int)Math.Round(state.ProcessedEvents * 100d / total), 0, 99);
             var stage = $"Replayed through global position {cursor}";
-            await store.SaveCheckpointAsync(job.ReplayId, cursor, state, percent, stage, cancellationToken);
+            
+            await store.SaveCheckpointAsync(job.ReplayId, cursor, state, percent, stage, ct);
+            
             if (progress is not null)
                 await progress(percent, stage);
         }
 
         var summary = state.ToSummary(job.ReplayId);
-        await store.CompleteAsync(job.ReplayId, summary, cancellationToken);
+       
+        await store.CompleteAsync(job.ReplayId, summary, ct);
+        
         if (progress is not null)
             await progress(100, "Completed");
+        
         return summary;
     }
 
@@ -129,6 +124,7 @@ public sealed class ReplayEngine(
         var key = $"{request.CandidateStrategyPluginId}:{request.CandidateStrategyVersion}";
         if (!_evaluators.TryGetValue(key, out var evaluator))
             throw new InvalidOperationException($"Replay strategy evaluator '{key}' is not registered.");
+        
         return evaluator;
     }
 
@@ -156,8 +152,8 @@ public sealed class ReplayEngine(
         foreach (var item in batch)
         {
             if (item.GlobalPosition <= previous)
-                throw new InvalidOperationException(
-                    $"Replay source returned non-forward global position {item.GlobalPosition} after {previous}.");
+                throw new InvalidOperationException($"Replay source returned non-forward global position {item.GlobalPosition} after {previous}.");
+           
             previous = item.GlobalPosition;
         }
     }

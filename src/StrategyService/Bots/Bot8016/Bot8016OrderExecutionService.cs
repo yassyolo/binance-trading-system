@@ -14,9 +14,7 @@ public sealed class Bot8016OrderExecutionService(
 {
     private readonly Bot8016Options _options  =  options.Value;
 
-    public async Task<BotPosition> OpenAsync(
-        Bot8016EntrySignal signal, 
-        CancellationToken cancellationToken)
+    public async Task<BotPosition> OpenAsync(Bot8016EntrySignal signal,  CancellationToken ct)
     {
         var shortId  =  Guid.NewGuid().ToString("N")[..8];
         var parentClientId  =  CreateClientId("P",  shortId);
@@ -29,19 +27,15 @@ public sealed class Bot8016OrderExecutionService(
             ToPositionSide(signal.Side), 
             _options.Quantity, 
             parentClientId, 
-            cancellationToken);
+            ct);
 
-        var filled  =  await WaitForFilledAsync(
-            parent.OrderId, 
-            cancellationToken);
+        var filled  =  await WaitForFilledAsync(parent.OrderId,  ct);
 
         var entryPrice  =  ResolveEntryPrice(filled);
         if (entryPrice <= 0)
             throw new InvalidOperationException($"BOT8016 invalid entry price. ShortId = {shortId}");
 
-        var filters  =  await orders.GetSymbolFiltersAsync(
-            _options.Symbol, 
-            cancellationToken);
+        var filters  =  await orders.GetSymbolFiltersAsync(_options.Symbol,  ct);
 
         var signalStop  =  signal.Side == PositionSide.Long
             ? signal.Candle.Low
@@ -69,7 +63,7 @@ public sealed class Bot8016OrderExecutionService(
             tpQuantity, 
             tpPrice, 
             tpClientId, 
-            cancellationToken);
+            ct);
 
         try
         {
@@ -80,7 +74,7 @@ public sealed class Bot8016OrderExecutionService(
                 _options.Quantity, 
                 slPrice, 
                 slClientId, 
-                cancellationToken);
+                ct);
 
             return new BotPosition
             {
@@ -123,24 +117,18 @@ public sealed class Bot8016OrderExecutionService(
         }
         catch
         {
-            await orders.CancelOrderAsync(
-                _options.Symbol, 
-                tp.OrderId, 
-                cancellationToken);
+            await orders.CancelOrderAsync(_options.Symbol,  tp.OrderId,  ct);
+            
             throw;
         }
     }
 
-    public async Task CreateStop3AfterBreakoutAsync(
-        BotPosition position, 
-        CancellationToken cancellationToken)
+    public async Task CreateStop3AfterBreakoutAsync(BotPosition position,  CancellationToken ct)
     {
         if (position.RemainingQuantity <= 0)
             throw new InvalidOperationException("STOP3 requires remaining quantity.");
 
-        var filters  =  await orders.GetSymbolFiltersAsync(
-            position.Symbol, 
-            cancellationToken);
+        var filters  =  await orders.GetSymbolFiltersAsync(position.Symbol,  ct);
 
         var rawTrigger  =  position.Side == PositionSide.Long
             ? position.EntryPrice + _options.Stop3EntryOffset
@@ -156,7 +144,7 @@ public sealed class Bot8016OrderExecutionService(
             position.RemainingQuantity, 
             trigger, 
             clientId, 
-            cancellationToken);
+            ct);
 
         position.Stop3ClientId  =  clientId;
         position.Stop3OrderId  =  stop3.AlgoOrderId;
@@ -170,27 +158,21 @@ public sealed class Bot8016OrderExecutionService(
         position.HighReached  =  true;
     }
 
-    private async Task<BinanceOrderResult> WaitForFilledAsync(
-        string orderId, 
-        CancellationToken cancellationToken)
+    private async Task<BinanceOrderResult> WaitForFilledAsync(string orderId,  CancellationToken ct)
     {
         var deadline  =  DateTime.UtcNow.AddSeconds(20);
 
         while (DateTime.UtcNow < deadline)
         {
-            var order  =  await orders.GetOrderAsync(
-                _options.Symbol, 
-                orderId, 
-                cancellationToken);
+            var order  =  await orders.GetOrderAsync(_options.Symbol,  orderId,  ct);
 
             if (order.Status?.Equals("FILLED",  StringComparison.OrdinalIgnoreCase) == true)
                 return order;
 
             if (order.Status is "CANCELED" or "EXPIRED" or "REJECTED")
-                throw new InvalidOperationException(
-                    $"BOT8016 parent order terminal before fill. OrderId = {orderId},  Status = {order.Status}");
+                throw new InvalidOperationException($"BOT8016 parent order terminal before fill. OrderId = {orderId},  Status = {order.Status}");
 
-            await Task.Delay(250,  cancellationToken);
+            await Task.Delay(250,  ct);
         }
 
         throw new TimeoutException($"BOT8016 parent order was not filled. OrderId = {orderId}");
@@ -214,15 +196,16 @@ public sealed class Bot8016OrderExecutionService(
     {
         var bot  =  _options.BotName.Length > 8 ? _options.BotName[..8] : _options.BotName;
         var value  =  $"{bot}_{type}_{shortId}";
+        
         return value.Length <= 32 ? value : value[..32];
     }
 
     private static string ToEntrySide(PositionSide side)
-         =>  side == PositionSide.Long ? "BUY" : "SELL";
+         => side == PositionSide.Long ? "BUY" : "SELL";
 
     private static string ToCloseSide(PositionSide side)
-         =>  side == PositionSide.Long ? "SELL" : "BUY";
+         => side == PositionSide.Long ? "SELL" : "BUY";
 
     private static string ToPositionSide(PositionSide side)
-         =>  side == PositionSide.Long ? "LONG" : "SHORT";
+         => side == PositionSide.Long ? "LONG" : "SHORT";
 }

@@ -17,13 +17,13 @@ public sealed record TradingTimelineItem(
 
 public interface ITradingTimelineReader
 {
-    Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken ct);
 }
 
 public sealed class TradingTimelineReader(ITradingEventStore store) : ITradingTimelineReader
 {
-    public async Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken)
-         =>  (await store.ReadAsync(query,  cancellationToken))
+    public async Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query,  CancellationToken ct)
+         =>  (await store.ReadAsync(query,  ct))
             .Select(x  =>  new TradingTimelineItem(
                 x.GlobalPosition,  x.Event.EventId,  x.Event.OccurredAtUtc,  x.Event.EventType, 
                 x.Event.AggregateType,  x.Event.AggregateId,  x.Event.BotName,  x.Event.Symbol, 

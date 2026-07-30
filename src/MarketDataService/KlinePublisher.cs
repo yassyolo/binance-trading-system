@@ -15,12 +15,11 @@ public sealed class KlinePublisher(
 {
     private readonly IDatabase _database = redis.GetDatabase();
     private readonly ISubscriber _subscriber = redis.GetSubscriber();
-    private readonly TimeSpan _latestKlineTtl =
-        TimeSpan.FromSeconds(options.Value.LatestKlineTtlSeconds);
+    private readonly TimeSpan _latestKlineTtl = TimeSpan.FromSeconds(options.Value.LatestKlineTtlSeconds);
 
-    public async Task PublishAsync(JsonElement kline, CancellationToken cancellationToken)
+    public async Task PublishAsync(JsonElement kline, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
 
         if (!TryReadString(kline, "s", out var symbol) ||
             !TryReadString(kline, "i", out var interval) ||
@@ -62,26 +61,21 @@ public sealed class KlinePublisher(
         await _database.StringSetAsync(key, json, _latestKlineTtl);
         await _subscriber.PublishAsync(RedisChannel.Literal(channel), json);
 
-        logger.LogInformation(
-            "Closed kline published. Symbol = {Symbol}, Interval = {Interval}, CloseTime = {CloseTime}",
-            symbol,
-            interval,
-            closeTime);
+        logger.LogInformation("Closed kline published. Symbol = {Symbol}, Interval = {Interval}, CloseTime = {CloseTime}", symbol, interval, closeTime);
     }
 
     private static bool TryReadString(JsonElement element, string name, out string value)
     {
         value = element.TryGetProperty(name, out var property)
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
+            ? property.GetString() ?? string.Empty : string.Empty;
+       
         return !string.IsNullOrWhiteSpace(value);
     }
 
     private static bool TryReadLong(JsonElement element, string name, out long value)
     {
         value = 0;
-        return element.TryGetProperty(name, out var property) &&
-               property.TryGetInt64(out value);
+        return element.TryGetProperty(name, out var property) && property.TryGetInt64(out value);
     }
 
     private static bool TryReadDecimal(JsonElement element, string name, out decimal value)

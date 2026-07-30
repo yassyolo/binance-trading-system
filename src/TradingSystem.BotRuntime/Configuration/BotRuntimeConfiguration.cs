@@ -20,13 +20,13 @@ public sealed record BotRuntimeConfiguration(
 
 public interface IBotRuntimeConfigurationStore
 {
-    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken);
-    Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken cancellationToken);
+    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken ct);
+    Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken ct);
 }
 
 public interface IBotRuntimeConfigurationProvider
 {
-    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken);
+    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken ct);
     BotRuntimeConfiguration? GetCurrent(string botName);
     void Set(BotRuntimeConfiguration configuration);
     void Invalidate(string botName);

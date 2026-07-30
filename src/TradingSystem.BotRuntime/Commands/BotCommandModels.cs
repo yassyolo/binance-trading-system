@@ -18,8 +18,8 @@ public sealed record BotCommand(
 
 public interface IBotCommandQueue
 {
-    Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId,  int batchSize,  TimeSpan processingTimeout,  CancellationToken cancellationToken);
-    Task CompleteAsync(Guid commandId,  string workerId,  CancellationToken cancellationToken);
-    Task FailAsync(Guid commandId,  string workerId,  string error,  bool retryable,  CancellationToken cancellationToken);
-    Task RejectAsync(Guid commandId,  string workerId,  string reason,  CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId,  int batchSize,  TimeSpan processingTimeout,  CancellationToken ct);
+    Task CompleteAsync(Guid commandId,  string workerId,  CancellationToken ct);
+    Task FailAsync(Guid commandId,  string workerId,  string error,  bool retryable,  CancellationToken ct);
+    Task RejectAsync(Guid commandId,  string workerId,  string reason,  CancellationToken ct);
 }

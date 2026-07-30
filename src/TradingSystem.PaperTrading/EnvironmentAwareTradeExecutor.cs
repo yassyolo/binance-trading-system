@@ -9,29 +9,29 @@ public sealed class EnvironmentAwareTradeExecutor(
     PaperTradeExecutor paperExecutor,
     IBotRuntimeConfigurationProvider configurations) : ITradeExecutor
 {
-    public async Task<TradeExecutionResult> OpenAsync(string botName, string symbol, PositionSide side, string? source, CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> OpenAsync(string botName, string symbol, PositionSide side, string? source, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, cancellationToken);
+        var configuration = await configurations.GetAsync(botName, ct);
         if (configuration is null)
             return TradeExecutionResult.Failure($"Runtime configuration for '{botName}' was not found. Execution is blocked.");
 
         return IsPaper(configuration)
-            ? await paperExecutor.OpenAsync(botName, symbol, side, source, cancellationToken)
+            ? await paperExecutor.OpenAsync(botName, symbol, side, source, ct)
             : IsLive(configuration)
-                ? await liveExecutor.OpenAsync(botName, symbol, side, source, cancellationToken)
+                ? await liveExecutor.OpenAsync(botName, symbol, side, source, ct)
                 : TradeExecutionResult.Failure($"Unsupported execution environment '{configuration.Environment}' for '{botName}'.");
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, cancellationToken);
+        var configuration = await configurations.GetAsync(botName, ct);
         if (configuration is null)
             return TradeExecutionResult.Failure($"Runtime configuration for '{botName}' was not found. Execution is blocked.");
 
         return IsPaper(configuration)
-            ? await paperExecutor.CloseAsync(botName, shortId, reason, cancellationToken)
+            ? await paperExecutor.CloseAsync(botName, shortId, reason, ct)
             : IsLive(configuration)
-                ? await liveExecutor.CloseAsync(botName, shortId, reason, cancellationToken)
+                ? await liveExecutor.CloseAsync(botName, shortId, reason, ct)
                 : TradeExecutionResult.Failure($"Unsupported execution environment '{configuration.Environment}' for '{botName}'.");
     }
 

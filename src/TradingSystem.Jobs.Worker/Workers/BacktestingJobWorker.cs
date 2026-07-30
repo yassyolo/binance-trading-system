@@ -10,50 +10,58 @@ public sealed class BacktestingJobWorker(
     IDashboardJobQueue queue,
     BacktestExecutionService executor,
     IOptions<JobWorkerOptions> options,
-    ILogger<BacktestingJobWorker> logger) : BackgroundService
+    ILogger<BacktestingJobWorker> logger) 
+    : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var settings = options.Value;
         if (!settings.Enabled)
             return;
 
         var workerId = $"backtest:{Environment.MachineName}:{Guid.NewGuid():N}";
+        
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, settings.PollSeconds)));
+        
         try
         {
             do
             {
-                var jobs = await queue.ClaimAsync("Backtest", workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), stoppingToken);
+                var jobs = await queue.ClaimAsync("Backtest", workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
+                
                 foreach (var job in jobs)
-                    await ProcessAsync(job, settings, stoppingToken);
-            } while (await timer.WaitForNextTickAsync(stoppingToken));
+                    await ProcessAsync(job, settings, ct);
+            }
+            while (await timer.WaitForNextTickAsync(ct));
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Normal hosted-service shutdown; do not mark the current job as failed.
-        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
     }
 
-    private async Task ProcessAsync(DashboardJob job, JobWorkerOptions settings, CancellationToken cancellationToken)
+    private async Task ProcessAsync(DashboardJob job, JobWorkerOptions settings, CancellationToken ct)
     {
         try
         {
-            await queue.ReportProgressAsync(job.JobId, 5, "Loading historical data", cancellationToken);
+            await queue.ReportProgressAsync(job.JobId, 5, "Loading historical data", ct);
+            
             var request = JsonSerializer.Deserialize<BacktestRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new InvalidOperationException("Invalid backtest request.");
-            var runId = await executor.ExecuteAsync(request, settings.Interval, cancellationToken);
-            await queue.CompleteAsync(job.JobId, runId, cancellationToken);
+            
+            var runId = await executor.ExecuteAsync(request, settings.Interval, ct);
+            
+            await queue.CompleteAsync(job.JobId, runId, ct);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "Backtest job {JobId} failed", job.JobId);
+            
             var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
-            await queue.FailAsync(job.JobId, exception.Message, settings.MaximumAttempts, TimeSpan.FromSeconds(retrySeconds), cancellationToken);
+            
+            await queue.FailAsync(job.JobId, exception.Message, settings.MaximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
         }
     }
 }

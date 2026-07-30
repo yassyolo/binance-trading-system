@@ -32,115 +32,65 @@ public sealed class TradingEngine(
 {
     private readonly TradingEngineOptions _options = options.Value;
 
-    public async Task<TradingEngineResult> ProcessSignalAsync(
-        TradeSignal signal,
-        CancellationToken cancellationToken)
+    public async Task<TradingEngineResult> ProcessSignalAsync(TradeSignal signal, CancellationToken ct)
     {
         ValidateSignal(signal);
         var now = clock.UtcNow;
 
-        await AppendEventAsync(
-            signal,
-            TradingEventTypes.SignalReceived,
-            new { signal.Side, signal.Source, signal.GeneratedAtUtc },
-            cancellationToken);
+        await AppendEventAsync(signal, TradingEventTypes.SignalReceived, new { signal.Side, signal.Source, signal.GeneratedAtUtc }, ct);
 
         var timestampError = ValidateTimestamp(signal, now);
         if (timestampError is not null)
         {
-            await AppendEventAsync(
-                signal,
-                TradingEventTypes.StrategyDecisionTaken,
-                new { Decision = "Rejected", timestampError.Reason },
-                cancellationToken);
+            await AppendEventAsync(signal, TradingEventTypes.StrategyDecisionTaken, new { Decision = "Rejected", timestampError.Reason }, ct);
             return timestampError;
         }
 
-        if (!await idempotencyStore.TryStartAsync(
-                signal.SignalId,
-                _options.ProcessingIdempotencyTtl,
-                cancellationToken))
-        {
+        if (!await idempotencyStore.TryStartAsync(signal.SignalId, _options.ProcessingIdempotencyTtl, ct))
             return new(true, false, true, "Duplicate signal ignored.");
-        }
 
         var executionSucceeded = false;
         string? executedShortId = null;
 
         try
         {
-            await using var operationLock = await lockProvider.TryAcquireAsync(
-                signal.BotName,
-                signal.Symbol,
-                signal.Side,
-                _options.OperationLockTtl,
-                cancellationToken);
-
+            await using var operationLock = await lockProvider.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Side, _options.OperationLockTtl, ct);
             if (operationLock is null)
             {
-                await idempotencyStore.ReleaseAsync(signal.SignalId, cancellationToken);
-                return new(false, false, false,
-                    "Another operation is already processing this bot/symbol/side.");
+                await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
+                
+                return new(false, false, false, "Another operation is already processing this bot/symbol/side.");
             }
 
-            var runtimeState = await runtimeStateProvider.GetRequiredAsync(
-                signal.BotName,
-                cancellationToken);
-
+            var runtimeState = await runtimeStateProvider.GetRequiredAsync(signal.BotName, ct);
             if (!runtimeState.AcceptsNewSignals)
-                return await CompleteBlockedAsync(
-                    signal,
-                    $"BOT_RUNTIME_BLOCKED [{runtimeState.Status}]: {runtimeState.Reason ?? "Bot does not accept new signals."}",
-                    cancellationToken);
+                return await CompleteBlockedAsync(signal, $"BOT_RUNTIME_BLOCKED [{runtimeState.Status}]: {runtimeState.Reason ?? "Bot does not accept new signals."}", ct);
 
-            var runtimeConfiguration = await runtimeConfigurationProvider.GetAsync(
-                signal.BotName,
-                cancellationToken);
-
+            var runtimeConfiguration = await runtimeConfigurationProvider.GetAsync(signal.BotName, ct);
             if (runtimeConfiguration is not null)
             {
                 if (!runtimeConfiguration.Symbol.Equals(signal.Symbol, StringComparison.OrdinalIgnoreCase))
-                    return await CompleteBlockedAsync(
-                        signal,
-                        $"Dynamic configuration does not support symbol '{signal.Symbol}'.",
-                        cancellationToken);
+                    return await CompleteBlockedAsync(signal, $"Dynamic configuration does not support symbol '{signal.Symbol}'.", ct);
 
-                var sideDisabled =
-                    signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong ||
+                var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong ||
                     signal.Side == PositionSide.Short && !runtimeConfiguration.EnableShort;
 
                 if (sideDisabled)
-                    return await CompleteBlockedAsync(
-                        signal,
-                        $"{signal.Side} is disabled by dynamic configuration version {runtimeConfiguration.Version}.",
-                        cancellationToken);
+                    return await CompleteBlockedAsync(signal, $"{signal.Side} is disabled by dynamic configuration version {runtimeConfiguration.Version}.", ct);
             }
 
-            var remainingCooldown = await cooldownStore.GetRemainingAsync(
-                signal.BotName,
-                signal.Symbol,
-                signal.Side,
-                now,
-                cancellationToken);
-
+            var remainingCooldown = await cooldownStore.GetRemainingAsync(signal.BotName, signal.Symbol, signal.Side, now, ct);
             if (remainingCooldown is not null)
-                return await CompleteBlockedAsync(
-                    signal,
-                    $"Cooldown active. Remaining = {remainingCooldown.Value:g}.",
-                    cancellationToken);
+                return await CompleteBlockedAsync(signal, $"Cooldown active. Remaining = {remainingCooldown.Value:g}.", ct);
 
-            var strategy = await strategyResolver.ResolveAsync(signal.BotName, cancellationToken);
+            var strategy = await strategyResolver.ResolveAsync(signal.BotName, ct);
             ValidateSupportedSymbol(strategy, signal.Symbol);
 
-            var markPrice = await marketPriceProvider.GetMarkPriceAsync(signal.Symbol, cancellationToken);
+            var markPrice = await marketPriceProvider.GetMarkPriceAsync(signal.Symbol, ct);
             if (markPrice <= 0)
-                throw new InvalidOperationException(
-                    $"Invalid mark price '{markPrice}' for symbol '{signal.Symbol}'.");
+                throw new InvalidOperationException($"Invalid mark price '{markPrice}' for symbol '{signal.Symbol}'.");
 
-            var activePositions = await activePositionProvider.GetActivePositionsAsync(
-                signal.BotName,
-                signal.Symbol,
-                cancellationToken);
+            var activePositions = await activePositionProvider.GetActivePositionsAsync(signal.BotName, signal.Symbol, ct);
 
             var context = new StrategyContext
             {
@@ -151,7 +101,7 @@ public sealed class TradingEngine(
                 RuntimeConfiguration = runtimeConfiguration
             };
 
-            var decision = await strategy.DecideAsync(context, cancellationToken);
+            var decision = await strategy.DecideAsync(context, ct);
             await AppendEventAsync(
                 signal,
                 TradingEventTypes.StrategyDecisionTaken,
@@ -163,12 +113,12 @@ public sealed class TradingEngine(
                     decision.Reason,
                     decision.PositionsToClose
                 },
-                cancellationToken);
+                ct);
 
             await TryNotifyDecisionAsync(signal, markPrice, decision);
 
             if (!decision.ShouldOpen)
-                return await CompleteBlockedAsync(signal, decision.Reason, cancellationToken);
+                return await CompleteBlockedAsync(signal, decision.Reason, ct);
 
             var riskDecision = await riskManager.EvaluateOpenAsync(
                 new RiskEvaluationContext
@@ -178,61 +128,40 @@ public sealed class TradingEngine(
                     ActivePositions = activePositions,
                     EvaluatedAtUtc = now
                 },
-                cancellationToken);
+                ct);
 
-            await AppendEventAsync(
-                signal,
-                TradingEventTypes.RiskDecisionTaken,
-                new { riskDecision.Allowed, riskDecision.Code, riskDecision.Reason },
-                cancellationToken);
+            await AppendEventAsync(signal, TradingEventTypes.RiskDecisionTaken, new { riskDecision.Allowed, riskDecision.Code, riskDecision.Reason }, ct);
 
             if (!riskDecision.Allowed)
-                return await CompleteBlockedAsync(
-                    signal,
-                    $"RISK_BLOCKED [{riskDecision.Code}]: {riskDecision.Reason}",
-                    cancellationToken);
+                return await CompleteBlockedAsync(signal, $"RISK_BLOCKED [{riskDecision.Code}]: {riskDecision.Reason}", ct);
 
             if (decision.ShouldClosePositions)
             {
-                var closeResult = await CloseRequiredPositionsAsync(
-                    signal.BotName,
-                    decision,
-                    cancellationToken);
+                var closeResult = await CloseRequiredPositionsAsync(signal.BotName, decision, ct);
 
                 if (!closeResult.Succeeded)
                 {
-                    await idempotencyStore.ReleaseAsync(signal.SignalId, cancellationToken);
+                    await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
                     return new(false, false, false, closeResult.Reason);
                 }
             }
 
-            await AppendEventAsync(
-                signal,
-                TradingEventTypes.ExecutionRequested,
-                new { signal.BotName, signal.Symbol, signal.Side },
-                cancellationToken);
+            await AppendEventAsync(signal, TradingEventTypes.ExecutionRequested, new { signal.BotName, signal.Symbol, signal.Side }, ct);
 
-            var execution = await tradeExecutor.OpenAsync(
-                signal.BotName,
-                signal.Symbol,
-                signal.Side,
-                signal.Source,
-                cancellationToken);
+            var execution = await tradeExecutor.OpenAsync(signal.BotName, signal.Symbol, signal.Side, signal.Source, ct);
 
             await AppendEventAsync(
                 signal,
-                execution.Succeeded
-                    ? TradingEventTypes.ExecutionCompleted
-                    : TradingEventTypes.ExecutionFailed,
+                execution.Succeeded ? TradingEventTypes.ExecutionCompleted : TradingEventTypes.ExecutionFailed,
                 new { execution.Succeeded, execution.ShortId, execution.Reason },
-                cancellationToken,
+                ct,
                 execution.ShortId);
 
             await TryNotifyExecutionAsync(signal, execution);
 
             if (!execution.Succeeded)
             {
-                await idempotencyStore.ReleaseAsync(signal.SignalId, cancellationToken);
+                await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
                 return new(false, false, false, execution.Reason);
             }
 
@@ -242,37 +171,29 @@ public sealed class TradingEngine(
             var cooldown = runtimeConfiguration is not null
                 ? TimeSpan.FromSeconds(runtimeConfiguration.CooldownSeconds)
                 : strategy is IHasSignalCooldown configurable
-                    ? configurable.SignalCooldown
-                    : TimeSpan.Zero;
+                    ? configurable.SignalCooldown : TimeSpan.Zero;
 
             if (cooldown > TimeSpan.Zero)
             {
                 try
                 {
-                    await cooldownStore.SetAsync(
-                        signal.BotName,
-                        signal.Symbol,
-                        signal.Side,
-                        now.Add(cooldown),
-                        cancellationToken);
+                    await cooldownStore.SetAsync(signal.BotName, signal.Symbol, signal.Side, now.Add(cooldown), ct);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    logger.LogCritical(
-                        exception,
-                        "Position opened but cooldown persistence failed. SignalId = {SignalId}, ShortId = {ShortId}",
-                        signal.SignalId,
-                        execution.ShortId);
+                    logger.LogCritical(exception, "Position opened but cooldown persistence failed. SignalId = {SignalId}, ShortId = {ShortId}", signal.SignalId, execution.ShortId);
                 }
             }
 
             await MarkCompletedAfterExecutionAsync(signal.SignalId);
+            
             return new(true, true, false, execution.Reason, execution.ShortId);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             if (!executionSucceeded)
                 await TryReleaseAsync(signal.SignalId);
+            
             throw;
         }
         catch (Exception exception)
@@ -293,28 +214,17 @@ public sealed class TradingEngine(
 
             if (executionSucceeded)
             {
-                return new(
-                    true,
-                    true,
-                    false,
-                    "Position was opened, but post-execution bookkeeping requires operator review.",
-                    executedShortId);
+                return new(true, true, false, "Position was opened, but post-execution bookkeeping requires operator review.", executedShortId);
             }
 
-            return new(false, false, false,
-                "Trading signal processing failed. Check the service logs using the signal ID.");
+            return new(false, false, false, "Trading signal processing failed. Check the service logs using the signal ID.");
         }
     }
 
-    private async Task<TradingEngineResult> CompleteBlockedAsync(
-        TradeSignal signal,
-        string reason,
-        CancellationToken cancellationToken)
+    private async Task<TradingEngineResult> CompleteBlockedAsync(TradeSignal signal, string reason, CancellationToken ct)
     {
-        await idempotencyStore.MarkCompletedAsync(
-            signal.SignalId,
-            _options.CompletedIdempotencyTtl,
-            cancellationToken);
+        await idempotencyStore.MarkCompletedAsync(signal.SignalId, _options.CompletedIdempotencyTtl, ct);
+        
         return new(true, false, false, reason);
     }
 
@@ -325,33 +235,21 @@ public sealed class TradingEngine(
         {
             try
             {
-                await idempotencyStore.MarkCompletedAsync(
-                    signalId,
-                    _options.CompletedIdempotencyTtl,
-                    CancellationToken.None);
+                await idempotencyStore.MarkCompletedAsync(signalId, _options.CompletedIdempotencyTtl, CancellationToken.None);
+                
                 return;
             }
             catch (Exception exception)
             {
                 lastError = exception;
-                logger.LogWarning(
-                    exception,
-                    "Could not persist completed idempotency state. SignalId = {SignalId}, Attempt = {Attempt}/{Attempts}",
-                    signalId,
-                    attempt,
-                    _options.PostExecutionCompletionRetryCount);
+                logger.LogWarning(exception, "Could not persist completed idempotency state. SignalId = {SignalId}, Attempt = {Attempt}/{Attempts}", signalId, attempt,  _options.PostExecutionCompletionRetryCount);
 
-                if (attempt < _options.PostExecutionCompletionRetryCount &&
-                    _options.PostExecutionCompletionRetryDelay > TimeSpan.Zero)
-                {
+                if (attempt < _options.PostExecutionCompletionRetryCount && _options.PostExecutionCompletionRetryDelay > TimeSpan.Zero)
                     await Task.Delay(_options.PostExecutionCompletionRetryDelay);
-                }
             }
         }
 
-        throw new InvalidOperationException(
-            $"Position execution succeeded, but completed idempotency state could not be persisted for signal '{signalId}'.",
-            lastError);
+        throw new InvalidOperationException($"Position execution succeeded, but completed idempotency state could not be persisted for signal '{signalId}'.", lastError);
     }
 
     private async Task TryReleaseAsync(string signalId)
@@ -362,63 +260,54 @@ public sealed class TradingEngine(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception,
-                "Could not release processing idempotency state. SignalId = {SignalId}", signalId);
+            logger.LogWarning(exception, "Could not release processing idempotency state. SignalId = {SignalId}", signalId);
         }
     }
 
-    private async Task TryNotifyDecisionAsync(
-        TradeSignal signal,
-        decimal markPrice,
-        StrategyDecision decision)
+    private async Task TryNotifyDecisionAsync(TradeSignal signal, decimal markPrice, StrategyDecision decision)
     {
-        try { await notifier.DecisionMadeAsync(signal, markPrice, decision, CancellationToken.None); }
+        try
+        { 
+            await notifier.DecisionMadeAsync(signal, markPrice, decision, CancellationToken.None); 
+        }
         catch (Exception exception)
         {
-            logger.LogWarning(exception,
-                "Decision notification failed. SignalId = {SignalId}", signal.SignalId);
+            logger.LogWarning(exception, "Decision notification failed. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
     private async Task TryNotifyExecutionAsync(TradeSignal signal, TradeExecutionResult result)
     {
-        try { await notifier.ExecutionCompletedAsync(signal, result, CancellationToken.None); }
+        try 
+        { 
+            await notifier.ExecutionCompletedAsync(signal, result, CancellationToken.None); 
+        }
         catch (Exception exception)
         {
-            logger.LogWarning(exception,
-                "Execution notification failed. SignalId = {SignalId}", signal.SignalId);
+            logger.LogWarning(exception,"Execution notification failed. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
     private async Task TryNotifyFailureAsync(TradeSignal signal, Exception error)
     {
-        try { await notifier.ProcessingFailedAsync(signal, error, CancellationToken.None); }
+        try 
+        { 
+            await notifier.ProcessingFailedAsync(signal, error, CancellationToken.None); 
+        }
         catch (Exception exception)
         {
-            logger.LogWarning(exception,
-                "Failure notification failed. SignalId = {SignalId}", signal.SignalId);
+            logger.LogWarning(exception,"Failure notification failed. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
-    private async Task<TradeExecutionResult> CloseRequiredPositionsAsync(
-        string botName,
-        StrategyDecision decision,
-        CancellationToken cancellationToken)
+    private async Task<TradeExecutionResult> CloseRequiredPositionsAsync(string botName, StrategyDecision decision, CancellationToken ct)
     {
-        foreach (var shortId in decision.PositionsToClose
-                     .Where(x => !string.IsNullOrWhiteSpace(x))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var shortId in decision.PositionsToClose.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var result = await tradeExecutor.CloseAsync(
-                botName,
-                shortId,
-                "Strategy requested close before opening replacement position.",
-                cancellationToken);
+            var result = await tradeExecutor.CloseAsync(botName, shortId, "Strategy requested close before opening replacement position.", ct);
 
             if (!result.Succeeded)
-                return TradeExecutionResult.Failure(
-                    $"Could not close position '{shortId}': {result.Reason}",
-                    result.Exception);
+                return TradeExecutionResult.Failure($"Could not close position '{shortId}': {result.Reason}", result.Exception);
         }
 
         return TradeExecutionResult.Success("close-batch", "Required positions closed.");
@@ -428,7 +317,7 @@ public sealed class TradingEngine(
         TradeSignal signal,
         string eventType,
         object payload,
-        CancellationToken cancellationToken,
+        CancellationToken ct,
         string? positionId = null)
     {
         _ = await eventStore.AppendAsync(
@@ -445,16 +334,16 @@ public sealed class TradingEngine(
                 CorrelationId: signal.SignalId,
                 CausationId: signal.SignalId,
                 Actor: signal.Source),
-            cancellationToken);
+            ct);
     }
 
     private TradingEngineResult? ValidateTimestamp(TradeSignal signal, DateTime now)
     {
         if (signal.GeneratedAtUtc > now.Add(_options.MaximumFutureClockSkew))
             return new(false, false, false, "Signal timestamp is in the future.");
+        
         if (now - signal.GeneratedAtUtc > _options.MaximumSignalAge)
-            return new(false, false, false,
-                $"Signal is stale. Age = {now - signal.GeneratedAtUtc:g}.");
+            return new(false, false, false, $"Signal is stale. Age = {now - signal.GeneratedAtUtc:g}.");
         return null;
     }
 
@@ -475,11 +364,7 @@ public sealed class TradingEngine(
 
     private static void ValidateSupportedSymbol(ITradingStrategy strategy, string symbol)
     {
-        if (!strategy.Metadata.SupportedSymbols.Any(
-                x => x.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException(
-                $"Strategy '{strategy.Metadata.Name}' does not support symbol '{symbol}'.");
-        }
+        if (!strategy.Metadata.SupportedSymbols.Any(x => x.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Strategy '{strategy.Metadata.Name}' does not support symbol '{symbol}'.");
     }
 }

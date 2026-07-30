@@ -6,10 +6,11 @@ using StrategyService.Bots.Bot8015;
 using StrategyService.Bots.Bot8016;
 using StrategyService.Reliability;
 using StrategyService.Runtime;
-using StrategyService.Services;
 using StrategyService.Subscribers;
 using TradingSystem.Application.DependencyInjection;
+using TradingSystem.Application.Execution;
 using TradingSystem.Binance.DependencyInjection;
+using TradingSystem.HistoricalDatabase;
 using TradingSystem.Infrastructure.DependencyInjection;
 using TradingSystem.Observability;
 using TradingSystem.Operations;
@@ -25,13 +26,13 @@ using TradingSystem.Strategies.Grid;
 using TradingSystem.Strategies.Positions;
 using TradingSystem.Strategies.Protection;
 using TradingSystem.StrategyPlugins;
-using TradingSystem.HistoricalDatabase;
 
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddTradingInfrastructure();
 builder.Services.AddTradingObservability();
 builder.Services.AddTradingApplication(builder.Configuration);
+builder.Services.AddSingleton<ITradingSignalHandler,TradingSignalHandler>();
 builder.Services.AddStrategyPluginSystem(builder.Configuration);
 builder.Services.AddPaperTrading(builder.Configuration);
 builder.Services.AddTradingRedis(builder.Configuration, subscribeToSignals: true);
@@ -49,9 +50,7 @@ builder.Services.AddHostedService<ReconciliationWorker>();
 
 builder.Services.AddHttpClient<TelegramNotificationService>();
 builder.Services.AddSingleton<TelegramTradingEngineNotifier>();
-builder.Services.AddSingleton<TradingSystem.Application.Engine.ITradingEngineNotifier, TradingEngineHistoryNotifier>();
 
-// Shared strategy policies must be registered before bot modules that depend on them.
 builder.Services.AddSingleton<GridSpacingPolicy>();
 builder.Services.AddSingleton<PositionAdmissionPolicy>();
 builder.Services.AddSingleton<Stop3Policy>();
@@ -66,6 +65,7 @@ builder.Services.AddBot8016(builder.Configuration);
 
 builder.Services.AddHostedService<UserStreamOrderSubscriber>();
 builder.Services.AddHostedService<HealingSnapshotSubscriber>();
+//builder.Services.AddHostedService<PaperPositionCloseWorker>();
 
 builder.Services.AddHistoricalDatabase(builder.Configuration);
 builder.Services.AddTradingPrometheus(builder.Configuration);

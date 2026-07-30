@@ -11,7 +11,7 @@ public static class WebSocketMessageReader
     public static async Task<string?> ReadTextMessageAsync(
         ClientWebSocket socket,
         int bufferSizeBytes,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(socket);
         if (bufferSizeBytes <= 0)
@@ -23,7 +23,7 @@ public static class WebSocketMessageReader
             using var stream = new MemoryStream();
             while (true)
             {
-                var result = await socket.ReceiveAsync(buffer.AsMemory(), cancellationToken);
+                var result = await socket.ReceiveAsync(buffer.AsMemory(), ct);
                 if (result.MessageType == WebSocketMessageType.Close)
                     return null;
 
@@ -35,7 +35,7 @@ public static class WebSocketMessageReader
                     if (stream.Length + result.Count > MaximumMessageSizeBytes)
                         throw new InvalidDataException($"WebSocket message exceeds {MaximumMessageSizeBytes} bytes.");
 
-                    await stream.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken);
+                    await stream.WriteAsync(buffer.AsMemory(0, result.Count), ct);
                 }
 
                 if (result.EndOfMessage)

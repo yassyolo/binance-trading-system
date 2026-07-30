@@ -72,33 +72,33 @@ public sealed record ReplaySummary(
 
 public interface IReplayJobStore
 {
-    Task<Guid> EnqueueAsync(CreateReplayRequest request,  string requestedBy,  CancellationToken cancellationToken);
-    Task<IReadOnlyList<ReplayJob>> ClaimAsync(string workerId,  int take,  TimeSpan staleAfter,  CancellationToken cancellationToken);
-    Task<ReplayJob?> GetAsync(Guid replayId,  CancellationToken cancellationToken);
-    Task<ReplaySummary?> GetSummaryAsync(Guid replayId,  CancellationToken cancellationToken);
-    Task<IReadOnlyList<ReplayStepResult>> GetStepsAsync(Guid replayId,  long afterGlobalPosition,  int take,  CancellationToken cancellationToken);
-    Task<IReadOnlyList<ReplayJob>> QueryAsync(ReplayJobStatus? status,  int skip,  int take,  CancellationToken cancellationToken);
-    Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId,  CancellationToken cancellationToken);
-    Task SaveCheckpointAsync(Guid replayId,  long globalPosition,  ReplayAccumulator accumulator,  int progressPercent,  string progressStage,  CancellationToken cancellationToken);
-    Task SaveStepsAsync(IReadOnlyCollection<ReplayStepResult> steps,  CancellationToken cancellationToken);
-    Task CompleteAsync(Guid replayId,  ReplaySummary summary,  CancellationToken cancellationToken);
-    Task FailAsync(Guid replayId,  string error,  CancellationToken cancellationToken);
-    Task CancelAsync(Guid replayId,  string actor,  CancellationToken cancellationToken);
-    Task MarkCancelledAsync(Guid replayId,  CancellationToken cancellationToken);
-    Task<bool> IsCancellationRequestedAsync(Guid replayId,  CancellationToken cancellationToken);
+    Task<Guid> EnqueueAsync(CreateReplayRequest request,  string requestedBy,  CancellationToken ct);
+    Task<IReadOnlyList<ReplayJob>> ClaimAsync(string workerId,  int take,  TimeSpan staleAfter,  CancellationToken ct);
+    Task<ReplayJob?> GetAsync(Guid replayId,  CancellationToken ct);
+    Task<ReplaySummary?> GetSummaryAsync(Guid replayId,  CancellationToken ct);
+    Task<IReadOnlyList<ReplayStepResult>> GetStepsAsync(Guid replayId,  long afterGlobalPosition,  int take,  CancellationToken ct);
+    Task<IReadOnlyList<ReplayJob>> QueryAsync(ReplayJobStatus? status,  int skip,  int take,  CancellationToken ct);
+    Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId,  CancellationToken ct);
+    Task SaveCheckpointAsync(Guid replayId,  long globalPosition,  ReplayAccumulator accumulator,  int progressPercent,  string progressStage,  CancellationToken ct);
+    Task SaveStepsAsync(IReadOnlyCollection<ReplayStepResult> steps,  CancellationToken ct);
+    Task CompleteAsync(Guid replayId,  ReplaySummary summary,  CancellationToken ct);
+    Task FailAsync(Guid replayId,  string error,  CancellationToken ct);
+    Task CancelAsync(Guid replayId,  string actor,  CancellationToken ct);
+    Task MarkCancelledAsync(Guid replayId,  CancellationToken ct);
+    Task<bool> IsCancellationRequestedAsync(Guid replayId,  CancellationToken ct);
 }
 
 public interface IReplayEventSource
 {
-    Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(CreateReplayRequest request,  long afterGlobalPosition,  int take,  CancellationToken cancellationToken);
-    Task<long> CountAsync(CreateReplayRequest request,  CancellationToken cancellationToken);
+    Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(CreateReplayRequest request,  long afterGlobalPosition,  int take,  CancellationToken ct);
+    Task<long> CountAsync(CreateReplayRequest request,  CancellationToken ct);
 }
 
 public interface IReplayStrategyEvaluator
 {
     string PluginId {  get;  }
     string Version {  get;  }
-    ValueTask<ReplayCandidateDecision?> EvaluateAsync(StoredTradingEvent sourceEvent,  ReplayContext context,  CancellationToken cancellationToken);
+    ValueTask<ReplayCandidateDecision?> EvaluateAsync(StoredTradingEvent sourceEvent,  ReplayContext context,  CancellationToken ct);
 }
 
 public sealed record ReplayCandidateDecision(string Decision,  string Reason,  string DataJson);

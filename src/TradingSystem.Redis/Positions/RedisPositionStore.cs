@@ -15,11 +15,12 @@ public sealed class RedisPositionStore(
 {
     private readonly IDatabase _database = redis.GetDatabase();
 
-    public async Task SaveAsync(BotPosition position, CancellationToken cancellationToken)
+    public async Task SaveAsync(BotPosition position, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
 
         var transaction = _database.CreateTransaction();
+        
         _ = transaction.HashSetAsync(keys.Position(position.BotName, position.ShortId), ToEntries(position));
         _ = transaction.SetAddAsync(keys.PositionIndex(position.BotName), position.ShortId);
 
@@ -27,31 +28,29 @@ public sealed class RedisPositionStore(
             throw new InvalidOperationException($"Could not save position '{position.ShortId}' for bot '{position.BotName}'.");
     }
 
-    public async Task<BotPosition?> GetAsync(string bot, string id, CancellationToken cancellationToken)
+    public async Task<BotPosition?> GetAsync(string bot, string id, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
 
         var entries = await _database.HashGetAllAsync(keys.Position(bot, id));
         return entries.Length == 0 ? null : FromEntries(entries);
     }
 
-    public async Task<IReadOnlyCollection<BotPosition>> GetAllAsync(
-        string bot,
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string bot, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
 
         var ids = await _database.SetMembersAsync(keys.PositionIndex(bot));
 
         if (ids.Length == 0)
-            return await LoadLegacyPositionsAndBuildIndexAsync(bot, cancellationToken);
+            return await LoadLegacyPositionsAndBuildIndexAsync(bot, ct);
 
         var result = new List<BotPosition>(ids.Length);
         var missingIds = new List<RedisValue>();
 
         foreach (var id in ids)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
             var entries = await _database.HashGetAllAsync(keys.Position(bot, id.ToString()));
 
@@ -70,11 +69,12 @@ public sealed class RedisPositionStore(
         return result;
     }
 
-    public async Task DeleteAsync(string bot, string id, CancellationToken cancellationToken)
+    public async Task DeleteAsync(string bot, string id, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
 
         var transaction = _database.CreateTransaction();
+       
         _ = transaction.KeyDeleteAsync(keys.Position(bot, id));
         _ = transaction.SetRemoveAsync(keys.PositionIndex(bot), id);
 
@@ -82,9 +82,7 @@ public sealed class RedisPositionStore(
             throw new InvalidOperationException($"Could not delete position '{id}' for bot '{bot}'.");
     }
 
-    private async Task<IReadOnlyCollection<BotPosition>> LoadLegacyPositionsAndBuildIndexAsync(
-        string bot,
-        CancellationToken cancellationToken)
+    private async Task<IReadOnlyCollection<BotPosition>> LoadLegacyPositionsAndBuildIndexAsync(string bot, CancellationToken ct)
     {
         var result = new List<BotPosition>();
 
@@ -107,7 +105,7 @@ public sealed class RedisPositionStore(
 
             await foreach (var key in server.KeysAsync(pattern: keys.PositionPattern(bot)))
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
                 var entries = await _database.HashGetAllAsync(key);
 
@@ -120,8 +118,7 @@ public sealed class RedisPositionStore(
             }
         }
 
-        return result
-            .GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase)
+        return result.GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.First())
             .ToArray();
     }

@@ -1,5 +1,6 @@
 using TradingSystem.Contracts.Indicators;
 using TradingSystem.Domain.MarketData;
+
 namespace TradingSystem.Indicators.Abstractions;
 public interface IIndicatorProcessor
 {

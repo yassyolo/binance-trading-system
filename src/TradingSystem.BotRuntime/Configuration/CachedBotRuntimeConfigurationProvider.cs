@@ -6,11 +6,11 @@ public sealed class CachedBotRuntimeConfigurationProvider(IBotRuntimeConfigurati
 {
     private readonly ConcurrentDictionary<string,  BotRuntimeConfiguration> _configurations  =  new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken cancellationToken)
+    public async Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken ct)
     {
         if (_configurations.TryGetValue(botName,  out var current))
             return current;
-        var loaded  =  await store.GetAsync(botName,  cancellationToken);
+        var loaded  =  await store.GetAsync(botName,  ct);
         if (loaded is not null) Set(loaded);
         return loaded;
     }

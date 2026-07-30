@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Binance.UserStream;
 using UserStreamService.Configuration;
@@ -26,28 +24,22 @@ public sealed class Worker(
     private DateTimeOffset? _disconnectedAtUtc;
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
-        => Task.WhenAll(
-            StreamLoopAsync(stoppingToken),
-            KeepAliveLoopAsync(stoppingToken));
+        => Task.WhenAll(StreamLoopAsync(stoppingToken), KeepAliveLoopAsync(stoppingToken));
 
-    private async Task StreamLoopAsync(CancellationToken cancellationToken)
+    private async Task StreamLoopAsync(CancellationToken ct)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                var listenKey = await listenKeys.CreateAsync(cancellationToken);
+                var listenKey = await listenKeys.CreateAsync(ct);
 
                 lock (_sync)
                     _listenKey = listenKey;
 
-                await stream.RunAsync(
-                    listenKey,
-                    processor.ProcessAsync,
-                    OnConnectedAsync,
-                    cancellationToken);
+                await stream.RunAsync(listenKey, processor.ProcessAsync, OnConnectedAsync, ct);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
@@ -64,23 +56,18 @@ public sealed class Worker(
                 }
             }
 
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(
-                    TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds),
-                    cancellationToken);
-            }
+            if (!ct.IsCancellationRequested)
+                await Task.Delay(TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds), ct);
         }
     }
 
-    private async Task KeepAliveLoopAsync(CancellationToken cancellationToken)
+    private async Task KeepAliveLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
 
         try
         {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
+            while (await timer.WaitForNextTickAsync(ct))
             {
                 string? listenKey;
 
@@ -92,9 +79,9 @@ public sealed class Worker(
 
                 try
                 {
-                    await listenKeys.KeepAliveAsync(listenKey, cancellationToken);
+                    await listenKeys.KeepAliveAsync(listenKey, ct);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -104,13 +91,11 @@ public sealed class Worker(
                 }
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Normal service shutdown.
-        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
     }
 
-    private async Task OnConnectedAsync(CancellationToken cancellationToken)
+    private async Task OnConnectedAsync(CancellationToken ct)
     {
         DateTimeOffset? disconnectedAtUtc;
 
@@ -124,6 +109,6 @@ public sealed class Worker(
             return;
 
         var downtime = time.GetUtcNow() - disconnectedAtUtc.Value;
-        await healing.PublishAfterReconnectAsync(downtime, cancellationToken);
+        await healing.PublishAfterReconnectAsync(downtime, ct);
     }
 }

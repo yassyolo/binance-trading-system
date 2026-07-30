@@ -1,2 +1,68 @@
-using Microsoft.Extensions.Options;using TradingSystem.Application.Execution;using TradingSystem.Application.Positions;using TradingSystem.Application.Time;using TradingSystem.Binance.Execution;using TradingSystem.Domain.Enums;
-namespace StrategyService.Bots.Bot8015;public sealed class Bot8015TradeExecutor(IOptions<Bot8015Options> options, BinanceProtectedPositionService execution, IPositionStore store, IClock clock, ILogger<Bot8015TradeExecutor> logger):IBotTradeExecutor{readonly Bot8015Options o = options.Value;public string BotName => o.BotName;public async Task<TradeExecutionResult> OpenAsync(string symbol, PositionSide side, string? source, CancellationToken ct){if(!symbol.Equals(o.Symbol, StringComparison.OrdinalIgnoreCase))return TradeExecutionResult.Failure($"{BotName} does not support {symbol}.");try{var p = await execution.OpenAsync(BotName, symbol, side, o.Quantity, o.TpPercent, o.InitialStopLoss, ct);p.Source = string.IsNullOrWhiteSpace(source)?"internal":source;await store.SaveAsync(p, ct);return TradeExecutionResult.Success(p.ShortId);}catch(Exception ex){logger.LogError(ex, "BOT8015 open failed.");return TradeExecutionResult.Failure(ex.Message, ex);}}public async Task<TradeExecutionResult> CloseAsync(string id, string reason, CancellationToken ct){var p = await store.GetAsync(BotName, id, ct);if(p is null)return TradeExecutionResult.Failure($"Position {id} not found.");if(p.Closed)return TradeExecutionResult.Success(id, "Already closed.");try{await execution.CloseAsync(p, ct);p.MarkClosed(reason, clock.UtcNow);await store.SaveAsync(p, ct);return TradeExecutionResult.Success(id, reason);}catch(Exception ex){return TradeExecutionResult.Failure(ex.Message, ex);}}}
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Execution;
+using TradingSystem.Application.Positions;
+using TradingSystem.Application.Time;
+using TradingSystem.Binance.Execution;
+using TradingSystem.Domain.Enums;
+
+namespace StrategyService.Bots.Bot8015;
+
+public sealed class Bot8015TradeExecutor(
+    IOptions<Bot8015Options> options, 
+    BinanceProtectedPositionService execution, 
+    IPositionStore store, IClock clock, 
+    ILogger<Bot8015TradeExecutor> logger):
+    IBotTradeExecutor
+{
+    readonly Bot8015Options o = options.Value;
+    
+    public string BotName => o.BotName;
+    
+    public async Task<TradeExecutionResult> OpenAsync(string symbol, PositionSide side, string? source, CancellationToken ct)
+    {
+        if(!symbol.Equals(o.Symbol, StringComparison.OrdinalIgnoreCase))
+            return TradeExecutionResult.Failure($"{BotName} does not support {symbol}.");
+        
+        try
+        {
+            var p = await execution.OpenAsync(BotName, symbol, side, o.Quantity, o.TpPercent, o.InitialStopLoss, ct);
+            
+            p.Source = string.IsNullOrWhiteSpace(source)?"internal":source;
+            
+            await store.SaveAsync(p, ct);
+            
+            return TradeExecutionResult.Success(p.ShortId);
+        }
+        catch(Exception ex)
+        {
+            logger.LogError(ex, "BOT8015 open failed.");
+            return TradeExecutionResult.Failure(ex.Message, ex);
+        }
+    }
+    
+    public async Task<TradeExecutionResult> CloseAsync(string id, string reason, CancellationToken ct)
+    {
+        var p = await store.GetAsync(BotName, id, ct);
+        
+        if(p is null)
+            return TradeExecutionResult.Failure($"Position {id} not found.");
+        
+        if(p.Closed)
+            return TradeExecutionResult.Success(id, "Already closed.");
+        
+        try
+        {
+            await execution.CloseAsync(p, ct);
+            
+            p.MarkClosed(reason, clock.UtcNow);
+            
+            await store.SaveAsync(p, ct);
+            
+            return TradeExecutionResult.Success(id, reason);
+        }
+        catch(Exception ex)
+        {
+            return TradeExecutionResult.Failure(ex.Message, ex);
+        }
+    }
+}

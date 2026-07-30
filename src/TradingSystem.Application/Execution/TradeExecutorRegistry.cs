@@ -11,11 +11,11 @@ public sealed class TradeExecutorRegistry : ITradeExecutor
         _executors  =  BuildUniqueMap(executors);
     }
 
-    public Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
-         =>  GetRequired(botName).OpenAsync(symbol,  side,  source,  cancellationToken);
+    public Task<TradeExecutionResult> OpenAsync(string botName,  string symbol,  PositionSide side,  string? source,  CancellationToken ct)
+         =>  GetRequired(botName).OpenAsync(symbol,  side,  source,  ct);
 
-    public Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken cancellationToken)
-         =>  GetRequired(botName).CloseAsync(shortId,  reason,  cancellationToken);
+    public Task<TradeExecutionResult> CloseAsync(string botName,  string shortId,  string reason,  CancellationToken ct)
+         =>  GetRequired(botName).CloseAsync(shortId,  reason,  ct);
 
     private IBotTradeExecutor GetRequired(string botName)
          =>  _executors.TryGetValue(botName,  out var executor)

@@ -20,9 +20,9 @@ public sealed class Bot8012TradeExecutor(
     private readonly Bot8012Options _options  =  options.Value;
     public string BotName  =>  _options.BotName;
 
-    public async Task<TradeExecutionResult> OpenAsync(string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> OpenAsync(string symbol,  PositionSide side,  string? source,  CancellationToken ct)
     {
-        var runtime  =  await runtimeConfigurationProvider.GetAsync(BotName,  cancellationToken);
+        var runtime  =  await runtimeConfigurationProvider.GetAsync(BotName,  ct);
         if (!symbol.Equals(runtime?.Symbol ?? _options.Symbol,  StringComparison.OrdinalIgnoreCase))
             return TradeExecutionResult.Failure($"Unsupported symbol '{symbol}'.");
         try
@@ -33,9 +33,9 @@ public sealed class Bot8012TradeExecutor(
                 side, 
                 runtime?.Quantity ?? _options.Quantity, 
                 runtime?.ProfitDistance ?? _options.ProfitDistance, 
-                cancellationToken);
+                ct);
             position.Source  =  source;
-            await store.SaveAsync(position,  cancellationToken);
+            await store.SaveAsync(position,  ct);
             return TradeExecutionResult.Success(position.ShortId);
         }
         catch (Exception ex)
@@ -45,16 +45,16 @@ public sealed class Bot8012TradeExecutor(
         }
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken ct)
     {
-        var position  =  await store.GetAsync(BotName,  shortId,  cancellationToken);
+        var position  =  await store.GetAsync(BotName,  shortId,  ct);
         if (position is null) return TradeExecutionResult.Failure($"Position '{shortId}' not found.");
         if (position.Closed) return TradeExecutionResult.Success(shortId,  "Already closed.");
         try
         {
-            await execution.CloseAsync(position,  cancellationToken);
+            await execution.CloseAsync(position,  ct);
             position.MarkClosed(reason,  clock.UtcNow);
-            await store.SaveAsync(position,  cancellationToken);
+            await store.SaveAsync(position,  ct);
             return TradeExecutionResult.Success(shortId,  reason);
         }
         catch (Exception ex)

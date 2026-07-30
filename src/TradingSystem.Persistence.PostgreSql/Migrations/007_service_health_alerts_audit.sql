@@ -135,4 +135,154 @@ left join lateral (
     from trading_dashboard.service_heartbeats sh
     where sh.component = c.bot_name
 ) h on true;
-*/
+
+BEGIN;
+
+ALTER TABLE trading_dashboard.service_heartbeats
+    ADD COLUMN IF NOT EXISTS instance_id varchar(200),
+    ADD COLUMN IF NOT EXISTS version varchar(50),
+    ADD COLUMN IF NOT EXISTS environment varchar(30),
+    ADD COLUMN IF NOT EXISTS started_at_utc timestamptz,
+    ADD COLUMN IF NOT EXISTS stale_after_seconds integer NOT NULL DEFAULT 30;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'trading_dashboard'
+          AND table_name = 'service_heartbeats'
+          AND column_name = 'last_seen_utc'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'trading_dashboard'
+          AND table_name = 'service_heartbeats'
+          AND column_name = 'last_seen_at_utc'
+    )
+    THEN
+        ALTER TABLE trading_dashboard.service_heartbeats
+            RENAME COLUMN last_seen_utc TO last_seen_at_utc;
+    END IF;
+END
+$$;
+
+ALTER TABLE trading_dashboard.service_heartbeats
+    ADD COLUMN IF NOT EXISTS last_seen_at_utc timestamptz NOT NULL DEFAULT now();
+
+UPDATE trading_dashboard.service_heartbeats
+SET instance_id = 'legacy'
+WHERE instance_id IS NULL OR btrim(instance_id) = '';
+
+ALTER TABLE trading_dashboard.service_heartbeats
+    ALTER COLUMN instance_id SET DEFAULT 'legacy',
+    ALTER COLUMN instance_id SET NOT NULL;
+
+DO $$
+DECLARE
+    primary_key_name text;
+BEGIN
+    SELECT constraint_name
+    INTO primary_key_name
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'trading_dashboard'
+      AND table_name = 'service_heartbeats'
+      AND constraint_type = 'PRIMARY KEY'
+    LIMIT 1;
+
+    IF primary_key_name IS NOT NULL THEN
+        EXECUTE format(
+            'ALTER TABLE trading_dashboard.service_heartbeats DROP CONSTRAINT %I',
+            primary_key_name
+        );
+    END IF;
+END
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_service_heartbeats_component_instance
+    ON trading_dashboard.service_heartbeats(component, instance_id);
+
+COMMIT;
+
+create schema if not exists trading_history;
+
+create table if not exists trading_history.events
+(
+    event_id uuid primary key,
+    event_type varchar(64) not null,
+    occurred_at_utc timestamptz not null,
+    environment varchar(32) not null,
+
+    correlation_id varchar(128) null,
+    bot_name varchar(64) null,
+    strategy_version varchar(64) null,
+    symbol varchar(32) null,
+    position_id varchar(128) null,
+    order_id varchar(128) null,
+    side varchar(16) null,
+    status varchar(64) null,
+
+    price numeric(28, 12) null,
+    quantity numeric(28, 12) null,
+    realized_pnl numeric(28, 12) null,
+
+    reason text null,
+    data jsonb not null default '{}'::jsonb,
+    raw_payload text null,
+
+    created_at_utc timestamptz not null default now()
+);
+
+create index if not exists ix_historical_events_occurred_at
+    on trading_history.events (occurred_at_utc desc);
+
+create index if not exists ix_historical_events_type_occurred_at
+    on trading_history.events (event_type, occurred_at_utc desc);
+
+create index if not exists ix_historical_events_bot_occurred_at
+    on trading_history.events (bot_name, occurred_at_utc desc)
+    where bot_name is not null;
+
+create index if not exists ix_historical_events_symbol_occurred_at
+    on trading_history.events (symbol, occurred_at_utc desc)
+    where symbol is not null;
+
+create index if not exists ix_historical_events_correlation_id
+    on trading_history.events (correlation_id)
+    where correlation_id is not null;
+
+create table if not exists trading_history.trade_summaries
+(
+    position_id varchar(128) primary key,
+    bot_name varchar(64) not null,
+    strategy_version varchar(64) not null,
+    symbol varchar(32) not null,
+    side varchar(16) not null,
+
+    opened_at_utc timestamptz not null,
+    closed_at_utc timestamptz not null,
+
+    quantity numeric(28, 12) not null,
+    entry_price numeric(28, 12) not null,
+    exit_price numeric(28, 12) not null,
+
+    gross_pnl numeric(28, 12) not null,
+    commission numeric(28, 12) not null,
+    net_pnl numeric(28, 12) not null,
+
+    close_reason varchar(128) not null,
+    environment varchar(32) not null,
+
+    created_at_utc timestamptz not null default now(),
+    updated_at_utc timestamptz not null default now()
+);
+
+create index if not exists ix_historical_trade_summaries_closed_at
+    on trading_history.trade_summaries (closed_at_utc desc);
+
+create index if not exists ix_historical_trade_summaries_bot_closed_at
+    on trading_history.trade_summaries (bot_name, closed_at_utc desc);
+
+create index if not exists ix_historical_trade_summaries_symbol_closed_at
+    on trading_history.trade_summaries (symbol, closed_at_utc desc);*/

@@ -20,34 +20,30 @@ public sealed class HealingPublisher(
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset? _lastPublishedAtUtc;
 
-    public async Task PublishAfterReconnectAsync(TimeSpan downtime, CancellationToken cancellationToken)
+    public async Task PublishAfterReconnectAsync(TimeSpan downtime, CancellationToken ct)
     {
         if (downtime.TotalSeconds < _options.MinDowntimeForHealingSeconds)
             return;
 
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(ct);
 
         try
         {
             var now = time.GetUtcNow();
 
-            if (_lastPublishedAtUtc is not null &&
-                now - _lastPublishedAtUtc < TimeSpan.FromSeconds(_options.HealingCooldownSeconds))
-            {
+            if (_lastPublishedAtUtc is not null && now - _lastPublishedAtUtc < TimeSpan.FromSeconds(_options.HealingCooldownSeconds))
                 return;
-            }
 
-            var symbols = _options.HealingSymbols
-                .Where(x => !string.IsNullOrWhiteSpace(x))
+            var symbols = _options.HealingSymbols.Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim().ToUpperInvariant())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
             foreach (var symbol in symbols)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
-                var snapshot = await snapshots.GetAsync(symbol, cancellationToken);
+                var snapshot = await snapshots.GetAsync(symbol, ct);
                 var activeClientIds = Collect(snapshot.NormalOrders, snapshot.AlgoOrders);
 
                 var message = new HealingSnapshotMessage
@@ -64,13 +60,9 @@ public sealed class HealingPublisher(
                     AlgoOrders = snapshot.AlgoOrders
                 };
 
-                await publisher.PublishAsync(RedisChannels.Healing, message, cancellationToken);
+                await publisher.PublishAsync(RedisChannels.Healing, message, ct);
 
-                logger.LogInformation(
-                    "Healing snapshot published. Symbol = {Symbol}, Active = {Count}, DowntimeSeconds = {DowntimeSeconds}",
-                    symbol,
-                    activeClientIds.Count,
-                    message.DowntimeSeconds);
+                logger.LogInformation("Healing snapshot published. Symbol = {Symbol}, Active = {Count}, DowntimeSeconds = {DowntimeSeconds}", symbol, activeClientIds.Count, message.DowntimeSeconds);
             }
 
             _lastPublishedAtUtc = now;
@@ -81,9 +73,7 @@ public sealed class HealingPublisher(
         }
     }
 
-    private static IReadOnlyCollection<string> Collect(
-        IEnumerable<JsonElement> normalOrders,
-        IEnumerable<JsonElement> algoOrders)
+    private static IReadOnlyCollection<string> Collect(IEnumerable<JsonElement> normalOrders, IEnumerable<JsonElement> algoOrders)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -98,11 +88,8 @@ public sealed class HealingPublisher(
 
     private static void Add(JsonElement element, string propertyName, ISet<string> result)
     {
-        if (!element.TryGetProperty(propertyName, out var property) ||
-            property.ValueKind != JsonValueKind.String)
-        {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
             return;
-        }
 
         var value = property.GetString();
 

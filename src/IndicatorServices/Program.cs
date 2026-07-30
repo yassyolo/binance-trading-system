@@ -11,7 +11,8 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddTradingInfrastructure();
 builder.Services.AddTradingRedis(builder.Configuration);
-builder.Services.AddBinanceFutures(builder.Configuration);
+builder.Services.AddBinancePublicMarketData(
+    builder.Configuration); 
 builder.Services.AddTradingIndicators(builder.Configuration);
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddPostgresTradingHistory(builder.Configuration);

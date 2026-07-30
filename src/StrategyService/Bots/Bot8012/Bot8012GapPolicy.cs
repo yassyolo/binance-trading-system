@@ -13,14 +13,15 @@ public sealed class Bot8012GapPolicy(IOptions<Bot8012Options> options,  GridSpac
 
     public StrategyDecision Evaluate(PositionSide side,  decimal markPrice,  IReadOnlyCollection<ActivePositionView> activePositions,  BotRuntimeConfiguration? runtimeConfiguration  =  null)
     {
-        var references  =  activePositions
-            .Where(x  =>  x.TpPrice is > 0)
+        var references  =  activePositions.Where(x  =>  x.TpPrice is > 0)
             .Select(x  =>  new GridPositionReference(x.Side,  x.TpPrice!.Value,  x.CreatedAtUtc))
             .ToArray();
+       
         var decision  =  policy.Evaluate(side,  markPrice,  references,  new(
             runtimeConfiguration?.PriceDistance ?? _options.PriceDistance, 
             runtimeConfiguration?.ProfitDistance ?? _options.ProfitDistance, 
             runtimeConfiguration?.OrderSideLimit ?? _options.OrderSideLimit));
+        
         return decision.Allowed ? StrategyDecision.Open(side,  decision.Reason) : StrategyDecision.Block(side,  decision.Reason);
     }
 }

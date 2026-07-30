@@ -12,25 +12,29 @@ public abstract class TpOnlyGridTradeExecutor<TOptions>(
     BinanceTpOnlyPositionService execution, 
     IPositionStore store, 
     IClock clock, 
-    IBotRuntimeConfigurationProvider runtimeConfigurationProvider) : IBotTradeExecutor
+    IBotRuntimeConfigurationProvider runtimeConfigurationProvider) :
+    IBotTradeExecutor
     where TOptions : class,  ITpOnlyGridBotOptions
 {
     public string BotName  =>  options.BotName;
 
-    public async Task<TradeExecutionResult> OpenAsync(string symbol,  PositionSide side,  string? source,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> OpenAsync(string symbol,  PositionSide side,  string? source,  CancellationToken ct)
     {
-        var runtime  =  await runtimeConfigurationProvider.GetAsync(BotName,  cancellationToken);
-        var configuredSymbol  =  runtime?.Symbol ?? options.Symbol;
+        var runtime  = await runtimeConfigurationProvider.GetAsync(BotName,  ct);
+        var configuredSymbol = runtime?.Symbol ?? options.Symbol;
+        
         if (!symbol.Equals(configuredSymbol,  StringComparison.OrdinalIgnoreCase))
             return TradeExecutionResult.Failure($"{BotName} does not support symbol '{symbol}'.");
 
-        var quantity  =  runtime?.Quantity ?? options.Quantity;
+        var quantity = runtime?.Quantity ?? options.Quantity;
         var profitDistance  =  runtime?.ProfitDistance ?? options.ProfitDistance;
         try
         {
-            var position  =  await execution.OpenAsync(BotName,  symbol,  side,  quantity,  profitDistance,  cancellationToken);
-            position.Source  =  string.IsNullOrWhiteSpace(source) ? "external" : source.Trim();
-            await store.SaveAsync(position,  cancellationToken);
+            var position = await execution.OpenAsync(BotName,  symbol,  side,  quantity,  profitDistance,  ct);
+            position.Source = string.IsNullOrWhiteSpace(source) ? "external" : source.Trim();
+            
+            await store.SaveAsync(position,  ct);
+            
             return TradeExecutionResult.Success(position.ShortId);
         }
         catch (Exception ex)
@@ -39,16 +43,24 @@ public abstract class TpOnlyGridTradeExecutor<TOptions>(
         }
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken cancellationToken)
+    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken ct)
     {
-        var position  =  await store.GetAsync(BotName,  shortId,  cancellationToken);
-        if (position is null) return TradeExecutionResult.Failure($"Position '{shortId}' was not found.");
-        if (position.Closed) return TradeExecutionResult.Success(shortId,  "Position is already closed.");
+        var position = await store.GetAsync(BotName,  shortId,  ct);
+        
+        if (position is null) 
+            return TradeExecutionResult.Failure($"Position '{shortId}' was not found.");
+        
+        if (position.Closed) 
+            return TradeExecutionResult.Success(shortId,  "Position is already closed.");
+        
         try
         {
-            await execution.CloseAsync(position,  cancellationToken);
+            await execution.CloseAsync(position,  ct);
+            
             position.MarkClosed(reason,  clock.UtcNow);
-            await store.SaveAsync(position,  cancellationToken);
+           
+            await store.SaveAsync(position,  ct);
+            
             return TradeExecutionResult.Success(shortId,  reason);
         }
         catch (Exception ex)

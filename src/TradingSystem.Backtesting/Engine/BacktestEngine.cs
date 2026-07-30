@@ -16,29 +16,30 @@ public sealed class BacktestEngine(
     BacktestMetricsCalculator metricsCalculator,
     ITradingCostModel costModel)
 {
-    public async Task<BacktestResult> RunAsync(
-        BacktestRequest request,
-        IReadOnlyList<MarketCandle> sourceCandles,
-        SymbolTradingRules rules,
-        CancellationToken cancellationToken = default)
+    public async Task<BacktestResult> RunAsync(BacktestRequest request, IReadOnlyList<MarketCandle> sourceCandles, SymbolTradingRules rules, CancellationToken ct = default)
     {
         BacktestRequestValidator.Validate(request, rules);
+       
         var started = DateTime.UtcNow;
+        
         var candles = sourceCandles
             .Where(x => (!request.StartUtc.HasValue || x.OpenTimeUtc >= request.StartUtc.Value)
                         && (!request.EndUtc.HasValue || x.OpenTimeUtc < request.EndUtc.Value))
             .OrderBy(x => x.OpenTimeUtc)
-            .ToArray();
+            .ToArray();     
         Validate(candles);
 
         var strategy = registry.Create(request.StrategyName, request.StrategyParameters);
+        
         var portfolio = new BacktestPortfolio(request.InitialBalance, rules, costModel);
+       
         var signals = new List<SignalMarker>();
+       
         PendingEntry? pending = null;
 
         for (var i = 0; i < candles.Length; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
             var candle = candles[i];
 
             if (pending is not null)
@@ -59,10 +60,8 @@ public sealed class BacktestEngine(
                 var fill = fillResolver.Resolve(portfolio.ActivePosition, candle, request.ConflictPolicy);
                 if (fill is not null)
                 {
-                    var price = costModel.ApplyExitSlippage(
-                        fill.Price,
-                        portfolio.ActivePosition.Side,
-                        request.SlippageBasisPoints);
+                    var price = costModel.ApplyExitSlippage(fill.Price, portfolio.ActivePosition.Side,  request.SlippageBasisPoints);
+                    
                     portfolio.Close(Round(price, rules.TickSize), candle.CloseTimeUtc, fill.Reason);
                 }
             }
@@ -79,22 +78,17 @@ public sealed class BacktestEngine(
                     BarIndex = i
                 };
 
-                var decision = await strategy.DecideAsync(context, cancellationToken);
+                var decision = await strategy.DecideAsync(context, ct);
                 if (decision.Type != DecisionType.None)
                 {
-                    if (decision.Type is DecisionType.Close or DecisionType.CloseAndReverse
-                        && portfolio.ActivePosition is not null)
+                    if (decision.Type is DecisionType.Close or DecisionType.CloseAndReverse && portfolio.ActivePosition is not null)
                     {
-                        var closePrice = costModel.ApplyExitSlippage(
-                            candle.Close,
-                            portfolio.ActivePosition.Side,
-                            request.SlippageBasisPoints);
+                        var closePrice = costModel.ApplyExitSlippage(candle.Close, portfolio.ActivePosition.Side, request.SlippageBasisPoints);
+                        
                         portfolio.Close(
                             Round(closePrice, rules.TickSize),
                             candle.CloseTimeUtc,
-                            decision.Type == DecisionType.CloseAndReverse
-                                ? ExitReason.ReverseSignal
-                                : ExitReason.Strategy);
+                            decision.Type == DecisionType.CloseAndReverse ? ExitReason.ReverseSignal : ExitReason.Strategy);
                     }
 
                     if (decision.Type is DecisionType.Open or DecisionType.CloseAndReverse

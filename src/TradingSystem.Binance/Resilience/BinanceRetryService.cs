@@ -11,10 +11,7 @@ public sealed class BinanceRetryService(
 {
     private readonly BinanceRetryOptions _options = options.Value;
 
-    public async Task<T> ExecuteAsync<T>(
-        string operationName,
-        Func<CancellationToken, Task<T>> operation,
-        CancellationToken cancellationToken)
+    public async Task<T> ExecuteAsync<T>(string operationName, Func<CancellationToken, Task<T>> operation, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
         ArgumentNullException.ThrowIfNull(operation);
@@ -23,35 +20,24 @@ public sealed class BinanceRetryService(
 
         for (var attempt = 1; ; attempt++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
             try
             {
-                return await operation(cancellationToken).ConfigureAwait(false);
+                return await operation(ct).ConfigureAwait(false);
             }
-            catch (Exception exception) when (
-                attempt < maximumAttempts &&
-                IsTransient(exception, cancellationToken))
+            catch (Exception ex) when (attempt < maximumAttempts && IsTransient(ex, ct))
             {
                 var delay = CalculateDelay(attempt);
 
-                logger.LogWarning(
-                    exception,
-                    "Transient Binance failure during {OperationName}. Attempt {Attempt}/{MaximumAttempts}; retrying in {DelayMilliseconds} ms.",
-                    operationName,
-                    attempt,
-                    maximumAttempts,
-                    delay.TotalMilliseconds);
+                logger.LogWarning(ex, "Transient Binance failure during {OperationName}. Attempt {Attempt}/{MaximumAttempts}; retrying in {DelayMilliseconds} ms.", operationName, attempt, maximumAttempts, delay.TotalMilliseconds);
 
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(delay, ct).ConfigureAwait(false);
             }
         }
     }
 
-    public async Task ExecuteAsync(
-        string operationName,
-        Func<CancellationToken, Task> operation,
-        CancellationToken cancellationToken)
+    public async Task ExecuteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken ct)
     {
         await ExecuteAsync<object?>(
             operationName,
@@ -60,7 +46,7 @@ public sealed class BinanceRetryService(
                 await operation(ct).ConfigureAwait(false);
                 return null;
             },
-            cancellationToken).ConfigureAwait(false);
+            ct).ConfigureAwait(false);
     }
 
     internal static bool IsTransient(Exception exception, CancellationToken callerToken)

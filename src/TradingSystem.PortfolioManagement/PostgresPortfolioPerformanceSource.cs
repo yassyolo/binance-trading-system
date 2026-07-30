@@ -12,7 +12,7 @@ public sealed class PostgresPortfolioPerformanceSource(
         decimal currentUnrealizedPnl,
         decimal startingEquity,
         DateTime asOfUtc,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         const string sql = """
             SELECT COALESCE(realized_pnl, 0)
@@ -26,12 +26,12 @@ public sealed class PostgresPortfolioPerformanceSource(
         var dayStart = asOfUtc.Date;
         var dayEnd = dayStart.AddDays(1);
 
-        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var connection = await connectionFactory.OpenAsync(ct);
         var closedPnls = (await connection.QueryAsync<decimal>(new CommandDefinition(
             sql,
             new { DayStartUtc = dayStart, DayEndUtc = dayEnd },
             commandTimeout: connectionFactory.CommandTimeoutSeconds,
-            cancellationToken: cancellationToken))).AsList();
+            cancellationToken: ct))).AsList();
 
         var realizedToday = closedPnls.Sum();
         var runningEquity = startingEquity;

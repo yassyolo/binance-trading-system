@@ -6,12 +6,12 @@ public sealed class CachedBotRuntimeStateProvider(IBotRuntimeStateStore store,  
 {
     private static string Key(string botName)  =>  $"bot-runtime:{botName.ToUpperInvariant()}";
 
-    public async Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken cancellationToken)
+    public async Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken ct)
     {
         if (cache.TryGetValue(Key(botName),  out BotRuntimeState? state)  &&  state is not null)
             return state;
 
-        state  =  await store.GetAsync(botName,  cancellationToken)
+        state  =  await store.GetAsync(botName,  ct)
             ?? throw new InvalidOperationException($"Runtime state was not found for bot '{botName}'.");
         cache.Set(Key(botName),  state,  TimeSpan.FromSeconds(15));
         return state;

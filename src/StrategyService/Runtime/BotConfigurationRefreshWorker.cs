@@ -21,20 +21,16 @@ public sealed class BotConfigurationRefreshWorker(
         {
             try
             {
-                // Small overlap avoids missing rows that share the exact same UpdatedAtUtc value.
                 var queryFrom = watermark == DateTime.UnixEpoch ? watermark : watermark.AddMilliseconds(-1);
                 var changed = await store.GetChangedSinceAsync(queryFrom, stoppingToken);
-                foreach (var configuration in changed
-                             .OrderBy(x => x.UpdatedAtUtc)
-                             .ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
+                
+                foreach (var configuration in changed.OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
                 {
                     provider.Set(configuration);
                     if (configuration.UpdatedAtUtc > watermark)
                         watermark = configuration.UpdatedAtUtc;
 
-                    logger.LogInformation(
-                        "Bot configuration refreshed. Bot = {Bot} Version = {Version} RestartRequired = {RestartRequired}",
-                        configuration.BotName, configuration.Version, configuration.RestartRequired);
+                    logger.LogInformation("Bot configuration refreshed. Bot = {Bot} Version = {Version} RestartRequired = {RestartRequired}", configuration.BotName, configuration.Version, configuration.RestartRequired);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

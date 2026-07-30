@@ -6,12 +6,7 @@ namespace TradingSystem.HistoricalData;
 
 public sealed class CsvHistoricalCandleSource(string filePath) : IHistoricalCandleRangeSource
 {
-    public async Task<IReadOnlyList<MarketCandle>> LoadAsync(
-        string symbol,
-        string interval,
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MarketCandle>> LoadAsync(string symbol, string interval, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);
@@ -33,7 +28,7 @@ public sealed class CsvHistoricalCandleSource(string filePath) : IHistoricalCand
             options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var reader = new StreamReader(stream);
 
-        var headerLine = await reader.ReadLineAsync(cancellationToken);
+        var headerLine = await reader.ReadLineAsync(ct);
         if (headerLine is null)
             return [];
 
@@ -64,10 +59,10 @@ public sealed class CsvHistoricalCandleSource(string filePath) : IHistoricalCand
         var candlesByOpenTime = new Dictionary<DateTime, MarketCandle>();
 
         var lineNumber = 1;
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        while (await reader.ReadLineAsync(ct) is { } line)
         {
             lineNumber++;
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 

@@ -13,20 +13,14 @@ public abstract class TpOnlyGridHealingService<TOptions>(
 {
     public string BotName => options.BotName;
 
-    public async Task HealAsync(
-        HealingSnapshotMessage snapshot,
-        CancellationToken cancellationToken)
+    public async Task HealAsync(HealingSnapshotMessage snapshot, CancellationToken ct)
     {
-        if (!options.EnableHealing ||
-            !snapshot.Symbol.Equals(options.Symbol, StringComparison.OrdinalIgnoreCase))
-        {
+        if (!options.EnableHealing || !snapshot.Symbol.Equals(options.Symbol, StringComparison.OrdinalIgnoreCase))
             return;
-        }
 
-        var activeClientIds = snapshot.ActiveClientIds
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var activeClientIds = snapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var positions = await store.GetAllAsync(BotName, cancellationToken);
+        var positions = await store.GetAllAsync(BotName, ct);
 
         var positionsWithMissingTakeProfit = positions.Where(position =>
             !position.Closed &&
@@ -36,7 +30,8 @@ public abstract class TpOnlyGridHealingService<TOptions>(
         foreach (var position in positionsWithMissingTakeProfit)
         {
             position.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
-            await store.SaveAsync(position, cancellationToken);
+            
+            await store.SaveAsync(position, ct);
         }
     }
 }

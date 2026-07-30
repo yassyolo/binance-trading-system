@@ -42,15 +42,24 @@ public sealed class PostgresPaperTradingStore(
                 cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyCollection<PaperTradingPosition>> GetOpenAsync(
-        CancellationToken ct)
+    public async Task<IReadOnlyCollection<PaperTradingPosition>> GetOpenAsync(CancellationToken ct)
     {
         await using var connection = await connections.OpenAsync(ct);
-        var rows = await connection.QueryAsync<PaperTradingPosition>(
-            new CommandDefinition(
-                BaseSelect + " and status = 1 order by opened_at_utc",
-                commandTimeout: connections.CommandTimeoutSeconds,
-                cancellationToken: ct));
+
+        var command = new CommandDefinition(
+            BaseSelect + """
+             and status = @Status
+             order by opened_at_utc
+            """,
+            new
+            {
+                Status = (short)PaperPositionStatus.Open
+            },
+            commandTimeout: connections.CommandTimeoutSeconds,
+            cancellationToken: ct);
+
+        var rows = await connection.QueryAsync<PaperTradingPosition>(command);
+
         return rows.AsList();
     }
 

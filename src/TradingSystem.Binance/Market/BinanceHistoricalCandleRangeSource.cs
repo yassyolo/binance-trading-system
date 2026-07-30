@@ -9,12 +9,7 @@ public sealed class BinanceHistoricalCandleRangeSource(HttpClient httpClient) : 
 {
     private const int PageLimit = 1500;
 
-    public async Task<IReadOnlyList<MarketCandle>> LoadAsync(
-        string symbol,
-        string interval,
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MarketCandle>> LoadAsync(string symbol, string interval, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);
@@ -33,13 +28,14 @@ public sealed class BinanceHistoricalCandleRangeSource(HttpClient httpClient) : 
 
         while (cursor < end)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
+           
             var url = $"fapi/v1/klines?symbol={Uri.EscapeDataString(normalizedSymbol)}" +
                       $"&interval={Uri.EscapeDataString(normalizedInterval)}" +
                       $"&startTime={cursor}&endTime={end}&limit={PageLimit}";
 
-            using var response = await httpClient.GetAsync(url, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var response = await httpClient.GetAsync(url, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
                 throw new BinanceApiException(response.StatusCode, body, "load historical candle range");
 
@@ -70,8 +66,7 @@ public sealed class BinanceHistoricalCandleRangeSource(HttpClient httpClient) : 
             cursor = nextCursor;
         }
 
-        return result
-            .Where(candle => candle.OpenTimeUtc >= from && candle.OpenTimeUtc < to)
+        return result.Where(candle => candle.OpenTimeUtc >= from && candle.OpenTimeUtc < to)
             .OrderBy(candle => candle.OpenTimeUtc)
             .GroupBy(candle => candle.OpenTimeUtc)
             .Select(group => group.Last())

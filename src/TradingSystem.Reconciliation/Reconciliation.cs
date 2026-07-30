@@ -15,10 +15,10 @@ public sealed record ReconciliationFinding(Guid Id,  DateTime DetectedAtUtc,  st
     ReconciliationFindingType Type,  ReconciliationSeverity Severity,  string Details,  HealingActionType SuggestedAction,  bool AutoHealAllowed);
 public sealed record ReconciliationRunResult(DateTime StartedAtUtc,  DateTime CompletedAtUtc,  IReadOnlyCollection<ReconciliationFinding> Findings,  int HealedCount);
 
-public interface IExchangeStateProvider { Task<ExchangeStateSnapshot> GetAsync(string symbol,  CancellationToken cancellationToken); }
+public interface IExchangeStateProvider { Task<ExchangeStateSnapshot> GetAsync(string symbol,  CancellationToken ct); }
 public interface IReconciliationFindingStore
 {
-    Task SaveRunAsync(ReconciliationRunResult result,  CancellationToken cancellationToken);
-    Task<bool> HasUnresolvedCriticalAsync(CancellationToken cancellationToken);
+    Task SaveRunAsync(ReconciliationRunResult result,  CancellationToken ct);
+    Task<bool> HasUnresolvedCriticalAsync(CancellationToken ct);
 }
-public interface IHealingActionExecutor { Task<bool> ExecuteAsync(ReconciliationFinding finding,  CancellationToken cancellationToken); }
+public interface IHealingActionExecutor { Task<bool> ExecuteAsync(ReconciliationFinding finding,  CancellationToken ct); }

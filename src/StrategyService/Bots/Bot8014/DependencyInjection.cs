@@ -22,7 +22,6 @@ public static class DependencyInjection
         s.AddSingleton<IValidateOptions<Bot8014Options>, Bot8014OptionsValidator>();
         s.AddSingleton<IBinanceTradingConfiguration>(sp => sp.GetRequiredService<IOptions<Bot8014Options>>().Value);
 
-        // FIX: Pass required GridSpacingPolicy argument to TpOnlyGridGapPolicy constructor
         s.AddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<Bot8014Options>>().Value;

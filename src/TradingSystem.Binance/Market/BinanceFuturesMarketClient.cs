@@ -6,16 +6,15 @@ namespace TradingSystem.Binance.Market;
 
 public sealed class BinanceFuturesMarketClient(HttpClient httpClient) : IBinanceFuturesMarketClient
 {
-    public async Task<decimal> GetMarkPriceAsync(
-        string symbol,
-        CancellationToken cancellationToken = default)
+    public async Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+       
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var url = $"fapi/v1/premiumIndex?symbol={Uri.EscapeDataString(normalizedSymbol)}";
 
-        using var response = await httpClient.GetAsync(url, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await httpClient.GetAsync(url, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
             throw new BinanceApiException(response.StatusCode, content, "load mark price");

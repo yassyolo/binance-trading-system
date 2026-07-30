@@ -18,7 +18,7 @@ public sealed class WalkForwardOptimizationEngine(
         Func<TResult, BotBacktestMetrics> metricsSelector,
         WalkForwardOptions options,
         OptimizationScoreWeights weights,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         Validate(options, candles.Count);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -31,11 +31,9 @@ public sealed class WalkForwardOptimizationEngine(
         var windows = new List<WalkForwardWindowResult<TOptions>>();
         var windowNumber = 0;
 
-        for (var testStart = options.TrainingBars;
-             testStart + options.TestingBars <= candles.Count;
-             testStart += options.StepBars)
+        for (var testStart = options.TrainingBars; testStart + options.TestingBars <= candles.Count; testStart += options.StepBars)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
             var trainStart = options.AnchoredTraining ? 0 : testStart - options.TrainingBars;
             var training = candles.Skip(trainStart).Take(testStart - trainStart).ToArray();
             var testing = candles.Skip(testStart).Take(options.TestingBars).ToArray();
@@ -48,9 +46,9 @@ public sealed class WalkForwardOptimizationEngine(
                 metricsSelector,
                 weights,
                 options.TopCandidatesPerWindow,
-                cancellationToken)).First();
+                ct)).First();
 
-            var outOfSample = await run(best.Options, testing, testSignals, cancellationToken);
+            var outOfSample = await run(best.Options, testing, testSignals, ct);
             var outMetrics = metricsSelector(outOfSample);
             windows.Add(new WalkForwardWindowResult<TOptions>
             {

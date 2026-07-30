@@ -4,8 +4,8 @@ namespace TradingSystem.Application.Positions;
 
 public interface IPositionStore
 {
-    Task SaveAsync(BotPosition position,  CancellationToken cancellationToken);
-    Task<BotPosition?> GetAsync(string botName,  string shortId,  CancellationToken cancellationToken);
-    Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string botName,  CancellationToken cancellationToken);
-    Task DeleteAsync(string botName,  string shortId,  CancellationToken cancellationToken);
+    Task SaveAsync(BotPosition position,  CancellationToken ct);
+    Task<BotPosition?> GetAsync(string botName,  string shortId,  CancellationToken ct);
+    Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string botName,  CancellationToken ct);
+    Task DeleteAsync(string botName,  string shortId,  CancellationToken ct);
 }

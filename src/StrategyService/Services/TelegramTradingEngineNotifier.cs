@@ -1,4 +1,19 @@
-using TradingSystem.Application.Engine;using TradingSystem.Application.Execution;using TradingSystem.Application.Strategies;using TradingSystem.Domain.Signals;
+using TradingSystem.Application.Engine;
+using TradingSystem.Application.Execution;
+using TradingSystem.Application.Strategies;
+using TradingSystem.Domain.Signals;
+
 namespace StrategyService.Services;
-public sealed class TelegramTradingEngineNotifier(TelegramNotificationService telegram):ITradingEngineNotifier
-{public Task DecisionMadeAsync(TradeSignal s, decimal mark, StrategyDecision d, CancellationToken ct) => d.ShouldOpen?Task.CompletedTask:telegram.SendAsync($"⛔ {s.BotName} BLOCKED\n{s.Side} {s.Symbol} @ {mark}\n{d.Reason}", ct);public Task ExecutionCompletedAsync(TradeSignal s, TradeExecutionResult r, CancellationToken ct) => telegram.SendAsync($"{(r.Succeeded?"✅":"❌")} {s.BotName} EXECUTION\n{r.Reason}\nPosition: {r.ShortId??"-"}", ct);public Task ProcessingFailedAsync(TradeSignal s, Exception e, CancellationToken ct) => telegram.SendAsync($"🚨 {s.BotName} ERROR\n{e.Message}", ct);}
+
+public sealed class TelegramTradingEngineNotifier(
+    TelegramNotificationService telegram):
+    ITradingEngineNotifier
+{
+    public Task DecisionMadeAsync(TradeSignal s, decimal mark, StrategyDecision d, CancellationToken ct) 
+        => d.ShouldOpen?Task.CompletedTask:telegram.SendAsync($"⛔ {s.BotName} BLOCKED\n{s.Side} {s.Symbol} @ {mark}\n{d.Reason}", ct);
+    
+    public Task ExecutionCompletedAsync(TradeSignal s, TradeExecutionResult r, CancellationToken ct) 
+        => telegram.SendAsync($"{(r.Succeeded?"✅":"❌")} {s.BotName} EXECUTION\n{r.Reason}\nPosition: {r.ShortId??"-"}", ct);
+    
+    public Task ProcessingFailedAsync(TradeSignal s, Exception e, CancellationToken ct) 
+        => telegram.SendAsync($"🚨 {s.BotName} ERROR\n{e.Message}", ct);}

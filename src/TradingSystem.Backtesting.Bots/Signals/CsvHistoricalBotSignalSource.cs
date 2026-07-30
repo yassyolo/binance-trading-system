@@ -6,8 +6,7 @@ namespace TradingSystem.Backtesting.Bots.Signals;
 
 public sealed class CsvHistoricalBotSignalSource(string filePath)
 {
-    public async Task<IReadOnlyList<HistoricalBotSignal>> LoadAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<HistoricalBotSignal>> LoadAsync(CancellationToken ct = default)
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException("Signal CSV was not found.", filePath);
@@ -22,17 +21,17 @@ public sealed class CsvHistoricalBotSignalSource(string filePath)
             options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var reader = new StreamReader(stream);
 
-        var header = await reader.ReadLineAsync(cancellationToken);
+        var header = await reader.ReadLineAsync(ct);
         if (header is null)
             return [];
 
         var separator = header.Contains(';') ? ';' : ',';
         var lineNumber = 1;
 
-        while (await reader.ReadLineAsync(cancellationToken) is { } raw)
+        while (await reader.ReadLineAsync(ct) is { } raw)
         {
             lineNumber++;
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(raw))
                 continue;
 

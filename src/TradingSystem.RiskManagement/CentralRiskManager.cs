@@ -21,17 +21,17 @@ public sealed class CentralRiskManager(
 
     public async Task<RiskDecision> EvaluateOpenAsync(
         RiskEvaluationContext context,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         if (!_options.Enabled)
             return RiskDecision.Allow("Central risk management is disabled.");
 
-        await _admissionGate.WaitAsync(cancellationToken);
+        await _admissionGate.WaitAsync(ct);
         try
         {
             var now = clock.UtcNow;
-            var snapshot = await portfolio.GetSnapshotAsync(cancellationToken);
-            var sizing = await orderSizing.GetAsync(context.Signal.BotName, cancellationToken);
+            var snapshot = await portfolio.GetSnapshotAsync(ct);
+            var sizing = await orderSizing.GetAsync(context.Signal.BotName, ct);
 
             if (sizing is null || sizing.Quantity <= 0)
             {
@@ -51,7 +51,7 @@ public sealed class CentralRiskManager(
                     $"Candidate notional {candidateNotional:F2} exceeds bot limit {sizing.MaximumNotional.Value:F2}.");
             }
 
-            var riskState = await riskStateProvider.GetAsync(context.EvaluatedAtUtc, cancellationToken);
+            var riskState = await riskStateProvider.GetAsync(context.EvaluatedAtUtc, ct);
 
             if (_options.BlockWhenReconciliationHasCriticalFindings &&
                 riskState.HasCriticalReconciliationFindings)

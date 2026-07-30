@@ -11,7 +11,7 @@ public sealed class GlobalExceptionHandler(
     public async ValueTask<bool> TryHandleAsync(
         HttpContext context,
         Exception exception,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var descriptor = Describe(context, exception);
 

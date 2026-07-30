@@ -17,7 +17,7 @@ public sealed class UserStreamEventProcessor(
     private long _sequence;
     private readonly UserStreamServiceOptions _options = options.Value;
 
-    public async Task ProcessAsync(string raw, CancellationToken cancellationToken)
+    public async Task ProcessAsync(string raw, CancellationToken ct)
     {
         try
         {
@@ -41,18 +41,18 @@ public sealed class UserStreamEventProcessor(
             };
 
             if (_options.PublishRaw)
-                await publisher.PublishAsync(RedisChannels.UserStreamRaw, envelope, cancellationToken);
+                await publisher.PublishAsync(RedisChannels.UserStreamRaw, envelope, ct);
 
             switch (eventType)
             {
                 case "ORDER_TRADE_UPDATE":
                 case "ALGO_UPDATE":
                 case "TRADE_LITE":
-                    await publisher.PublishAsync(RedisChannels.UserStreamOrder, envelope, cancellationToken);
+                    await publisher.PublishAsync(RedisChannels.UserStreamOrder, envelope, ct);
                     break;
 
                 case "ACCOUNT_UPDATE":
-                    await publisher.PublishAsync(RedisChannels.UserStreamAccount, envelope, cancellationToken);
+                    await publisher.PublishAsync(RedisChannels.UserStreamAccount, envelope, ct);
                     break;
 
                 case "listenKeyExpired":
@@ -64,7 +64,7 @@ public sealed class UserStreamEventProcessor(
                     break;
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }

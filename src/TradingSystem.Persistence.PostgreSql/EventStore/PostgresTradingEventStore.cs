@@ -7,17 +7,17 @@ namespace TradingSystem.Persistence.PostgreSql.EventStore;
 
 public sealed class PostgresTradingEventStore(ITradingDbConnectionFactory connections) : ITradingEventStore
 {
-    public async Task<StoredTradingEvent> AppendAsync(AppendTradingEvent request,  CancellationToken cancellationToken)
+    public async Task<StoredTradingEvent> AppendAsync(AppendTradingEvent request,  CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.EventType);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.AggregateType);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.AggregateId);
 
-        await using var connection  =  await connections.OpenAsync(cancellationToken);
-        await using var transaction  =  await connection.BeginTransactionAsync(cancellationToken);
+        await using var connection  =  await connections.OpenAsync(ct);
+        await using var transaction  =  await connection.BeginTransactionAsync(ct);
         await connection.ExecuteAsync(new CommandDefinition(
             "SELECT pg_advisory_xact_lock(hashtextextended(@StreamKey,  0));", 
-            new { StreamKey  =  $"{request.AggregateType}:{request.AggregateId}" },  transaction,  cancellationToken: cancellationToken));
+            new { StreamKey  =  $"{request.AggregateType}:{request.AggregateId}" },  transaction,  cancellationToken: ct));
 
         const string sql  =  """
             WITH next_version AS (
@@ -50,12 +50,12 @@ public sealed class PostgresTradingEventStore(ITradingDbConnectionFactory connec
             request.CorrelationId,  request.CausationId,  request.Actor, 
             Payload  =  JsonSerializer.Serialize(request.Payload,  EventJson.Options), 
             Metadata  =  JsonSerializer.Serialize(request.Metadata ?? new Dictionary<string,  object?>(),  EventJson.Options)
-        },  transaction,  cancellationToken: cancellationToken));
-        await transaction.CommitAsync(cancellationToken);
+        },  transaction,  cancellationToken: ct));
+        await transaction.CommitAsync(ct);
         return row.ToStored();
     }
 
-    public async Task<IReadOnlyList<StoredTradingEvent>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<StoredTradingEvent>> ReadAsync(EventStoreQuery query,  CancellationToken ct)
     {
         var take  =  Math.Clamp(query.Take,  1,  500);
         var skip  =  Math.Max(0,  query.Skip);
@@ -82,17 +82,17 @@ public sealed class PostgresTradingEventStore(ITradingDbConnectionFactory connec
             ORDER BY global_position DESC
             OFFSET @Skip LIMIT @Take;
             """;
-        await using var connection  =  await connections.OpenAsync(cancellationToken);
+        await using var connection  =  await connections.OpenAsync(ct);
         var rows  =  await connection.QueryAsync<EventRow>(new CommandDefinition(sql,  new
         {
             query.AggregateType,  query.AggregateId,  query.BotName,  query.Symbol,  query.PositionId, 
             query.SignalId,  query.CorrelationId,  query.EventType,  query.FromUtc,  query.ToUtc, 
             query.AfterGlobalPosition,  Skip  =  skip,  Take  =  take
-        },  cancellationToken: cancellationToken));
+        },  cancellationToken: ct));
         return rows.Select(x  =>  x.ToStored()).ToArray();
     }
 
-    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType,  string aggregateId,  long afterVersion,  int take,  CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType,  string aggregateId,  long afterVersion,  int take,  CancellationToken ct)
     {
         const string sql  =  """
             SELECT global_position AS GlobalPosition,  event_id AS EventId,  event_type AS EventType, 
@@ -106,9 +106,9 @@ public sealed class PostgresTradingEventStore(ITradingDbConnectionFactory connec
             WHERE aggregate_type  =  @AggregateType AND aggregate_id  =  @AggregateId AND aggregate_version > @AfterVersion
             ORDER BY aggregate_version ASC LIMIT @Take;
             """;
-        await using var connection  =  await connections.OpenAsync(cancellationToken);
+        await using var connection  =  await connections.OpenAsync(ct);
         var rows  =  await connection.QueryAsync<EventRow>(new CommandDefinition(sql,  new
-        { AggregateType  =  aggregateType,  AggregateId  =  aggregateId,  AfterVersion  =  Math.Max(0,  afterVersion),  Take  =  Math.Clamp(take,  1,  1000) },  cancellationToken: cancellationToken));
+        { AggregateType  =  aggregateType,  AggregateId  =  aggregateId,  AfterVersion  =  Math.Max(0,  afterVersion),  Take  =  Math.Clamp(take,  1,  1000) },  cancellationToken: ct));
         return rows.Select(x  =>  x.ToStored()).ToArray();
     }
 

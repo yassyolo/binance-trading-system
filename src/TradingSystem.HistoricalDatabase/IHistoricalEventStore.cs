@@ -2,13 +2,13 @@
 
 public interface IHistoricalEventStore
 {
-    Task AppendAsync(HistoricalEvent historicalEvent, CancellationToken cancellationToken);
-    Task AppendBatchAsync(IReadOnlyCollection<HistoricalEvent> events, CancellationToken cancellationToken);
-    Task UpsertTradeAsync(HistoricalTradeSummary trade, CancellationToken cancellationToken);
-    Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken cancellationToken);
+    Task AppendAsync(HistoricalEvent historicalEvent, CancellationToken ct);
+    Task AppendBatchAsync(IReadOnlyCollection<HistoricalEvent> events, CancellationToken ct);
+    Task UpsertTradeAsync(HistoricalTradeSummary trade, CancellationToken ct);
+    Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken ct);
 }
 
 public interface IHistoricalEventSink
 {
-    Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken cancellationToken);
+    Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken ct);
 }

@@ -21,41 +21,41 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
                 $"Connection string '{_options.ConnectionStringName}' was not found.");
     }
 
-    public Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken cancellationToken) =>
-        AppendAsync(historicalEvent, cancellationToken);
+    public Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken ct) =>
+        AppendAsync(historicalEvent, ct);
 
-    public async Task AppendAsync(HistoricalEvent historicalEvent, CancellationToken cancellationToken)
+    public async Task AppendAsync(HistoricalEvent historicalEvent, CancellationToken ct)
     {
         if (!_options.Enabled)
             return;
 
         await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
+        await connection.OpenAsync(ct);
         await using var command = CreateInsertCommand(connection, historicalEvent);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     public async Task AppendBatchAsync(
         IReadOnlyCollection<HistoricalEvent> events,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         if (!_options.Enabled || events.Count == 0)
             return;
 
         await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await connection.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
 
         foreach (var item in events)
         {
             await using var command = CreateInsertCommand(connection, item, transaction);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(ct);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        await transaction.CommitAsync(ct);
     }
 
-    public async Task UpsertTradeAsync(HistoricalTradeSummary trade, CancellationToken cancellationToken)
+    public async Task UpsertTradeAsync(HistoricalTradeSummary trade, CancellationToken ct)
     {
         if (!_options.Enabled)
             return;
@@ -81,7 +81,7 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
+        await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand(sql, connection)
         {
             CommandTimeout = _options.CommandTimeoutSeconds
@@ -101,10 +101,10 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
         command.Parameters.AddWithValue("net_pnl", trade.NetPnl);
         command.Parameters.AddWithValue("close_reason", trade.CloseReason);
         command.Parameters.AddWithValue("environment", trade.Environment);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
-    public async Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken cancellationToken)
+    public async Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, CancellationToken ct)
     {
         if (!_options.Enabled)
             return 0;
@@ -119,13 +119,13 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
+        await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand(sql, connection)
         {
             CommandTimeout = _options.CommandTimeoutSeconds
         };
         command.Parameters.AddWithValue("cutoff", cutoffUtc);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
     }
 
     private NpgsqlCommand CreateInsertCommand(

@@ -41,39 +41,38 @@ public sealed class BotCommandWorker(
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task ProcessBatchAsync(CancellationToken cancellationToken)
+    private async Task ProcessBatchAsync(CancellationToken ct)
     {
-        var commands  =  await queue.ClaimPendingAsync(
-            _workerId, 
-            _options.CommandBatchSize, 
-            TimeSpan.FromSeconds(Math.Max(10,  _options.CommandProcessingTimeoutSeconds)), 
-            cancellationToken);
+        var commands  =  await queue.ClaimPendingAsync(_workerId,  _options.CommandBatchSize,  TimeSpan.FromSeconds(Math.Max(10,  _options.CommandProcessingTimeoutSeconds)),  ct);
 
         foreach (var command in commands)
         {
             try
             {
-                await ProcessAsync(command,  cancellationToken);
-                await queue.CompleteAsync(command.CommandId,  _workerId,  cancellationToken);
+                await ProcessAsync(command,  ct);
+                await queue.CompleteAsync(command.CommandId,  _workerId,  ct);
+                
                 logger.LogInformation("Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",  command.CommandId,  command.BotName,  command.Command);
             }
             catch (UnsupportedBotCommandException ex)
             {
-                await queue.RejectAsync(command.CommandId,  _workerId,  ex.Message,  cancellationToken);
+                await queue.RejectAsync(command.CommandId,  _workerId,  ex.Message,  ct);
+                
                 logger.LogWarning("Bot command rejected. CommandId = {CommandId} Reason = {Reason}",  command.CommandId,  ex.Message);
             }
             catch (Exception ex)
             {
                 var retryable  =  command.AttemptCount < _options.MaximumCommandAttempts;
-                await queue.FailAsync(command.CommandId,  _workerId,  ex.Message,  retryable,  cancellationToken);
+                await queue.FailAsync(command.CommandId,  _workerId,  ex.Message,  retryable,  ct);
+                
                 logger.LogError(ex,  "Bot command failed. CommandId = {CommandId} Retryable = {Retryable}",  command.CommandId,  retryable);
             }
         }
     }
 
-    private async Task ProcessAsync(BotCommand command,  CancellationToken cancellationToken)
+    private async Task ProcessAsync(BotCommand command,  CancellationToken ct)
     {
-        var current  =  await stateProvider.GetRequiredAsync(command.BotName,  cancellationToken);
+        var current  =  await stateProvider.GetRequiredAsync(command.BotName,  ct);
         var target  =  command.Command switch
         {
             BotCommandType.Start  =>  BotRuntimeStatus.Running, 
@@ -90,7 +89,7 @@ public sealed class BotCommandWorker(
             return;
 
         var executionEnabled  =  target == BotRuntimeStatus.Running;
-        await stateStore.TransitionAsync(command.BotName,  target,  current.Version,  command.RequestedBy,  command.Reason,  executionEnabled,  cancellationToken);
+        await stateStore.TransitionAsync(command.BotName,  target,  current.Version,  command.RequestedBy,  command.Reason,  executionEnabled,  ct);
         stateProvider.Invalidate(command.BotName);
     }
 

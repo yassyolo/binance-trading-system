@@ -47,19 +47,19 @@ public sealed class HistoricalDataIngestionWorker(
         }
     }
 
-    private async Task IngestAsync(string symbol, string interval, HistoricalDataIngestionOptions settings, CancellationToken cancellationToken)
+    private async Task IngestAsync(string symbol, string interval, HistoricalDataIngestionOptions settings, CancellationToken ct)
     {
         var duration = ParseInterval(interval);
-        var latest = await store.GetLatestOpenTimeAsync(symbol, interval, cancellationToken);
+        var latest = await store.GetLatestOpenTimeAsync(symbol, interval, ct);
         var overlap = TimeSpan.FromTicks(checked(duration.Ticks * Math.Max(1, settings.OverlapCandles)));
         var from = latest?.Subtract(overlap) ?? DateTime.UtcNow.AddDays(-settings.InitialLookbackDays);
         var to = DateTime.UtcNow;
 
-        var candles = await source.LoadAsync(symbol, interval, from, to, cancellationToken);
-        await store.UpsertCandlesAsync(candles, cancellationToken);
-        var all = await store.LoadCandlesAsync(symbol, interval, from, to, cancellationToken);
+        var candles = await source.LoadAsync(symbol, interval, from, to, ct);
+        await store.UpsertCandlesAsync(candles, ct);
+        var all = await store.LoadCandlesAsync(symbol, interval, from, to, ct);
         var gaps = DetectGaps(symbol, interval, all, duration);
-        await store.ReplaceGapsAsync(symbol, interval, gaps, cancellationToken);
+        await store.ReplaceGapsAsync(symbol, interval, gaps, ct);
 
         logger.LogInformation("Historical data {Symbol} {Interval}: upserted {Count}, gaps {Gaps}", symbol, interval, candles.Count, gaps.Count);
     }

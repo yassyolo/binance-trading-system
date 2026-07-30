@@ -23,13 +23,13 @@ public sealed record BotRuntimeState(
 
 public interface IBotRuntimeStateStore
 {
-    Task<BotRuntimeState?> GetAsync(string botName,  CancellationToken cancellationToken);
-    Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken cancellationToken);
-    Task<BotRuntimeState> TransitionAsync(string botName,  BotRuntimeStatus status,  long expectedVersion,  string user,  string reason,  bool executionEnabled,  CancellationToken cancellationToken);
+    Task<BotRuntimeState?> GetAsync(string botName,  CancellationToken ct);
+    Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct);
+    Task<BotRuntimeState> TransitionAsync(string botName,  BotRuntimeStatus status,  long expectedVersion,  string user,  string reason,  bool executionEnabled,  CancellationToken ct);
 }
 
 public interface IBotRuntimeStateProvider
 {
-    Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken cancellationToken);
+    Task<BotRuntimeState> GetRequiredAsync(string botName,  CancellationToken ct);
     void Invalidate(string botName);
 }

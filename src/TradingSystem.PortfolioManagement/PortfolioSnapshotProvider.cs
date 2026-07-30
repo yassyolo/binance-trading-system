@@ -21,14 +21,14 @@ public sealed class PortfolioSnapshotProvider(
     private PortfolioSnapshot? _cached;
     private DateTime _cacheExpiresAtUtc;
 
-    public async Task<PortfolioSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+    public async Task<PortfolioSnapshot> GetSnapshotAsync(CancellationToken ct)
     {
         var now = clock.UtcNow;
         var cached = Volatile.Read(ref _cached);
         if (cached is not null && now < _cacheExpiresAtUtc)
             return cached;
 
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(ct);
         try
         {
             now = clock.UtcNow;
@@ -36,7 +36,7 @@ public sealed class PortfolioSnapshotProvider(
             if (cached is not null && now < _cacheExpiresAtUtc)
                 return cached;
 
-            var snapshot = await BuildAsync(now, cancellationToken);
+            var snapshot = await BuildAsync(now, ct);
             _cached = snapshot;
             _cacheExpiresAtUtc = now.AddMilliseconds(_options.SnapshotCacheMilliseconds);
             return snapshot;
@@ -52,7 +52,7 @@ public sealed class PortfolioSnapshotProvider(
         _cacheExpiresAtUtc = DateTime.MinValue;
     }
 
-    private async Task<PortfolioSnapshot> BuildAsync(DateTime now, CancellationToken cancellationToken)
+    private async Task<PortfolioSnapshot> BuildAsync(DateTime now, CancellationToken ct)
     {
         if (!_options.Enabled)
             return Empty(now);
@@ -64,7 +64,7 @@ public sealed class PortfolioSnapshotProvider(
 
         var positionTasks = botNames.Select(async botName =>
         {
-            var positions = await positionStore.GetAllAsync(botName, cancellationToken);
+            var positions = await positionStore.GetAllAsync(botName, ct);
             return positions.Where(x => !x.Closed && x.RemainingQuantity > 0).ToArray();
         });
 
@@ -79,7 +79,7 @@ public sealed class PortfolioSnapshotProvider(
 
         var priceTasks = symbols.ToDictionary(
             symbol => symbol,
-            symbol => marketPriceProvider.GetMarkPriceAsync(symbol, cancellationToken),
+            symbol => marketPriceProvider.GetMarkPriceAsync(symbol, ct),
             StringComparer.OrdinalIgnoreCase);
 
         await Task.WhenAll(priceTasks.Values);
@@ -102,7 +102,7 @@ public sealed class PortfolioSnapshotProvider(
             unrealizedPnl,
             _options.InitialEquity,
             now,
-            cancellationToken);
+            ct);
 
         var equity = _options.InitialEquity + performance.RealizedPnlToday + unrealizedPnl;
         var peak = Math.Max(performance.PeakEquityToday, equity);

@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Runtime;
@@ -13,6 +11,7 @@ public static class DependencyInjection
         services.AddOptions<BotRuntimeOptions>()
             .Bind(configuration.GetSection(BotRuntimeOptions.SectionName))
             .ValidateOnStart();
+       
         services.AddSingleton<IValidateOptions<BotRuntimeOptions>, BotRuntimeOptionsValidator>();
         services.AddMemoryCache();
         services.AddSingleton<IBotRuntimeStateProvider, CachedBotRuntimeStateProvider>();

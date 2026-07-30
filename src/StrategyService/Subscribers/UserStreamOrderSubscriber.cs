@@ -23,10 +23,9 @@ public sealed class UserStreamOrderSubscriber(
     ITradingEnvironmentProvider environment,
     ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
 {
-    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers =
-        handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers = handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
 
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var subscriber = redis.GetSubscriber();
         var channel = RedisChannel.Literal(RedisChannels.UserStreamOrder);
@@ -34,23 +33,22 @@ public sealed class UserStreamOrderSubscriber(
         await subscriber.SubscribeAsync(channel, async (_, message) =>
         {
             if (message.HasValue)
-                await ProcessAsync(message!, cancellationToken);
+                await ProcessAsync(message!, ct);
         });
 
         try
         {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
         finally
         {
             await subscriber.UnsubscribeAsync(channel);
         }
     }
 
-    private async Task ProcessAsync(string raw, CancellationToken cancellationToken)
+    private async Task ProcessAsync(string raw, CancellationToken ct)
     {
         try
         {
@@ -84,22 +82,23 @@ public sealed class UserStreamOrderSubscriber(
                          ?? GetString(order, "orderStatus")
                          ?? GetString(order, "algoStatus")
                          ?? GetString(order, "status");
+            
             var orderId = GetString(order, "i")
                           ?? GetString(order, "orderId")
                           ?? GetString(order, "algoId");
+            
             var symbol = GetString(order, "s") ?? "unknown";
+            
             var key = $"{eventType}:{orderId}:{clientId}:{status}";
 
-            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), cancellationToken))
+            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
                 return;
 
             var quantity = GetDecimal(order, "q");
             var executed = GetDecimal(order, "z");
             var price = GetDecimal(order, "p");
 
-            metrics.OrderEvents
-                .WithLabels(bot, symbol, role, status ?? "unknown")
-                .Inc();
+            metrics.OrderEvents.WithLabels(bot, symbol, role, status ?? "unknown").Inc();
 
             await history.RecordOrderEventAsync(new OrderEventHistoryRecord(
                 key,
@@ -116,7 +115,7 @@ public sealed class UserStreamOrderSubscriber(
                 price,
                 quantity,
                 executed,
-                raw), cancellationToken);
+                raw), ct);
 
             await historicalEvents.WriteAsync(new HistoricalEvent(
                 Guid.NewGuid(),
@@ -142,26 +141,25 @@ public sealed class UserStreamOrderSubscriber(
                     ["client_id"] = clientId,
                     ["executed_quantity"] = executed
                 },
-                raw), cancellationToken);
+                raw), ct);
 
             if (role == "TP" && status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase) == true)
-                await handler.HandleTpFilledAsync(shortId, executed, cancellationToken);
+                await handler.HandleTpFilledAsync(shortId, executed, ct);
             else if (role == "TP" && status is "CANCELED" or "EXPIRED" or "REJECTED")
-                await handler.HandleTpTerminalAsync(shortId, status, cancellationToken);
+                await handler.HandleTpTerminalAsync(shortId, status, ct);
             else if (role == "SL" && IsTriggered(status))
-                await handler.HandleSlTriggeredAsync(shortId, cancellationToken);
+                await handler.HandleSlTriggeredAsync(shortId, ct);
             else if (role is "S3" or "STOP3" && IsTriggered(status))
-                await handler.HandleStop3TriggeredAsync(shortId, cancellationToken);
+                await handler.HandleStop3TriggeredAsync(shortId, ct);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception exception)
         {
-            metrics.ProcessingFailures
-                .WithLabels("user_stream_order", "unknown", exception.GetType().Name)
-                .Inc();
+            metrics.ProcessingFailures.WithLabels("user_stream_order", "unknown", exception.GetType().Name).Inc();
+            
             logger.LogError(exception, "Order event processing failed.");
         }
     }

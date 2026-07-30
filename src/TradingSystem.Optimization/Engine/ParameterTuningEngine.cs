@@ -12,14 +12,14 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
         Func<TResult,  BotBacktestMetrics> metricsSelector, 
         OptimizationScoreWeights weights, 
         int top  =  50, 
-        CancellationToken cancellationToken  =  default)
+        CancellationToken ct = default)
     {
         var trials  =  new List<ParameterTrial<TOptions>>();
         var sequence  =  0;
         foreach (var candidate in candidates)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var result  =  await run(candidate,  cancellationToken);
+            ct.ThrowIfCancellationRequested();
+            var result  =  await run(candidate,  ct);
             var metrics  =  metricsSelector(result);
             trials.Add(new ParameterTrial<TOptions>
             {

@@ -14,10 +14,7 @@ public sealed class BotBacktestReportWriter
         WriteIndented = true
     };
 
-    public async Task<string> WriteAsync<TOptions>(
-        BotBacktestResult<TOptions> result,
-        string outputRoot,
-        CancellationToken cancellationToken = default)
+    public async Task<string> WriteAsync<TOptions>(BotBacktestResult<TOptions> result, string outputRoot, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(result);
         if (string.IsNullOrWhiteSpace(outputRoot))
@@ -26,11 +23,11 @@ public sealed class BotBacktestReportWriter
         var directory = Path.Combine(outputRoot, Sanitize(result.RunId));
         Directory.CreateDirectory(directory);
 
-        await WriteAtomicAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(result, JsonOptions), cancellationToken);
-        await WriteAtomicAsync(Path.Combine(directory, "positions.csv"), PositionsCsv(result), cancellationToken);
-        await WriteAtomicAsync(Path.Combine(directory, "executions.csv"), ExecutionsCsv(result), cancellationToken);
-        await WriteAtomicAsync(Path.Combine(directory, "decisions.csv"), DecisionsCsv(result), cancellationToken);
-        await WriteAtomicAsync(Path.Combine(directory, "report.html"), Html(result), cancellationToken);
+        await WriteAtomicAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(result, JsonOptions), ct);
+        await WriteAtomicAsync(Path.Combine(directory, "positions.csv"), PositionsCsv(result), ct);
+        await WriteAtomicAsync(Path.Combine(directory, "executions.csv"), ExecutionsCsv(result), ct);
+        await WriteAtomicAsync(Path.Combine(directory, "decisions.csv"), DecisionsCsv(result), ct);
+        await WriteAtomicAsync(Path.Combine(directory, "report.html"), Html(result), ct);
         return directory;
     }
 
@@ -122,12 +119,12 @@ public sealed class BotBacktestReportWriter
         return result;
     }
 
-    private static async Task WriteAtomicAsync(string path, string content, CancellationToken cancellationToken)
+    private static async Task WriteAtomicAsync(string path, string content, CancellationToken ct)
     {
         var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
         try
         {
-            await File.WriteAllTextAsync(temporaryPath, content, new UTF8Encoding(false), cancellationToken);
+            await File.WriteAllTextAsync(temporaryPath, content, new UTF8Encoding(false), ct);
             File.Move(temporaryPath, path, overwrite: true);
         }
         finally

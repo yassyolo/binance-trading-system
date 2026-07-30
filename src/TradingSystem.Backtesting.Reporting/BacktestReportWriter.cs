@@ -10,13 +10,13 @@ public sealed class BacktestReportWriter
 {
     private static readonly JsonSerializerOptions JsonOptions  =  new(JsonSerializerDefaults.Web) { WriteIndented  =  true };
 
-    public async Task<string> WriteAllAsync(BacktestResult result,  string rootOutputDirectory,  CancellationToken cancellationToken  =  default)
+    public async Task<string> WriteAllAsync(BacktestResult result, string rootOutputDirectory, CancellationToken ct = default)
     {
         var dir  =  Path.Combine(rootOutputDirectory,  Sanitize(result.RunId));
         Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(Path.Combine(dir,  "result.json"),  JsonSerializer.Serialize(result,  JsonOptions),  cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(dir,  "trades.csv"),  BuildTradesCsv(result),  cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(dir,  "report.html"),  BuildHtml(result),  cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "result.json"),  JsonSerializer.Serialize(result,  JsonOptions),  ct);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "trades.csv"),  BuildTradesCsv(result),  ct);
+        await File.WriteAllTextAsync(Path.Combine(dir,  "report.html"),  BuildHtml(result),  ct);
         WriteExcel(result,  Path.Combine(dir,  "report.xlsx"));
         return dir;
     }

@@ -75,9 +75,9 @@ public sealed record StoredTradingEvent(long GlobalPosition,  EventEnvelope Even
 
 public interface ITradingEventStore
 {
-    Task<StoredTradingEvent> AppendAsync(AppendTradingEvent request,  CancellationToken cancellationToken);
-    Task<IReadOnlyList<StoredTradingEvent>> ReadAsync(EventStoreQuery query,  CancellationToken cancellationToken);
-    Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType,  string aggregateId,  long afterVersion,  int take,  CancellationToken cancellationToken);
+    Task<StoredTradingEvent> AppendAsync(AppendTradingEvent request,  CancellationToken ct);
+    Task<IReadOnlyList<StoredTradingEvent>> ReadAsync(EventStoreQuery query,  CancellationToken ct);
+    Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType,  string aggregateId,  long afterVersion,  int take,  CancellationToken ct);
 }
 
 public static class EventJson

@@ -12,24 +12,20 @@ namespace StrategyService.Bots.Bot8015;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddBot8015(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddBot8015(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<Bot8015Options>()
             .Bind(configuration.GetSection(Bot8015Options.SectionName))
             .ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<Bot8015Options>, Bot8015OptionsValidator>();
-        services.AddSingleton<IBinanceTradingConfiguration>(serviceProvider =>
-            serviceProvider.GetRequiredService<IOptions<Bot8015Options>>().Value);
+        services.AddSingleton<IBinanceTradingConfiguration>(serviceProvider => serviceProvider.GetRequiredService<IOptions<Bot8015Options>>().Value);
 
         services.AddSingleton<ITradingStrategy, Bot8015Strategy>();
         services.AddSingleton<IBotTradeExecutor, Bot8015TradeExecutor>();
         services.AddSingleton<IBotActivePositionProvider, Bot8015ActivePositionProvider>();
         services.AddSingleton<Bot8015PositionEvents>();
-        services.AddSingleton<IBotOrderEventHandler>(serviceProvider =>
-            serviceProvider.GetRequiredService<Bot8015PositionEvents>());
+        services.AddSingleton<IBotOrderEventHandler>(serviceProvider => serviceProvider.GetRequiredService<Bot8015PositionEvents>());
         services.AddSingleton<IBotHealingService, Bot8015HealingService>();
 
         services.AddSingleton<Bot8015Stop3OrderService>();

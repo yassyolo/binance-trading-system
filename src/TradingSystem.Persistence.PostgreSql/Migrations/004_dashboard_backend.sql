@@ -37,5 +37,4 @@ VALUES
 ('BOT8014', 'TpOnlyGrid', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, 400, 200, 2, 180), 
 ('BOT8015', 'ProtectedStop3', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, null, null, 1, 180), 
 ('BOT8016', 'AlligatorMultiTimeframe', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, null, null, 1, 180)
-ON CONFLICT(bot_name) DO NOTHING;
-*/
+ON CONFLICT(bot_name) DO NOTHING;*/

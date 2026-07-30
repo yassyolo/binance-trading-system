@@ -162,31 +162,31 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
 
     private static async Task<string> ReadBodyAsync(
         HttpRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         using var reader = new StreamReader(request.Body, Encoding.UTF8, false, 4096, true);
-        return await reader.ReadToEndAsync(cancellationToken);
+        return await reader.ReadToEndAsync(ct);
     }
 
     private static Task RemoveExpiredAsync(
         System.Data.Common.DbConnection connection,
         string key,
         string actor,
-        CancellationToken cancellationToken) =>
+        CancellationToken ct) =>
         connection.ExecuteAsync(new CommandDefinition(@"
             delete from trading_dashboard.api_idempotency_keys
             where idempotency_key = @key and actor = @actor and expires_at_utc <= now();",
-            new { key, actor }, cancellationToken: cancellationToken));
+            new { key, actor }, cancellationToken: ct));
 
     private static Task ReleaseAsync(
         System.Data.Common.DbConnection connection,
         string key,
         string actor,
-        CancellationToken cancellationToken) =>
+        CancellationToken ct) =>
         connection.ExecuteAsync(new CommandDefinition(@"
             delete from trading_dashboard.api_idempotency_keys
             where idempotency_key = @key and actor = @actor and status = 'Processing';",
-            new { key, actor }, cancellationToken: cancellationToken));
+            new { key, actor }, cancellationToken: ct));
 
     private sealed record ExistingRequest(
         string RequestHash,

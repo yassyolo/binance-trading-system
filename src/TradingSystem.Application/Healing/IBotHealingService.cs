@@ -3,5 +3,5 @@ namespace TradingSystem.Application.Healing;
 public interface IBotHealingService
 {
     string BotName {  get;  }
-    Task HealAsync(HealingSnapshotMessage snapshot,  CancellationToken cancellationToken);
+    Task HealAsync(HealingSnapshotMessage snapshot,  CancellationToken ct);
 }

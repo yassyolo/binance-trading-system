@@ -13,39 +13,38 @@ public sealed class PositionReconciliationService(
 {
     private readonly ReconciliationOptions _options = options.Value;
 
-    public async Task<ReconciliationRunResult> RunAsync(CancellationToken cancellationToken)
+    public async Task<ReconciliationRunResult> RunAsync(CancellationToken ct)
     {
         var startedAtUtc = DateTime.UtcNow;
         var findings = new List<ReconciliationFinding>();
 
         foreach (var symbol in _options.Symbols.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
-            var remote = await exchange.GetAsync(symbol, cancellationToken);
-            var localPositions = await LoadLocalPositionsAsync(symbol, cancellationToken);
+            var remote = await exchange.GetAsync(symbol, ct);
+            var localPositions = await LoadLocalPositionsAsync(symbol, ct);
 
             DetectPositionQuantityFindings(symbol, localPositions, remote.Positions, findings);
             DetectLocalPositionAndProtectiveOrderFindings(localPositions, remote, findings);
             DetectOrphanOrders(symbol, localPositions, remote.Orders, findings);
         }
 
-        var healedCount = await ExecuteAllowedHealingActionsAsync(findings, cancellationToken);
+        var healedCount = await ExecuteAllowedHealingActionsAsync(findings, ct);
         var result = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, healedCount);
-        await findingStore.SaveRunAsync(result, cancellationToken);
+        await findingStore.SaveRunAsync(result, ct);
         return result;
     }
 
-    private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(
-        string symbol,
-        CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(string symbol, CancellationToken ct)
     {
         var result = new List<BotPosition>();
 
         foreach (var bot in _options.Bots.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var positions = await localStore.GetAllAsync(bot, cancellationToken);
+            ct.ThrowIfCancellationRequested();
+            var positions = await localStore.GetAllAsync(bot, ct);
+            
             result.AddRange(positions.Where(position =>
                 !position.Closed &&
                 position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
@@ -60,8 +59,6 @@ public sealed class PositionReconciliationService(
         IReadOnlyCollection<ExchangePositionSnapshot> remotePositions,
         ICollection<ReconciliationFinding> findings)
     {
-        // Binance position risk is aggregated by symbol and position side in Hedge Mode.
-        // Therefore, compare aggregate local quantity to aggregate exchange quantity.
         foreach (var side in new[] { "Long", "Short" })
         {
             var localForSide = localPositions
@@ -161,14 +158,9 @@ public sealed class PositionReconciliationService(
         }
     }
 
-    private static void DetectOrphanOrders(
-        string symbol,
-        IReadOnlyCollection<BotPosition> localPositions,
-        IReadOnlyCollection<ExchangeOrderSnapshot> remoteOrders,
-        ICollection<ReconciliationFinding> findings)
+    private static void DetectOrphanOrders(string symbol, IReadOnlyCollection<BotPosition> localPositions, IReadOnlyCollection<ExchangeOrderSnapshot> remoteOrders, ICollection<ReconciliationFinding> findings)
     {
-        var knownClientOrderIds = localPositions
-            .SelectMany(EnumerateClientOrderIds)
+        var knownClientOrderIds = localPositions.SelectMany(EnumerateClientOrderIds)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var order in remoteOrders.Where(order =>
@@ -185,15 +177,14 @@ public sealed class PositionReconciliationService(
         }
     }
 
-    private async Task<int> ExecuteAllowedHealingActionsAsync(
-        IEnumerable<ReconciliationFinding> findings,
-        CancellationToken cancellationToken)
+    private async Task<int> ExecuteAllowedHealingActionsAsync(IEnumerable<ReconciliationFinding> findings, CancellationToken ct)
     {
         var healedCount = 0;
         foreach (var finding in findings.Where(finding => finding.AutoHealAllowed))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (await healer.ExecuteAsync(finding, cancellationToken))
+            ct.ThrowIfCancellationRequested();
+            
+            if (await healer.ExecuteAsync(finding, ct))
                 healedCount++;
         }
 
@@ -217,8 +208,7 @@ public sealed class PositionReconciliationService(
     private static string ResolveBot(string clientOrderId)
     {
         var separator = clientOrderId.IndexOf('_');
-        return separator > 0
-            ? clientOrderId[..separator]
+        return separator > 0 ? clientOrderId[..separator]
             : clientOrderId.Length >= 7 ? clientOrderId[..7] : "UNKNOWN";
     }
 

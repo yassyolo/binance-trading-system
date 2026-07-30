@@ -14,28 +14,18 @@ public sealed class Bot8016OrderEventHandler(
 
     public string BotName  =>  _options.BotName;
 
-    public Task HandleTpFilledAsync(
-        string shortId, 
-        decimal executedQuantity, 
-        CancellationToken cancellationToken)
+    public Task HandleTpFilledAsync(string shortId,  decimal executedQuantity,  CancellationToken ct)
          =>  lifecycle.HandleTpFilledAsync(
             shortId, 
             executedQuantity, 
-            cancellationToken);
+            ct);
 
-    public Task HandleTpTerminalAsync(
-        string shortId, 
-        string status, 
-        CancellationToken cancellationToken)
+    public Task HandleTpTerminalAsync(string shortId,  string status,  CancellationToken ct)
          =>  Task.CompletedTask;
 
-    public Task HandleSlTriggeredAsync(
-        string shortId, 
-        CancellationToken cancellationToken)
+    public Task HandleSlTriggeredAsync(string shortId,  CancellationToken ct)
          =>  Task.CompletedTask;
 
-    public Task HandleStop3TriggeredAsync(
-        string shortId, 
-        CancellationToken cancellationToken)
+    public Task HandleStop3TriggeredAsync(string shortId,  CancellationToken ct)
          =>  Task.CompletedTask;
 }

@@ -36,5 +36,4 @@ BEGIN
     IF unit  =  'd' THEN RETURN make_interval(days  =>  amount); END IF;
     RAISE EXCEPTION 'Unsupported interval: %',  value;
 END;
-$$;
-*/
+$$;*/

@@ -30,11 +30,11 @@ public sealed class PrometheusMetricServerWorker(
         return Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override async Task StopAsync(CancellationToken ct)
     {
         if (_server is not null)
             await _server.StopAsync();
-        await base.StopAsync(cancellationToken);
+        await base.StopAsync(ct);
     }
 
     public override void Dispose()

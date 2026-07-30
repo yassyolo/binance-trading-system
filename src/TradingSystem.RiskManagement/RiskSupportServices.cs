@@ -7,7 +7,7 @@ public sealed record RiskOrderSize(decimal Quantity, int Leverage, decimal? Maxi
 
 public interface IRiskOrderSizingProvider
 {
-    Task<RiskOrderSize?> GetAsync(string botName, CancellationToken cancellationToken);
+    Task<RiskOrderSize?> GetAsync(string botName, CancellationToken ct);
 }
 
 public sealed class ConfiguredRiskOrderSizingProvider(
@@ -16,9 +16,9 @@ public sealed class ConfiguredRiskOrderSizingProvider(
 {
     private readonly CentralRiskOptions _options = options.Value;
 
-    public async Task<RiskOrderSize?> GetAsync(string botName, CancellationToken cancellationToken)
+    public async Task<RiskOrderSize?> GetAsync(string botName, CancellationToken ct)
     {
-        var runtime = await runtimeConfigurationProvider.GetAsync(botName, cancellationToken);
+        var runtime = await runtimeConfigurationProvider.GetAsync(botName, ct);
         if (runtime is not null && runtime.Quantity > 0 && runtime.Leverage > 0)
             return new RiskOrderSize(runtime.Quantity, runtime.Leverage, null);
 

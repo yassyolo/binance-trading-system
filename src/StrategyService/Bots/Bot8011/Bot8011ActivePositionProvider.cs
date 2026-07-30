@@ -1,2 +1,48 @@
-using Microsoft.Extensions.Options;using TradingSystem.Application.Positions;using TradingSystem.Binance.Execution;using TradingSystem.Binance.Orders.Contracts;
-namespace StrategyService.Bots.Bot8011;public sealed class Bot8011ActivePositionProvider(IOptions<Bot8011Options> options, IPositionStore store, IBinanceFuturesOrderClient orders):IBotActivePositionProvider{readonly Bot8011Options o = options.Value;public string BotName => o.BotName;public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string symbol, CancellationToken ct){var positions = await store.GetAllAsync(BotName, ct);var normal = await orders.GetOpenOrdersAsync(symbol, ct);var algo = await orders.GetOpenAlgoOrdersAsync(symbol, ct);var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);foreach(var x in normal)if(BinanceClientOrderId.TryParse(x.ClientOrderId, out var bot, out _, out var id) && bot==BotName)ids.Add(id);foreach(var x in algo)if(BinanceClientOrderId.TryParse(x.ClientAlgoId, out var bot, out _, out var id) && bot==BotName)ids.Add(id);return positions.Where(x => !x.Closed && x.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) && (ids.Contains(x.ShortId) || x.Stop3Pending)).Select(x => new ActivePositionView{ShortId = x.ShortId, BotName = x.BotName, Symbol = x.Symbol, Side = x.Side, Quantity = x.Quantity, RemainingQuantity = x.RemainingQuantity, EntryPrice = x.EntryPrice??0, TpPrice = x.TpPrice, CreatedAtUtc = x.ParentFilledAtUtc??x.CreatedAtUtc}).ToArray();}}
+using Microsoft.Extensions.Options;
+using TradingSystem.Application.Positions;
+using TradingSystem.Binance.Execution;
+using TradingSystem.Binance.Orders.Contracts;
+
+namespace StrategyService.Bots.Bot8011;
+
+public sealed class Bot8011ActivePositionProvider(
+    IOptions<Bot8011Options> options, 
+    IPositionStore store, 
+    IBinanceFuturesOrderClient orders)
+    :IBotActivePositionProvider
+{
+    readonly Bot8011Options o = options.Value;
+    public string BotName => o.BotName;
+    
+    public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string symbol, CancellationToken ct)
+    {
+        var positions = await store.GetAllAsync(BotName, ct);
+        var normal = await orders.GetOpenOrdersAsync(symbol, ct);
+        var algo = await orders.GetOpenAlgoOrdersAsync(symbol, ct);
+        
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        foreach(var x in normal)
+            if(BinanceClientOrderId.TryParse(x.ClientOrderId, out var bot, out _, out var id) && bot == BotName)
+                ids.Add(id);
+        
+        foreach(var x in algo)
+            if(BinanceClientOrderId.TryParse(x.ClientAlgoId, out var bot, out _, out var id) && bot == BotName)
+                ids.Add(id);
+        
+        return positions.Where(x => !x.Closed && x.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) 
+            && (ids.Contains(x.ShortId) || x.Stop3Pending))
+                .Select(x => new ActivePositionView
+                {
+                    ShortId = x.ShortId, 
+                    BotName = x.BotName, 
+                    Symbol = x.Symbol, 
+                    Side = x.Side, 
+                    Quantity = x.Quantity, 
+                    RemainingQuantity = x.RemainingQuantity, 
+                    EntryPrice = x.EntryPrice ?? 0, 
+                    TpPrice = x.TpPrice, CreatedAtUtc = x.ParentFilledAtUtc ?? x.CreatedAtUtc
+                })
+                .ToArray();
+    }
+}

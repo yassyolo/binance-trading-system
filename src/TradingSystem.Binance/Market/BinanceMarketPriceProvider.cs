@@ -5,5 +5,5 @@ namespace TradingSystem.Binance.Market;
 
 public sealed class BinanceMarketPriceProvider(IBinanceFuturesMarketClient client) : IMarketPriceProvider
 {
-    public Task<decimal> GetMarkPriceAsync(string symbol,  CancellationToken cancellationToken)  =>  client.GetMarkPriceAsync(symbol,  cancellationToken);
+    public Task<decimal> GetMarkPriceAsync(string symbol,  CancellationToken ct)  =>  client.GetMarkPriceAsync(symbol,  ct);
 }
