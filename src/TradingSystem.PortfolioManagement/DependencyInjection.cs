@@ -12,12 +12,26 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddOptions<PortfolioOptions>()
-            .Bind(configuration.GetSection(PortfolioOptions.SectionName))
+            .Bind(
+                configuration.GetSection(
+                    PortfolioOptions.SectionName))
             .ValidateOnStart();
 
-        services.AddSingleton<IValidateOptions<PortfolioOptions>, PortfolioOptionsValidator>();
-        services.AddSingleton<IPortfolioPerformanceSource, PostgresPortfolioPerformanceSource>();
-        services.AddSingleton<IPortfolioSnapshotProvider, PortfolioSnapshotProvider>();
+        services.AddSingleton<
+            IValidateOptions<PortfolioOptions>,
+            PortfolioOptionsValidator>();
+
+        services.TryAddSingleton<
+            IPortfolioPerformanceSource,
+            NullPortfolioPerformanceSource>();
+
+        services.TryAddSingleton<
+            IPaperPortfolioPositionSource,
+            NullPaperPortfolioPositionSource>();
+
+        services.AddSingleton<
+            IPortfolioSnapshotProvider,
+            PortfolioSnapshotProvider>();
 
         return services;
     }

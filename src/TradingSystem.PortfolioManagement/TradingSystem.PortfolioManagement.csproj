@@ -12,7 +12,6 @@
 		<PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
 		<ProjectReference Include="..\TradingSystem.Application\TradingSystem.Application.csproj" />
 		<ProjectReference Include="..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
-		<ProjectReference Include="..\TradingSystem.Persistence.PostgreSql\TradingSystem.Persistence.PostgreSql.csproj" />
 	</ItemGroup>
 
 </Project>

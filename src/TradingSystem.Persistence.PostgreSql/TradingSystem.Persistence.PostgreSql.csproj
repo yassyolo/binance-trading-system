@@ -1,19 +1,24 @@
-﻿<Project Sdk = "Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 	</PropertyGroup>
- <ItemGroup><PackageReference Include = "Dapper" Version = "2.1.35"/><PackageReference Include = "Npgsql" Version = "8.0.4"/>
- <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0"/>
-	 <ProjectReference Include = "../TradingSystem.Reconciliation/TradingSystem.Reconciliation.csproj" />  
-	 <ProjectReference Include = "../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
+ <ItemGroup>
+	 <PackageReference Include="Dapper" Version="2.1.35" />
+	 <PackageReference Include="Npgsql" Version="8.0.4" />
+	 <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
   </ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.Observability/TradingSystem.Observability.csproj"/>
- <ProjectReference Include = "../TradingSystem.Analytics/TradingSystem.Analytics.csproj"/></ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj" />
- <ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" /></ItemGroup>
-  <ItemGroup><ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" /></ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.JobOrchestration/TradingSystem.JobOrchestration.csproj" /></ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
-  <ItemGroup><ProjectReference Include = "../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="../TradingSystem.Observability/TradingSystem.Observability.csproj" />
+		<ProjectReference Include="../TradingSystem.Analytics/TradingSystem.Analytics.csproj" />
+		<ProjectReference Include="../TradingSystem.Reconciliation/TradingSystem.Reconciliation.csproj" />
+		<ProjectReference Include="../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
+		<ProjectReference Include="../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj" />
+		<ProjectReference Include="../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" />
+		<ProjectReference Include="../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" />
+		<ProjectReference Include="../TradingSystem.JobOrchestration/TradingSystem.JobOrchestration.csproj" />
+		<ProjectReference Include="../TradingSystem.Operations/TradingSystem.Operations.csproj" />
+		<ProjectReference Include="../TradingSystem.EventStore/TradingSystem.EventStore.csproj" />
+		<ProjectReference Include="../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" />
+		<ProjectReference Include="..\TradingSystem.PortfolioManagement\TradingSystem.PortfolioManagement.csproj" />
+	</ItemGroup>
 </Project>

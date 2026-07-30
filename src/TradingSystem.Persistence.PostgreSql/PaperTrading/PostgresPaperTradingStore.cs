@@ -1,11 +1,14 @@
 using Dapper;
 using TradingSystem.PaperTrading;
 using TradingSystem.Persistence.PostgreSql.Connections;
+using TradingSystem.PortfolioManagement;
 
 namespace TradingSystem.Persistence.PostgreSql.PaperTrading;
 
 public sealed class PostgresPaperTradingStore(
-    ITradingDbConnectionFactory connections) : IPaperTradingStore
+    ITradingDbConnectionFactory connections)
+    : IPaperTradingStore,
+      IPaperPortfolioPositionSource
 {
     public async Task CreateAsync(PaperTradingPosition position, CancellationToken ct)
     {
@@ -45,22 +48,32 @@ public sealed class PostgresPaperTradingStore(
     public async Task<IReadOnlyCollection<PaperTradingPosition>> GetOpenAsync(CancellationToken ct)
     {
         await using var connection = await connections.OpenAsync(ct);
-
-        var command = new CommandDefinition(
-            BaseSelect + """
-             and status = @Status
-             order by opened_at_utc
-            """,
-            new
-            {
-                Status = (short)PaperPositionStatus.Open
-            },
-            commandTimeout: connections.CommandTimeoutSeconds,
-            cancellationToken: ct);
-
-        var rows = await connection.QueryAsync<PaperTradingPosition>(command);
+        var rows = await connection.QueryAsync<PaperTradingPosition>(
+            new CommandDefinition(
+                BaseSelect + """
+                     and status = @Status
+                     order by opened_at_utc
+                    """,
+                new { Status = (short)PaperPositionStatus.Open },
+                commandTimeout: connections.CommandTimeoutSeconds,
+                cancellationToken: ct));
 
         return rows.AsList();
+    }
+
+    async Task<IReadOnlyCollection<PaperPortfolioPosition>> IPaperPortfolioPositionSource.GetOpenAsync(CancellationToken ct)
+    {
+        var positions = await GetOpenAsync(ct);
+        return positions
+            .Select(position => new PaperPortfolioPosition(
+                position.BotName,
+                position.ShortId,
+                position.Symbol,
+                position.Side,
+                position.Quantity,
+                position.EntryPrice,
+                position.OpenedAtUtc))
+            .ToArray();
     }
 
     public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(
@@ -95,6 +108,7 @@ public sealed class PostgresPaperTradingStore(
                 },
                 commandTimeout: connections.CommandTimeoutSeconds,
                 cancellationToken: ct));
+
         return rows.AsList();
     }
 

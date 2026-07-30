@@ -11,6 +11,7 @@ namespace TradingSystem.PortfolioManagement;
 public sealed class PortfolioSnapshotProvider(
     IOptions<PortfolioOptions> options,
     IPositionStore positionStore,
+    IPaperPortfolioPositionSource paperPositionSource,
     IMarketPriceProvider marketPriceProvider,
     IPortfolioPerformanceSource performanceSource,
     IClock clock,
@@ -47,10 +48,7 @@ public sealed class PortfolioSnapshotProvider(
         }
     }
 
-    public void Invalidate()
-    {
-        _cacheExpiresAtUtc = DateTime.MinValue;
-    }
+    public void Invalidate() => _cacheExpiresAtUtc = DateTime.MinValue;
 
     private async Task<PortfolioSnapshot> BuildAsync(DateTime now, CancellationToken ct)
     {
@@ -62,39 +60,28 @@ public sealed class PortfolioSnapshotProvider(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var positionTasks = botNames.Select(async botName =>
-        {
-            var positions = await positionStore.GetAllAsync(botName, ct);
-            return positions.Where(x => !x.Closed && x.RemainingQuantity > 0).ToArray();
-        });
+        var redisPositionsTask = LoadRedisPositionsAsync(botNames, ct);
+        var paperPositionsTask = paperPositionSource.GetOpenAsync(ct);
 
-        var openPositions = (await Task.WhenAll(positionTasks))
-            .SelectMany(x => x)
-            .ToArray();
+        await Task.WhenAll(redisPositionsTask, paperPositionsTask);
 
-        var symbols = openPositions
+        var redisPositions = await redisPositionsTask;
+        var paperPositions = await paperPositionsTask;
+
+        var symbols = redisPositions
             .Select(x => x.Symbol)
+            .Concat(paperPositions.Select(x => x.Symbol))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var priceTasks = symbols.ToDictionary(
-            symbol => symbol,
-            symbol => marketPriceProvider.GetMarkPriceAsync(symbol, ct),
-            StringComparer.OrdinalIgnoreCase);
+        var prices = await LoadPricesAsync(symbols, ct);
 
-        await Task.WhenAll(priceTasks.Values);
-
-        var prices = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (symbol, task) in priceTasks)
-        {
-            var price = await task;
-            if (price <= 0)
-                throw new InvalidOperationException($"Invalid mark price '{price}' for portfolio symbol '{symbol}'.");
-            prices[symbol] = price;
-        }
-
-        var positions = openPositions
-            .Select(position => Map(position, prices[position.Symbol]))
+        var positions = redisPositions
+            .Select(x => MapRedisPosition(x, prices[x.Symbol]))
+            .Concat(paperPositions.Select(x => MapPaperPosition(x, prices[x.Symbol])))
+            .GroupBy(x => new { x.BotName, x.PositionId })
+            .Select(x => x.First())
             .ToArray();
 
         var unrealizedPnl = positions.Sum(x => x.UnrealizedPnl);
@@ -134,10 +121,13 @@ public sealed class PortfolioSnapshotProvider(
             .OrderBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        logger.LogDebug(
-            "Portfolio snapshot built. Positions = {Positions}, GrossNotional = {GrossNotional}, Equity = {Equity}",
+        logger.LogInformation(
+            "Portfolio snapshot built. RedisPositions = {RedisPositions}, PaperPositions = {PaperPositions}, TotalPositions = {TotalPositions}, GrossNotional = {GrossNotional}, NetNotional = {NetNotional}, Equity = {Equity}",
+            redisPositions.Count,
+            paperPositions.Count,
             positions.Length,
             positions.Sum(x => x.Notional),
+            positions.Sum(x => x.SignedNotional),
             equity);
 
         return new PortfolioSnapshot(
@@ -159,7 +149,47 @@ public sealed class PortfolioSnapshotProvider(
             botSnapshots);
     }
 
-    private PortfolioPositionSnapshot Map(BotPosition position, decimal markPrice)
+    private async Task<IReadOnlyCollection<BotPosition>> LoadRedisPositionsAsync(
+        IReadOnlyCollection<string> botNames,
+        CancellationToken ct)
+    {
+        var tasks = botNames.Select(async botName =>
+        {
+            var positions = await positionStore.GetAllAsync(botName, ct);
+            return positions
+                .Where(x => !x.Closed && x.RemainingQuantity > 0)
+                .ToArray();
+        });
+
+        var positionsByBot = await Task.WhenAll(tasks);
+        return positionsByBot.SelectMany(x => x).ToArray();
+    }
+
+    private async Task<IReadOnlyDictionary<string, decimal>> LoadPricesAsync(
+        IReadOnlyCollection<string> symbols,
+        CancellationToken ct)
+    {
+        var tasks = symbols.ToDictionary(
+            symbol => symbol,
+            symbol => marketPriceProvider.GetMarkPriceAsync(symbol, ct),
+            StringComparer.OrdinalIgnoreCase);
+
+        await Task.WhenAll(tasks.Values);
+
+        var prices = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (symbol, task) in tasks)
+        {
+            var price = await task;
+            if (price <= 0)
+                throw new InvalidOperationException(
+                    $"Invalid mark price '{price}' for portfolio symbol '{symbol}'.");
+            prices[symbol] = price;
+        }
+
+        return prices;
+    }
+
+    private PortfolioPositionSnapshot MapRedisPosition(BotPosition position, decimal markPrice)
     {
         var entryPrice = position.EntryPrice ?? markPrice;
         var quantity = position.RemainingQuantity;
@@ -180,6 +210,28 @@ public sealed class PortfolioSnapshotProvider(
             unrealizedPnl,
             notional / _options.DefaultLeverage,
             position.ParentFilledAtUtc ?? position.CreatedAtUtc);
+    }
+
+    private PortfolioPositionSnapshot MapPaperPosition(PaperPortfolioPosition position, decimal markPrice)
+    {
+        var notional = markPrice * position.Quantity;
+        var direction = position.Side == PositionSide.Long ? 1m : -1m;
+        var unrealizedPnl =
+            (markPrice - position.EntryPrice) * position.Quantity * direction;
+
+        return new PortfolioPositionSnapshot(
+            position.BotName,
+            position.ShortId,
+            position.Symbol,
+            position.Side,
+            position.Quantity,
+            position.EntryPrice,
+            markPrice,
+            notional,
+            notional * direction,
+            unrealizedPnl,
+            notional / _options.DefaultLeverage,
+            position.OpenedAtUtc);
     }
 
     private PortfolioSnapshot Empty(DateTime now) => new(
