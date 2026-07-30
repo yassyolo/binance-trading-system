@@ -2,11 +2,11 @@
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 	</PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" />
-    <ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" />
-    <ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj" />
-    <PackageReference Include = "Microsoft.Extensions.Hosting.Abstractions" Version = "8.0.1" />
-    <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" />
+		<ProjectReference Include = "../TradingSystem.BotRuntime/TradingSystem.BotRuntime.csproj" />
+		<ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj" />
+		<PackageReference Include = "Microsoft.Extensions.Hosting.Abstractions" Version = "9.0.0" />
+		<PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
+	</ItemGroup>
 </Project>

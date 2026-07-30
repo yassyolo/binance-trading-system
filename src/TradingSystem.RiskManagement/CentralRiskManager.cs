@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using TradingSystem.Application.Risk;
 using TradingSystem.Application.Time;
 using TradingSystem.Domain.Enums;
-using TradingSystem.PortfolioManager;
+using TradingSystem.PortfolioManagement;
 
 namespace TradingSystem.RiskManagement;
 

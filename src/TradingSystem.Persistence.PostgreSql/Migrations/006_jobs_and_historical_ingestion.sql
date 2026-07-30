@@ -1,4 +1,4 @@
-ALTER TABLE trading_dashboard.jobs
+/*ALTER TABLE trading_dashboard.jobs
     ADD COLUMN IF NOT EXISTS processing_worker_id varchar(200), 
     ADD COLUMN IF NOT EXISTS processing_started_at_utc timestamptz, 
     ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0, 
@@ -25,11 +25,16 @@ CREATE OR REPLACE FUNCTION trading_dashboard.interval_duration(value text)
 RETURNS interval LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE amount integer; unit text;
 BEGIN
-    amount : =  substring(value from '^[0-9]+')::integer;
-    unit : =  right(value, 1);
+    IF value IS NULL OR value !~ '^[0-9]+[mhd]$' THEN
+        RAISE EXCEPTION 'Unsupported interval: %', value;
+    END IF;
+
+    amount := substring(value from '^[0-9]+')::integer;
+    unit := right(value, 1);
     IF unit  =  'm' THEN RETURN make_interval(mins  =>  amount); END IF;
     IF unit  =  'h' THEN RETURN make_interval(hours  =>  amount); END IF;
     IF unit  =  'd' THEN RETURN make_interval(days  =>  amount); END IF;
     RAISE EXCEPTION 'Unsupported interval: %',  value;
 END;
 $$;
+*/

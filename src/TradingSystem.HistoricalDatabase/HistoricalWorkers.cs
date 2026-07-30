@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Observability.Environment;
-using TradingSystem.PortfolioManager;
+using TradingSystem.PortfolioManagement;
 
 namespace TradingSystem.HistoricalDatabase;
 

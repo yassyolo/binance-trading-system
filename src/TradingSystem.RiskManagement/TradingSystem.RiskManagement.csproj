@@ -7,7 +7,7 @@
 	<ItemGroup>
 		<ProjectReference Include="../TradingSystem.Application/TradingSystem.Application.csproj" />
 		<ProjectReference Include="../TradingSystem.Domain/TradingSystem.Domain.csproj" />
-		<ProjectReference Include="..\..\TradingSystem.PortfolioManager\TradingSystem.PortfolioManager.csproj" />
+		<ProjectReference Include="..\TradingSystem.PortfolioManagement\TradingSystem.PortfolioManagement.csproj" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />

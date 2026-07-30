@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.Risk;
-using TradingSystem.PortfolioManager;
+using TradingSystem.PortfolioManagement;
 
 namespace TradingSystem.RiskManagement;
 

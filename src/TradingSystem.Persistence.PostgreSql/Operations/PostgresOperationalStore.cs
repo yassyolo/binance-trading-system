@@ -188,13 +188,13 @@ public sealed class OperationalAlertCandidateSource(
             })));
 
         var findings = await connection.QueryAsync<(
-            long Id,
+            Guid Id,
             string? BotName,
             string? PositionId,
             string FindingType,
             string Details)>(new CommandDefinition(
             """
-                select finding_id Id,
+                select id Id,
                        bot_name BotName,
                        short_id PositionId,
                        finding_type FindingType,

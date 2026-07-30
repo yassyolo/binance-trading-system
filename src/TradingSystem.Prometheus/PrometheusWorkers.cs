@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingSystem.PortfolioManager;
+using TradingSystem.PortfolioManagement;
 
 
 namespace TradingSystem.Prometheus;
