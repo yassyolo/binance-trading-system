@@ -14,7 +14,7 @@ using TradingSystem.HistoricalDatabase;
 using TradingSystem.Infrastructure.DependencyInjection;
 using TradingSystem.Observability;
 using TradingSystem.Operations;
-using TradingSystem.PaperTrading;
+using TradingSystem.PaperTrading.Configuration;
 using TradingSystem.Persistence.PostgreSql.Configuration;
 using TradingSystem.Prometheus;
 using TradingSystem.Reconciliation;

@@ -2,12 +2,13 @@ using TradingSystem.Application.Execution;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Enums;
 
-namespace TradingSystem.PaperTrading;
+namespace TradingSystem.PaperTrading.Executor;
 
 public sealed class EnvironmentAwareTradeExecutor(
     TradeExecutorRegistry liveExecutor,
     PaperTradeExecutor paperExecutor,
-    IBotRuntimeConfigurationProvider configurations) : ITradeExecutor
+    IBotRuntimeConfigurationProvider configurations) 
+    : ITradeExecutor
 {
     public async Task<TradeExecutionResult> OpenAsync(string botName, string symbol, PositionSide side, string? source, CancellationToken ct)
     {

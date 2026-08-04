@@ -4,6 +4,7 @@ using TradingSystem.Application.Positions;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Runtime;
 using TradingSystem.PaperTrading;
+using TradingSystem.PaperTrading.Executor;
 
 namespace StrategyService.Bots.Bot8016;
 

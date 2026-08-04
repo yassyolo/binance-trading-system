@@ -16,6 +16,7 @@ using TradingSystem.Persistence.PostgreSql.Configuration;
 using TradingSystem.Persistence.PostgreSql.Dashboard;
 using TradingSystem.EventStore;
 using TradingSystem.ReplayEngine;
+using TradingSystem.PaperTrading.Configuration;
 
 var builder  =  WebApplication.CreateBuilder(args);
 

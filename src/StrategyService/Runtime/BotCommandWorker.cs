@@ -1,97 +1,315 @@
 using Microsoft.Extensions.Options;
+using System.Text.Json;
+using TradingSystem.Application.Execution;
 using TradingSystem.BotRuntime.Commands;
 using TradingSystem.BotRuntime.Runtime;
 
 namespace StrategyService.Runtime;
 
 public sealed class BotCommandWorker(
-    IBotCommandQueue queue, 
-    IBotRuntimeStateStore stateStore, 
-    IBotRuntimeStateProvider stateProvider, 
-    IOptions<BotRuntimeOptions> options, 
-    ILogger<BotCommandWorker> logger) : BackgroundService
+    IBotCommandQueue queue,
+    IBotRuntimeStateStore stateStore,
+    IBotRuntimeStateProvider stateProvider,
+    ITradeExecutor tradeExecutor,
+    IOptions<BotRuntimeOptions> options,
+    ILogger<BotCommandWorker> logger)
+    : BackgroundService
 {
-    private readonly BotRuntimeOptions _options  =  options.Value;
-    private readonly string _workerId  =  $"{Environment.MachineName}:{Guid.NewGuid():N}";
+    private readonly BotRuntimeOptions _options = options.Value;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private readonly string _workerId =
+        $"{Environment.MachineName}:{Guid.NewGuid():N}";
+
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
     {
         if (!_options.Enabled)
         {
-            logger.LogInformation("Bot command worker is disabled.");
+            logger.LogInformation(
+                "Bot command worker is disabled.");
+
             return;
         }
 
-        using var timer  =  new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1,  _options.CommandPollSeconds)));
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(
+                Math.Max(1, _options.CommandPollSeconds)));
+
         do
         {
             try
             {
                 await ProcessBatchAsync(stoppingToken);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                logger.LogError(ex,  "Bot command batch failed. Worker = {WorkerId}",  _workerId);
+                logger.LogError(
+                    exception,
+                    "Bot command batch failed. Worker = {WorkerId}",
+                    _workerId);
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task ProcessBatchAsync(CancellationToken ct)
+    private async Task ProcessBatchAsync(
+        CancellationToken ct)
     {
-        var commands  =  await queue.ClaimPendingAsync(_workerId,  _options.CommandBatchSize,  TimeSpan.FromSeconds(Math.Max(10,  _options.CommandProcessingTimeoutSeconds)),  ct);
+        var commands = await queue.ClaimPendingAsync(
+            _workerId,
+            _options.CommandBatchSize,
+            TimeSpan.FromSeconds(
+                Math.Max(
+                    10,
+                    _options.CommandProcessingTimeoutSeconds)),
+            ct);
 
         foreach (var command in commands)
         {
             try
             {
-                await ProcessAsync(command,  ct);
-                await queue.CompleteAsync(command.CommandId,  _workerId,  ct);
-                
-                logger.LogInformation("Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",  command.CommandId,  command.BotName,  command.Command);
+                await ProcessAsync(
+                    command,
+                    ct);
+
+                await queue.CompleteAsync(
+                    command.CommandId,
+                    _workerId,
+                    ct);
+
+                logger.LogInformation(
+                    "Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",
+                    command.CommandId,
+                    command.BotName,
+                    command.Command);
             }
-            catch (UnsupportedBotCommandException ex)
+            catch (UnsupportedBotCommandException exception)
             {
-                await queue.RejectAsync(command.CommandId,  _workerId,  ex.Message,  ct);
-                
-                logger.LogWarning("Bot command rejected. CommandId = {CommandId} Reason = {Reason}",  command.CommandId,  ex.Message);
+                await queue.RejectAsync(
+                    command.CommandId,
+                    _workerId,
+                    exception.Message,
+                    ct);
+
+                logger.LogWarning(
+                    "Bot command rejected. CommandId = {CommandId} Reason = {Reason}",
+                    command.CommandId,
+                    exception.Message);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                var retryable  =  command.AttemptCount < _options.MaximumCommandAttempts;
-                await queue.FailAsync(command.CommandId,  _workerId,  ex.Message,  retryable,  ct);
-                
-                logger.LogError(ex,  "Bot command failed. CommandId = {CommandId} Retryable = {Retryable}",  command.CommandId,  retryable);
+                var retryable =
+                    command.AttemptCount <
+                    _options.MaximumCommandAttempts;
+
+                await queue.FailAsync(
+                    command.CommandId,
+                    _workerId,
+                    exception.Message,
+                    retryable,
+                    ct);
+
+                logger.LogError(
+                    exception,
+                    "Bot command failed. CommandId = {CommandId} Retryable = {Retryable}",
+                    command.CommandId,
+                    retryable);
             }
         }
     }
 
-    private async Task ProcessAsync(BotCommand command,  CancellationToken ct)
+    private async Task ProcessAsync(
+        BotCommand command,
+        CancellationToken ct)
     {
-        var current  =  await stateProvider.GetRequiredAsync(command.BotName,  ct);
-        var target  =  command.Command switch
+        switch (command.Command)
         {
-            BotCommandType.Start  =>  BotRuntimeStatus.Running, 
-            BotCommandType.Resume  =>  BotRuntimeStatus.Running, 
-            BotCommandType.Pause  =>  BotRuntimeStatus.Paused, 
-            BotCommandType.Stop  =>  BotRuntimeStatus.Stopped, 
-            BotCommandType.EmergencyStop  =>  BotRuntimeStatus.EmergencyStopped, 
-            BotCommandType.ClosePosition or BotCommandType.CancelTakeProfit or BotCommandType.RecreateTakeProfit
-                 =>  throw new UnsupportedBotCommandException($"Command '{command.Command}' requires the protected position-command handler and is not executed by the runtime-state worker."), 
-            _  =>  throw new UnsupportedBotCommandException($"Unsupported command '{command.Command}'.")
+            case BotCommandType.ClosePosition:
+                await ProcessClosePositionAsync(
+                    command,
+                    ct);
+
+                return;
+
+            case BotCommandType.CancelTakeProfit:
+            case BotCommandType.RecreateTakeProfit:
+                throw new UnsupportedBotCommandException(
+                    $"Command '{command.Command}' requires a protected order-command handler which is not implemented yet.");
+        }
+
+        await ProcessRuntimeStateCommandAsync(
+            command,
+            ct);
+    }
+
+    private async Task ProcessRuntimeStateCommandAsync(
+        BotCommand command,
+        CancellationToken ct)
+    {
+        var current =
+            await stateProvider.GetRequiredAsync(
+                command.BotName,
+                ct);
+
+        var target = command.Command switch
+        {
+            BotCommandType.Start =>
+                BotRuntimeStatus.Running,
+
+            BotCommandType.Resume =>
+                BotRuntimeStatus.Running,
+
+            BotCommandType.Pause =>
+                BotRuntimeStatus.Paused,
+
+            BotCommandType.Stop =>
+                BotRuntimeStatus.Stopped,
+
+            BotCommandType.EmergencyStop =>
+                BotRuntimeStatus.EmergencyStopped,
+
+            _ => throw new UnsupportedBotCommandException(
+                $"Unsupported command '{command.Command}'.")
         };
 
         if (current.Status == target)
-            return;
+        {
+            logger.LogInformation(
+                "Bot runtime command requires no transition. Bot = {Bot} Status = {Status}",
+                command.BotName,
+                current.Status);
 
-        var executionEnabled  =  target == BotRuntimeStatus.Running;
-        await stateStore.TransitionAsync(command.BotName,  target,  current.Version,  command.RequestedBy,  command.Reason,  executionEnabled,  ct);
-        stateProvider.Invalidate(command.BotName);
+            return;
+        }
+
+        var executionEnabled =
+            target == BotRuntimeStatus.Running;
+
+        await stateStore.TransitionAsync(
+            command.BotName,
+            target,
+            current.Version,
+            command.RequestedBy,
+            command.Reason,
+            executionEnabled,
+            ct);
+
+        stateProvider.Invalidate(
+            command.BotName);
     }
 
-    private sealed class UnsupportedBotCommandException(string message) : Exception(message);
+    private async Task ProcessClosePositionAsync(
+        BotCommand command,
+        CancellationToken ct)
+    {
+        var positionIdentifier =
+            ReadRequiredPositionIdentifier(command);
+
+        var reason =
+            string.IsNullOrWhiteSpace(command.Reason)
+                ? "MANUAL_POSITION_CLOSE"
+                : command.Reason.Trim();
+
+        var result = await tradeExecutor.CloseAsync(
+            command.BotName,
+            positionIdentifier,
+            reason,
+            ct);
+
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Position close failed for bot '{command.BotName}' " +
+                $"and position '{positionIdentifier}': {result.Reason}",
+                result.Exception);
+        }
+
+        logger.LogInformation(
+            "Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}",
+            command.CommandId,
+            command.BotName,
+            positionIdentifier,
+            result.Reason);
+    }
+
+    private static string ReadRequiredPositionIdentifier(
+        BotCommand command)
+    {
+        var root = command.Payload.RootElement;
+
+        if (TryReadString(
+                root,
+                "PositionId",
+                out var positionId))
+        {
+            return positionId;
+        }
+
+        if (TryReadString(
+                root,
+                "positionId",
+                out positionId))
+        {
+            return positionId;
+        }
+
+        if (TryReadString(
+                root,
+                "ShortId",
+                out positionId))
+        {
+            return positionId;
+        }
+
+        if (TryReadString(
+                root,
+                "shortId",
+                out positionId))
+        {
+            return positionId;
+        }
+
+        throw new UnsupportedBotCommandException(
+            $"Command '{command.Command}' requires PositionId in its payload.");
+    }
+
+    private static bool TryReadString(
+        JsonElement root,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+
+        if (!root.TryGetProperty(
+                propertyName,
+                out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var parsedValue = property.GetString();
+
+        if (string.IsNullOrWhiteSpace(parsedValue))
+        {
+            return false;
+        }
+
+        value = parsedValue.Trim();
+
+        return true;
+    }
+
+    private sealed class UnsupportedBotCommandException(
+        string message)
+        : Exception(message);
 }

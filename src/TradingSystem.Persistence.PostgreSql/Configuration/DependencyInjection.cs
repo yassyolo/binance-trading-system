@@ -59,30 +59,21 @@ public static class DependencyInjection
         return services;
     }
 
-    private static void RegisterTradingHistory(
-        IServiceCollection services)
+    private static void RegisterTradingHistory(IServiceCollection services)
     {
         services.RemoveAll<ITradingPipelineRecorder>();
 
-        services.AddSingleton<
-            ITradingPipelineRecorder,
-            PostgresTradingPipelineRecorder>();
+        services.AddSingleton<ITradingPipelineRecorder, PostgresTradingPipelineRecorder>();
 
-        services.AddSingleton<
-            ITradingHistoryQueryService,
-            TradingHistoryQueryService>();
+        services.AddSingleton<ITradingHistoryQueryService, TradingHistoryQueryService>();
     }
 
-    private static void RegisterAnalytics(
-        IServiceCollection services)
+    private static void RegisterAnalytics(IServiceCollection services)
     {
-        services.AddSingleton<
-            IPerformanceAnalyticsStore,
-            PostgresPerformanceAnalyticsStore>();
+        services.AddSingleton<IPerformanceAnalyticsStore, PostgresPerformanceAnalyticsStore>();
     }
 
-    private static void RegisterRiskAndReliability(
-        IServiceCollection services)
+    private static void RegisterRiskAndReliability(IServiceCollection services)
     {
         services.RemoveAll<IRiskStateProvider>();
 

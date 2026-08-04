@@ -3,8 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TradingSystem.Application.Execution;
 using TradingSystem.Application.Positions;
+using TradingSystem.PaperTrading.Executor;
 
-namespace TradingSystem.PaperTrading;
+namespace TradingSystem.PaperTrading.Configuration;
 
 public static class DependencyInjection
 {

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using TradingSystem.Application.Engine;
 using TradingSystem.Domain.Enums;
 using TradingSystem.PaperTrading;
+using TradingSystem.PaperTrading.Executor;
 
 namespace StrategyService.Runtime;
 
