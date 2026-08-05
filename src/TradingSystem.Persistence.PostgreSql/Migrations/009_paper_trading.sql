@@ -1,4 +1,4 @@
-CREATE SCHEMA IF NOT EXISTS trading_paper;
+/*CREATE SCHEMA IF NOT EXISTS trading_paper;
 
 CREATE TABLE IF NOT EXISTS trading_paper.positions (
     position_id UUID PRIMARY KEY, 
@@ -39,3 +39,22 @@ ALTER TABLE trading_dashboard.bot_configurations
     DROP CONSTRAINT IF EXISTS bot_configurations_environment_check;
 ALTER TABLE trading_dashboard.bot_configurations
     ADD CONSTRAINT ck_bot_configuration_environment CHECK (environment IN ('Paper', 'Demo', 'Production'));
+
+
+begin;
+
+alter table trading_paper.positions
+    add column if not exists signal_id text null;
+
+alter table trading_paper.positions
+    add column if not exists strategy_version text not null default 'unknown';
+
+create index if not exists ix_trading_paper_positions_signal_id
+    on trading_paper.positions(signal_id)
+    where signal_id is not null;
+
+-- Existing history rows cannot always be backfilled safely because older paper rows did not
+-- persist the originating signal. New positions will be linked automatically after deployment.
+
+commit;
+*/

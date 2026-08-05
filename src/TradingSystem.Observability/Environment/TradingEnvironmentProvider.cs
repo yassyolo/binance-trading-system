@@ -1,8 +1,26 @@
-﻿namespace TradingSystem.Observability.Environment;
+﻿using Microsoft.Extensions.Options;
 
-public sealed class TradingEnvironmentProvider : ITradingEnvironmentProvider
+namespace TradingSystem.Observability.Environment;
+
+public sealed class TradingEnvironmentProvider(
+    IOptions<TradingEnvironmentOptions> options)
+    : ITradingEnvironmentProvider
 {
-    public string EnvironmentName 
-        => System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim() is { Length: > 0 } x 
-            ? x : "Demo";
+    private readonly TradingEnvironmentOptions _options = options.Value;
+
+    public string EnvironmentName
+    {
+        get
+        {
+            var environmentOverride =
+                System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(environmentOverride))
+                return environmentOverride;
+
+            return string.IsNullOrWhiteSpace(_options.EnvironmentName)
+                ? "Paper"
+                : _options.EnvironmentName.Trim();
+        }
+    }
 }

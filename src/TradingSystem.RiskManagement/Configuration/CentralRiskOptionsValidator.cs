@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 
-namespace TradingSystem.RiskManagement;
+namespace TradingSystem.RiskManagement.Configuration;
 
 public sealed class CentralRiskOptionsValidator : IValidateOptions<CentralRiskOptions>
 {

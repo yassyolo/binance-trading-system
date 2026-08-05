@@ -5,6 +5,7 @@ using TradingSystem.Application.Positions;
 using TradingSystem.Application.Time;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
+using TradingSystem.PortfolioManagement.Configuration;
 
 namespace TradingSystem.PortfolioManagement;
 
@@ -37,8 +38,12 @@ public sealed class PortfolioSnapshotProvider(
             if (cached is not null && now < _cacheExpiresAtUtc)
                 return cached;
 
-            var snapshot = await BuildAsync(now, ct);
-            _cached = snapshot;
+            var snapshot = await ExecuteWithRetryAsync(
+                () => BuildAsync(now, ct),
+                "portfolio snapshot",
+                ct);
+
+            Volatile.Write(ref _cached, snapshot);
             _cacheExpiresAtUtc = now.AddMilliseconds(_options.SnapshotCacheMilliseconds);
             return snapshot;
         }
@@ -169,6 +174,9 @@ public sealed class PortfolioSnapshotProvider(
         IReadOnlyCollection<string> symbols,
         CancellationToken ct)
     {
+        if (symbols.Count == 0)
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
         var tasks = symbols.ToDictionary(
             symbol => symbol,
             symbol => marketPriceProvider.GetMarkPriceAsync(symbol, ct),
@@ -181,12 +189,63 @@ public sealed class PortfolioSnapshotProvider(
         {
             var price = await task;
             if (price <= 0)
+            {
                 throw new InvalidOperationException(
                     $"Invalid mark price '{price}' for portfolio symbol '{symbol}'.");
+            }
+
             prices[symbol] = price;
         }
 
         return prices;
+    }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(
+        Func<Task<T>> action,
+        string operation,
+        CancellationToken ct)
+    {
+        Exception? lastError = null;
+        var attempts = _options.LoadRetryCount + 1;
+
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                return await action();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                lastError = exception;
+
+                if (attempt == attempts)
+                    break;
+
+                logger.LogWarning(
+                    exception,
+                    "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.",
+                    operation,
+                    attempt,
+                    attempts);
+
+                if (_options.LoadRetryDelayMilliseconds > 0)
+                {
+                    await Task.Delay(
+                        TimeSpan.FromMilliseconds(_options.LoadRetryDelayMilliseconds),
+                        ct);
+                }
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Could not build {operation} after {attempts} attempt(s). Risk evaluation must fail closed.",
+            lastError);
     }
 
     private PortfolioPositionSnapshot MapRedisPosition(BotPosition position, decimal markPrice)

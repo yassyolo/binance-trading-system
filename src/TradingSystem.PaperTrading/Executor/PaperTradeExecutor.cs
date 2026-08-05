@@ -14,6 +14,7 @@ public sealed class PaperTradeExecutor(
     IMarketPriceProvider prices,
     IBotRuntimeConfigurationProvider configurations,
     ITradingPipelineRecorder history,
+    ITradingSignalContextAccessor signalContext,
     IOptions<PaperTradingOptions> options,
     ILogger<PaperTradeExecutor> logger)
 {
@@ -56,10 +57,14 @@ public sealed class PaperTradeExecutor(
         var entryFee = CalculateFee(entryPrice, quantity);
         var openedAtUtc = DateTime.UtcNow;
 
+        var executionContext = signalContext.Current;
+
         var position = new PaperTradingPosition
         {
             PositionId = Guid.NewGuid(),
             ShortId = CreateShortId(openedAtUtc),
+            SignalId = executionContext?.SignalId,
+            StrategyVersion = executionContext?.StrategyVersion ?? UnknownStrategyVersion,
             BotName = botName,
             Symbol = normalizedSymbol,
             Side = side,
@@ -272,9 +277,9 @@ public sealed class PaperTradeExecutor(
     {
         return new PositionHistoryRecord(
             PositionId: ToHistoryPositionId(position.PositionId),
-            SignalId: null,
+            SignalId: position.SignalId,
             BotName: position.BotName,
-            StrategyVersion: UnknownStrategyVersion,
+            StrategyVersion: position.StrategyVersion,
             Symbol: position.Symbol,
             Side: position.Side.ToString(),
             Source: position.Source,
@@ -307,9 +312,9 @@ public sealed class PaperTradeExecutor(
     {
         return new PositionHistoryRecord(
             PositionId: ToHistoryPositionId(position.PositionId),
-            SignalId: null,
+            SignalId: position.SignalId,
             BotName: position.BotName,
-            StrategyVersion: UnknownStrategyVersion,
+            StrategyVersion: position.StrategyVersion,
             Symbol: position.Symbol,
             Side: position.Side.ToString(),
             Source: position.Source,

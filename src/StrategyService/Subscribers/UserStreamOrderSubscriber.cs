@@ -23,29 +23,68 @@ public sealed class UserStreamOrderSubscriber(
     ITradingEnvironmentProvider environment,
     ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
 {
-    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers = handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
+
+    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers =
+        handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        var subscriber = redis.GetSubscriber();
         var channel = RedisChannel.Literal(RedisChannels.UserStreamOrder);
 
-        await subscriber.SubscribeAsync(channel, async (_, message) =>
+        while (!ct.IsCancellationRequested)
         {
-            if (message.HasValue)
-                await ProcessAsync(message!, ct);
-        });
+            var subscriber = redis.GetSubscriber();
+            var subscribed = false;
 
-        try
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            try
+            {
+                await subscriber.SubscribeAsync(channel, async (_, message) =>
+                {
+                    if (!message.HasValue || ct.IsCancellationRequested)
+                        return;
+
+                    await ProcessAsync(message.ToString(), ct);
+                });
+
+                subscribed = true;
+                logger.LogInformation("Subscribed to user-stream orders. Channel = {Channel}", channel);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (RedisException exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Could not subscribe to user-stream orders because Redis is unavailable. Channel = {Channel}. Retrying.",
+                    channel);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "User-stream order subscription failed. Channel = {Channel}. Retrying.", channel);
+            }
+            finally
+            {
+                if (subscribed)
+                {
+                    try
+                    {
+                        await subscriber.UnsubscribeAsync(channel);
+                    }
+                    catch (Exception exception)
+                    {
+                        logger.LogWarning(exception, "Could not unsubscribe cleanly from user-stream order channel {Channel}", channel);
+                    }
+                }
+            }
+
+            await DelayBeforeRetryAsync(ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {}
-        finally
-        {
-            await subscriber.UnsubscribeAsync(channel);
-        }
+
+        logger.LogInformation("User-stream order subscriber stopped. Channel = {Channel}", channel);
     }
 
     private async Task ProcessAsync(string raw, CancellationToken ct)
@@ -82,13 +121,12 @@ public sealed class UserStreamOrderSubscriber(
                          ?? GetString(order, "orderStatus")
                          ?? GetString(order, "algoStatus")
                          ?? GetString(order, "status");
-            
+
             var orderId = GetString(order, "i")
                           ?? GetString(order, "orderId")
                           ?? GetString(order, "algoId");
-            
+
             var symbol = GetString(order, "s") ?? "unknown";
-            
             var key = $"{eventType}:{orderId}:{clientId}:{status}";
 
             if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
@@ -159,7 +197,6 @@ public sealed class UserStreamOrderSubscriber(
         catch (Exception exception)
         {
             metrics.ProcessingFailures.WithLabels("user_stream_order", "unknown", exception.GetType().Name).Inc();
-            
             logger.LogError(exception, "Order event processing failed.");
         }
     }
@@ -179,4 +216,15 @@ public sealed class UserStreamOrderSubscriber(
         decimal.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var number)
             ? number
             : 0m;
+
+    private static async Task DelayBeforeRetryAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(RetryDelay, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
 }

@@ -2,13 +2,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace TradingSystem.Reconciliation;
+namespace TradingSystem.Reconciliation.Configuration;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingReconciliation(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddTradingReconciliation(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<ReconciliationOptions>()
             .Bind(configuration.GetSection(ReconciliationOptions.SectionName))
@@ -16,6 +14,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IValidateOptions<ReconciliationOptions>, ReconciliationOptionsValidator>();
         services.AddSingleton<PositionReconciliationService>();
+       
         return services;
     }
 }

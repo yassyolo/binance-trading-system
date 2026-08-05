@@ -1,10 +1,13 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using TradingSystem.Application.Locking;
 using TradingSystem.Application.Positions;
 using TradingSystem.Binance.Market.Contracts;
 using TradingSystem.Binance.Orders;
 using TradingSystem.Domain.Enums;
+using TradingSystem.Domain.Positions;
 
 namespace StrategyService.Bots.Bot8011;
 
@@ -15,89 +18,214 @@ public sealed class Bot8011TrailingWorker(
     SafeBinanceOrderService safe,
     Bot8011Stop3OrderService stop3,
     Bot8011TrailingPriceCache cache,
-    IPositionLockProvider locks
-) : BackgroundService
+    IPositionLockProvider locks,
+    ILogger<Bot8011TrailingWorker> logger)
+    : BackgroundService
 {
-    readonly Bot8011Options o = options.Value;
+    private readonly Bot8011Options _options = options.Value;
 
-    protected override async Task ExecuteAsync(CancellationToken ct)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!ct.IsCancellationRequested)
+        logger.LogInformation(
+            "BOT8011 trailing worker started. Bot = {Bot}, IntervalSeconds = {IntervalSeconds}",
+            _options.BotName,
+            Math.Max(1, _options.TrailingFallbackIntervalSeconds));
+
+        try
         {
-            foreach (var p in (await store.GetAllAsync(o.BotName, ct)).Where(x =>
-                         !x.Closed &&
-                         x.TpExecuted &&
-                         x.Stop3Created &&
-                         !x.Stop3Pending &&
-                         !x.TrailingInProgress &&
-                         x.Stop3Current.HasValue &&
-                         x.RemainingQuantity > 0))
+            while (!stoppingToken.IsCancellationRequested)
             {
-                var price = cache.TryGetFresh(TimeSpan.FromSeconds(o.TrailingPriceMaxAgeSeconds), out var x)
-                    ? x
-                    : await market.GetMarkPriceAsync(p.Symbol, ct);
+                try
+                {
+                    await ProcessCycleAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (RedisException exception)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "BOT8011 trailing cycle skipped because Redis is unavailable. The worker will retry.");
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(
+                        exception,
+                        "BOT8011 trailing cycle failed. The worker will retry.");
+                }
 
-                // Fix CS8629: Nullable value type may be null.
-                // p.Stop3Current is checked for HasValue above, so .Value is safe.
-                var stop3Current = p.Stop3Current!.Value;
-
-                var candidate =
-                    p.Side == PositionSide.Long && price >= stop3Current + o.Stop3TrailingStep
-                        ? stop3Current + o.Stop3TrailingBuffer
-                        : p.Side == PositionSide.Short && price <= stop3Current - o.Stop3TrailingStep
-                            ? stop3Current - o.Stop3TrailingBuffer
-                            : stop3Current;
-
-                if (candidate == stop3Current)
-                    continue;
-
-                await Move(p.ShortId, candidate, ct);
+                try
+                {
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(Math.Max(1, _options.TrailingFallbackIntervalSeconds)),
+                        stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
-
-            await Task.Delay(TimeSpan.FromSeconds(o.TrailingFallbackIntervalSeconds), ct);
+        }
+        finally
+        {
+            logger.LogInformation("BOT8011 trailing worker stopped.");
         }
     }
 
-    async Task Move(string id, decimal candidate, CancellationToken ct)
+    private async Task ProcessCycleAsync(CancellationToken ct)
     {
-        await using var l = await locks.TryAcquireAsync(o.BotName, id, TimeSpan.FromSeconds(30), ct);
-        if (l is null) return;
+        var positions = await store.GetAllAsync(_options.BotName, ct);
 
-        var p = await store.GetAsync(o.BotName, id, ct);
-        if (p is null || p.Closed || string.IsNullOrWhiteSpace(p.Stop3OrderId)) return;
-
-        p.TrailingInProgress = true;
-        p.Stop3NewPending = candidate;
-        await store.SaveAsync(p, ct);
-
-        if (!await safe.SafeCancelAlgoAsync(p.Symbol, p.Stop3OrderId, p.Stop3ClientId, ct))
+        foreach (var position in positions.Where(IsEligibleForTrailing))
         {
-            p.TrailingInProgress = false;
-            p.Stop3NewPending = null;
-            await store.SaveAsync(p, ct);
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var price = cache.TryGetFresh(
+                    TimeSpan.FromSeconds(_options.TrailingPriceMaxAgeSeconds),
+                    out var cachedPrice)
+                        ? cachedPrice
+                        : await market.GetMarkPriceAsync(position.Symbol, ct);
+
+                var candidate = ResolveCandidate(position, price);
+                if (candidate == position.Stop3Current)
+                    continue;
+
+                await MoveAsync(position.ShortId, candidate, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (RedisException exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "BOT8011 trailing skipped position {ShortId} because Redis is unavailable.",
+                    position.ShortId);
+
+                // Redis is shared by the whole cycle, so continuing through every
+                // position would only create repeated timeout delays.
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "BOT8011 trailing failed for position {ShortId}. Remaining positions will still be processed.",
+                    position.ShortId);
+            }
+        }
+    }
+
+    private static bool IsEligibleForTrailing(BotPosition position) =>
+        !position.Closed &&
+        position.TpExecuted &&
+        position.Stop3Created &&
+        !position.Stop3Pending &&
+        !position.TrailingInProgress &&
+        position.Stop3Current.HasValue &&
+        position.RemainingQuantity > 0;
+
+    private decimal ResolveCandidate(BotPosition position, decimal price)
+    {
+        var current = position.Stop3Current!.Value;
+
+        if (position.Side == PositionSide.Long &&
+            price >= current + _options.Stop3TrailingStep)
+        {
+            return current + _options.Stop3TrailingBuffer;
+        }
+
+        if (position.Side == PositionSide.Short &&
+            price <= current - _options.Stop3TrailingStep)
+        {
+            return current - _options.Stop3TrailingBuffer;
+        }
+
+        return current;
+    }
+
+    private async Task MoveAsync(
+        string shortId,
+        decimal candidate,
+        CancellationToken ct)
+    {
+        await using var positionLock = await locks.TryAcquireAsync(
+            _options.BotName,
+            shortId,
+            TimeSpan.FromSeconds(30),
+            ct);
+
+        if (positionLock is null)
+            return;
+
+        var position = await store.GetAsync(_options.BotName, shortId, ct);
+        if (position is null ||
+            position.Closed ||
+            string.IsNullOrWhiteSpace(position.Stop3OrderId))
+        {
+            return;
+        }
+
+        position.TrailingInProgress = true;
+        position.Stop3NewPending = candidate;
+        await store.SaveAsync(position, ct);
+
+        if (!await safe.SafeCancelAlgoAsync(
+                position.Symbol,
+                position.Stop3OrderId,
+                position.Stop3ClientId,
+                ct))
+        {
+            position.TrailingInProgress = false;
+            position.Stop3NewPending = null;
+            await store.SaveAsync(position, ct);
             return;
         }
 
         try
         {
-            var seq = p.TrailCount + 1;
-            var n = await stop3.CreateTrailingAsync(p, candidate, seq, ct);
-            p.Stop3ClientId = n.ClientAlgoId;
-            p.Stop3OrderId = n.AlgoOrderId;
-            p.Stop3Current = n.TriggerPrice;
-            p.Stop3Status = n.Status;
-            p.Stop3NewPending = null;
-            p.TrailingInProgress = false;
-            p.TrailCount = seq;
-            await store.SaveAsync(p, ct);
+            var sequence = position.TrailCount + 1;
+            var newOrder = await stop3.CreateTrailingAsync(
+                position,
+                candidate,
+                sequence,
+                ct);
+
+            position.Stop3ClientId = newOrder.ClientAlgoId;
+            position.Stop3OrderId = newOrder.AlgoOrderId;
+            position.Stop3Current = newOrder.TriggerPrice;
+            position.Stop3Status = newOrder.Status;
+            position.Stop3NewPending = null;
+            position.TrailingInProgress = false;
+            position.TrailCount = sequence;
+
+            await store.SaveAsync(position, ct);
         }
         catch
         {
-            p.TrailingInProgress = false;
-            p.Stop3Created = false;
-            p.Stop3Pending = true;
-            p.ProtectiveActive = false;
-            await store.SaveAsync(p, ct);
+            position.TrailingInProgress = false;
+            position.Stop3NewPending = null;
+            position.Stop3Created = false;
+            position.Stop3Pending = true;
+            position.ProtectiveActive = false;
+
+            try
+            {
+                await store.SaveAsync(position, CancellationToken.None);
+            }
+            catch (Exception rollbackException)
+            {
+                logger.LogCritical(
+                    rollbackException,
+                    "BOT8011 could not persist trailing rollback state. Position = {ShortId}",
+                    position.ShortId);
+            }
+
             throw;
         }
     }

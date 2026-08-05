@@ -17,136 +17,117 @@ public sealed class RedisTradingSignalSubscriber(
     ILogger<RedisTradingSignalSubscriber> logger)
     : BackgroundService
 {
-    protected override async Task ExecuteAsync(
-        CancellationToken stoppingToken)
-    {
-        var subscriber = redis.GetSubscriber();
-        var channel = RedisChannel.Literal(
-            RedisChannels.StrategySignals);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
-        await subscriber.SubscribeAsync(
-            channel,
-            async (_, value) =>
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var channel = RedisChannel.Literal(RedisChannels.StrategySignals);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var subscriber = redis.GetSubscriber();
+            var subscribed = false;
+
+            try
             {
-                if (!value.HasValue ||
-                    stoppingToken.IsCancellationRequested)
+                await subscriber.SubscribeAsync(channel, async (_, value) =>
                 {
-                    return;
-                }
+                    if (!value.HasValue || stoppingToken.IsCancellationRequested)
+                        return;
 
-                await ProcessSafelyAsync(
-                    value.ToString(),
-                    stoppingToken);
-            });
+                    await ProcessSafelyAsync(value.ToString(), stoppingToken);
+                });
 
-        logger.LogInformation(
-            "Subscribed to trading signals. Channel = {Channel}",
-            channel);
+                subscribed = true;
+                logger.LogInformation("Subscribed to trading signals. Channel = {Channel}", channel);
 
-        try
-        {
-            await Task.Delay(
-                Timeout.InfiniteTimeSpan,
-                stoppingToken);
-        }
-        catch (OperationCanceledException)
-            when (stoppingToken.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            await subscriber.UnsubscribeAsync(channel);
-
-            logger.LogInformation(
-                "Unsubscribed from trading signals. Channel = {Channel}",
-                channel);
-        }
-    }
-
-    private async Task ProcessSafelyAsync(
-        string raw,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            logger.LogInformation(
-                "Trading signal received from Redis. Raw = {Raw}",
-                raw);
-
-            var message =
-                JsonSerializer.Deserialize<TradingSignalMessage>(
-                    raw,
-                    JsonDefaults.Messaging);
-
-            if (message is null)
+                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (RedisException exception)
             {
                 logger.LogWarning(
-                    "Trading signal deserialization returned null. Raw = {Raw}",
-                    raw);
+                    exception,
+                    "Could not subscribe to trading signals because Redis is unavailable. Channel = {Channel}. Retrying.",
+                    channel);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Trading signal subscription failed. Channel = {Channel}. Retrying.",
+                    channel);
+            }
+            finally
+            {
+                if (subscribed)
+                {
+                    try
+                    {
+                        await subscriber.UnsubscribeAsync(channel);
+                    }
+                    catch (Exception exception)
+                    {
+                        logger.LogWarning(
+                            exception,
+                            "Could not unsubscribe cleanly from trading signal channel {Channel}",
+                            channel);
+                    }
+                }
+            }
 
+            await DelayBeforeRetryAsync(stoppingToken);
+        }
+
+        logger.LogInformation("Trading signal subscriber stopped. Channel = {Channel}", channel);
+    }
+
+    private async Task ProcessSafelyAsync(string raw, CancellationToken cancellationToken)
+    {
+        try
+        {
+            logger.LogInformation("Trading signal received from Redis. Raw = {Raw}", raw);
+
+            var message = JsonSerializer.Deserialize<TradingSignalMessage>(raw, JsonDefaults.Messaging);
+            if (message is null)
+            {
+                logger.LogWarning("Trading signal deserialization returned null. Raw = {Raw}", raw);
                 return;
             }
 
-            logger.LogInformation(
-                "Trading signal message deserialized. " +
-                "BotName = {BotName}, Symbol = {Symbol}, " +
-                "Side = {Side}, Source = {Source}, " +
-                 "ReceivedAtUtc = {ReceivedAtUtc}",
-                message.BotName,
-                message.Symbol,
-                message.Symbol,
-                message.Source,
-        
-                message.GeneratedAtUtc);
-
-            var signal = TradingSignalMessageMapper.Map(
-                message,
-                clock.UtcNow);
+            var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
+            await handler.HandleAsync(signal, cancellationToken);
 
             logger.LogInformation(
-                "Trading signal mapped. " +
-                "BotName = {BotName}, Symbol = {Symbol}, " +
-                "Side = {Side}, Source = {Source}",
-                signal.BotName,
-                signal.Symbol,
-                signal.Side,
-                signal.Source);
-
-            logger.LogInformation(
-                "Forwarding trading signal to handler. " +
-                "BotName = {BotName}, Symbol = {Symbol}, Side = {Side}",
-                signal.BotName,
-                signal.Symbol,
-                signal.Side);
-
-            await handler.HandleAsync(
-                signal,
-                cancellationToken);
-
-            logger.LogInformation(
-                "Trading signal handler completed. " +
-                "BotName = {BotName}, Symbol = {Symbol}, Side = {Side}",
+                "Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}",
                 signal.BotName,
                 signal.Symbol,
                 signal.Side);
         }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (JsonException exception)
         {
-            logger.LogError(
-                exception,
-                "Trading signal JSON is invalid. Raw = {Raw}",
-                raw);
+            logger.LogError(exception, "Trading signal JSON is invalid. Raw = {Raw}", raw);
         }
         catch (Exception exception)
         {
-            logger.LogError(
-                exception,
-                "Trading signal processing failed. Raw = {Raw}",
-                raw);
+            logger.LogError(exception, "Trading signal processing failed. Raw = {Raw}", raw);
+        }
+    }
+
+    private static async Task DelayBeforeRetryAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(RetryDelay, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
         }
     }
 }

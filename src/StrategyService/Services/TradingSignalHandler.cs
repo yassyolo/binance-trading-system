@@ -12,6 +12,7 @@ public sealed class TradingSignalHandler(
     TradingStrategyRegistry strategies,
     ITradingPipelineRecorder history,
     ITradingEnvironmentProvider environment,
+    ITradingSignalContextAccessor signalContext,
     ILogger<TradingSignalHandler> logger)
     : ITradingSignalHandler
 {
@@ -21,26 +22,13 @@ public sealed class TradingSignalHandler(
     {
         var strategyVersion = ResolveStrategyVersion(signal.BotName);
 
-        await history.RecordSignalAsync(
-            new SignalHistoryRecord(
-                SignalId: signal.SignalId,
-                BotName: signal.BotName,
-                StrategyVersion: strategyVersion,
-                Symbol: signal.Symbol,
-                Side: signal.Side.ToString(),
-                Source: signal.Source,
-                Environment: environment.EnvironmentName,
-                SignalTimeUtc: signal.GeneratedAtUtc,
-                ReferencePrice: null,
-                CandleOpenTimeUtc: null,
-                Interval: null,
-                Reason: null,
-                RawPayload: null,
-                Metadata: new Dictionary<string, object?>
-                {
-                    ["receivedAtUtc"] = DateTime.UtcNow
-                }),
-            ct);
+        await TryRecordSignalAsync(signal, strategyVersion, ct);
+
+        using var contextScope = signalContext.Push(
+            new TradingSignalExecutionContext(
+                signal.SignalId,
+                strategyVersion,
+                signal.Source));
 
         TradingEngineResult result;
 
@@ -83,18 +71,66 @@ public sealed class TradingSignalHandler(
             {
                 ["succeeded"] = result.Succeeded,
                 ["openedPosition"] = result.OpenedPosition,
+                ["duplicate"] = result.Duplicate,
                 ["shortId"] = result.ShortId
             },
             ct);
 
         logger.LogInformation(
-            "Signal processed. Id = {Id} Bot = {Bot} Opened = {Opened} Reason = {Reason}",
+            "Signal processed. Id = {Id} Bot = {Bot} Opened = {Opened} Duplicate = {Duplicate} Reason = {Reason}",
             signal.SignalId,
             signal.BotName,
             result.OpenedPosition,
+            result.Duplicate,
             result.Reason);
 
         return result.Succeeded;
+    }
+
+    private async Task TryRecordSignalAsync(
+        TradeSignal signal,
+        string strategyVersion,
+        CancellationToken ct)
+    {
+        try
+        {
+            var metadata = signal.Metadata.ToDictionary(
+                pair => pair.Key,
+                pair => (object?)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+
+            metadata["receivedAtUtc"] = DateTime.UtcNow;
+
+            await history.RecordSignalAsync(
+                new SignalHistoryRecord(
+                    SignalId: signal.SignalId,
+                    BotName: signal.BotName,
+                    StrategyVersion: strategyVersion,
+                    Symbol: signal.Symbol,
+                    Side: signal.Side.ToString(),
+                    Source: signal.Source,
+                    Environment: environment.EnvironmentName,
+                    SignalTimeUtc: signal.GeneratedAtUtc,
+                    ReferencePrice: signal.SuggestedPrice,
+                    CandleOpenTimeUtc: null,
+                    Interval: null,
+                    Reason: null,
+                    RawPayload: signal.RawPayload,
+                    Metadata: metadata),
+                ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // Observability must not prevent a valid trading signal from being processed.
+            logger.LogError(
+                exception,
+                "Signal history could not be recorded. SignalId = {SignalId}",
+                signal.SignalId);
+        }
     }
 
     private async Task TryRecordDecisionAsync(
@@ -155,15 +191,24 @@ public sealed class TradingSignalHandler(
 
     private static string ResolveFinalDecision(TradingEngineResult result)
     {
+        if (result.Duplicate)
+            return "Duplicate";
+
         if (result.OpenedPosition)
             return "Open";
 
-        if (!result.Succeeded)
-            return "Failed";
+        if (IsTimestampRejection(result.Reason))
+            return "Rejected";
 
-        if (result.Reason.Contains("Duplicate signal", StringComparison.OrdinalIgnoreCase))
-            return "Duplicate";
+        if (result.Succeeded)
+            return "Block";
 
-        return "Block";
+        return "Failed";
+    }
+
+    private static bool IsTimestampRejection(string? reason)
+    {
+        return reason?.Contains("Signal is stale", StringComparison.OrdinalIgnoreCase) == true ||
+               reason?.Contains("Signal timestamp is in the future", StringComparison.OrdinalIgnoreCase) == true;
     }
 }

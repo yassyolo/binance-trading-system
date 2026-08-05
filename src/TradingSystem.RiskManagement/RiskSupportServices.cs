@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.RiskManagement.Configuration;
 
 namespace TradingSystem.RiskManagement;
 

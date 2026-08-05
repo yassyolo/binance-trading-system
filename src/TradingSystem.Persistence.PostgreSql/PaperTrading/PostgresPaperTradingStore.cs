@@ -14,13 +14,13 @@ public sealed class PostgresPaperTradingStore(
     {
         const string sql = """
             insert into trading_paper.positions
-                (position_id, short_id, bot_name, symbol, side, quantity, entry_price,
-                 take_profit_price, stop_loss_price, entry_fee, status, source,
-                 opened_at_utc, version)
+                (position_id, short_id, signal_id, strategy_version, bot_name, symbol, side,
+                 quantity, entry_price, take_profit_price, stop_loss_price, entry_fee,
+                 status, source, opened_at_utc, version)
             values
-                (@PositionId, @ShortId, @BotName, @Symbol, @Side, @Quantity, @EntryPrice,
-                 @TakeProfitPrice, @StopLossPrice, @EntryFee, @Status, @Source,
-                 @OpenedAtUtc, @Version);
+                (@PositionId, @ShortId, @SignalId, @StrategyVersion, @BotName, @Symbol, @Side,
+                 @Quantity, @EntryPrice, @TakeProfitPrice, @StopLossPrice, @EntryFee,
+                 @Status, @Source, @OpenedAtUtc, @Version);
             """;
 
         await using var connection = await connections.OpenAsync(ct);
@@ -31,10 +31,7 @@ public sealed class PostgresPaperTradingStore(
             cancellationToken: ct));
     }
 
-    public async Task<PaperTradingPosition?> GetAsync(
-        string botName,
-        string shortId,
-        CancellationToken ct)
+    public async Task<PaperTradingPosition?> GetAsync(string botName, string shortId, CancellationToken ct)
     {
         await using var connection = await connections.OpenAsync(ct);
         return await connection.QuerySingleOrDefaultAsync<PaperTradingPosition>(
@@ -64,16 +61,14 @@ public sealed class PostgresPaperTradingStore(
     async Task<IReadOnlyCollection<PaperPortfolioPosition>> IPaperPortfolioPositionSource.GetOpenAsync(CancellationToken ct)
     {
         var positions = await GetOpenAsync(ct);
-        return positions
-            .Select(position => new PaperPortfolioPosition(
-                position.BotName,
-                position.ShortId,
-                position.Symbol,
-                position.Side,
-                position.Quantity,
-                position.EntryPrice,
-                position.OpenedAtUtc))
-            .ToArray();
+        return positions.Select(position => new PaperPortfolioPosition(
+            position.BotName,
+            position.ShortId,
+            position.Symbol,
+            position.Side,
+            position.Quantity,
+            position.EntryPrice,
+            position.OpenedAtUtc)).ToArray();
     }
 
     public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(
@@ -99,9 +94,7 @@ public sealed class PostgresPaperTradingStore(
                 new
                 {
                     botName,
-                    symbol = string.IsNullOrWhiteSpace(symbol)
-                        ? null
-                        : symbol.ToUpperInvariant(),
+                    symbol = string.IsNullOrWhiteSpace(symbol) ? null : symbol.ToUpperInvariant(),
                     status = (int?)status,
                     skip = Math.Max(0, skip),
                     take = Math.Clamp(take, 1, 1000)
@@ -144,9 +137,7 @@ public sealed class PostgresPaperTradingStore(
             cancellationToken: ct)) == 1;
     }
 
-    public async Task<PaperTradingAccount> GetAccountAsync(
-        decimal initialBalance,
-        CancellationToken ct)
+    public async Task<PaperTradingAccount> GetAccountAsync(decimal initialBalance, CancellationToken ct)
     {
         const string sql = """
             select coalesce(sum(realized_pnl), 0) RealizedPnl,
@@ -200,6 +191,8 @@ public sealed class PostgresPaperTradingStore(
     private const string BaseSelect = """
         select position_id PositionId,
                short_id ShortId,
+               signal_id SignalId,
+               strategy_version StrategyVersion,
                bot_name BotName,
                symbol Symbol,
                side Side,
@@ -225,6 +218,8 @@ public sealed class PostgresPaperTradingStore(
     {
         position.PositionId,
         position.ShortId,
+        position.SignalId,
+        position.StrategyVersion,
         position.BotName,
         Symbol = position.Symbol.ToUpperInvariant(),
         Side = (int)position.Side,
@@ -239,9 +234,5 @@ public sealed class PostgresPaperTradingStore(
         position.Version
     };
 
-    private sealed record AccountRow(
-        decimal RealizedPnl,
-        decimal Fees,
-        int OpenPositions,
-        int ClosedPositions);
+    private sealed record AccountRow(decimal RealizedPnl, decimal Fees, int OpenPositions, int ClosedPositions);
 }

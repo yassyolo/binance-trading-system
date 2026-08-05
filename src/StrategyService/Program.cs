@@ -18,8 +18,10 @@ using TradingSystem.PaperTrading.Configuration;
 using TradingSystem.Persistence.PostgreSql.Configuration;
 using TradingSystem.Prometheus;
 using TradingSystem.Reconciliation;
+using TradingSystem.Reconciliation.Configuration;
+using TradingSystem.Reconciliation.Executor;
 using TradingSystem.Redis.DependencyInjection;
-using TradingSystem.RiskManagement;
+using TradingSystem.RiskManagement.Configuration;
 using TradingSystem.Signals.Configuration;
 using TradingSystem.Strategies.Alligator;
 using TradingSystem.Strategies.Grid;
@@ -30,22 +32,36 @@ using TradingSystem.StrategyPlugins;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddTradingInfrastructure();
-builder.Services.AddTradingObservability();
+builder.Services.AddTradingObservability(builder.Configuration);
 builder.Services.AddTradingApplication(builder.Configuration);
-builder.Services.AddSingleton<ITradingSignalHandler,TradingSignalHandler>();
+builder.Services.AddSingleton<ITradingSignalHandler, TradingSignalHandler>();
 builder.Services.AddStrategyPluginSystem(builder.Configuration);
-builder.Services.AddPaperTrading(builder.Configuration);
-builder.Services.AddTradingRedis(builder.Configuration, subscribeToSignals: true);
+
+// PaperPositionCloseWorker is the single TP/SL polling worker in this host.
+// Disable PaperFillWorker to avoid two workers racing to close the same row.
+builder.Services.AddPaperTrading(
+    builder.Configuration,
+    addFillWorker: false);
+
+builder.Services.AddTradingRedis(
+    builder.Configuration,
+    subscribeToSignals: true);
 builder.Services.AddBinanceFutures(builder.Configuration);
 builder.Services.AddTradingSignals(builder.Configuration);
 builder.Services.AddPostgresTradingHistory(builder.Configuration);
-builder.Services.AddServiceHeartbeat(builder.Configuration, "StrategyService");
+builder.Services.AddServiceHeartbeat(
+    builder.Configuration,
+    "StrategyService");
 builder.Services.AddBotRuntimeOrchestration(builder.Configuration);
 builder.Services.AddCentralRiskManagement(builder.Configuration);
 builder.Services.AddTradingReconciliation(builder.Configuration);
 
-builder.Services.AddSingleton<IExchangeStateProvider, BinanceExchangeStateProvider>();
-builder.Services.AddSingleton<IHealingActionExecutor, SafeHealingActionExecutor>();
+builder.Services.AddSingleton<
+    IExchangeStateProvider,
+    BinanceExchangeStateProvider>();
+builder.Services.AddSingleton<
+    IHealingActionExecutor,
+    SafeHealingActionExecutor>();
 builder.Services.AddHostedService<ReconciliationWorker>();
 
 builder.Services.AddHttpClient<TelegramNotificationService>();

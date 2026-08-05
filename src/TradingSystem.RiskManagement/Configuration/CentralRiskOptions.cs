@@ -1,6 +1,6 @@
 ﻿using TradingSystem.Application.Risk;
 
-namespace TradingSystem.RiskManagement;
+namespace TradingSystem.RiskManagement.Configuration;
 
 public sealed class CentralRiskOptions
 {
