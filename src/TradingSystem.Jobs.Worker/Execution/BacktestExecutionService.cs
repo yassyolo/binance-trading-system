@@ -52,7 +52,7 @@ public sealed class BacktestExecutionService(
                 toUtc,
                 ct))
         {
-            throw new InvalidOperationException(
+            throw new HistoricalDataUnavailableException(
                 "Historical data contains unresolved candle gaps for the requested period.");
         }
 
@@ -64,7 +64,7 @@ public sealed class BacktestExecutionService(
             ct);
 
         if (candles.Count < 2)
-            throw new InvalidOperationException(
+            throw new HistoricalDataUnavailableException(
                 "Historical candles are missing for the requested period.");
 
         var signals = string.Equals(
@@ -80,7 +80,7 @@ public sealed class BacktestExecutionService(
                 ct);
 
         if (signals.Count == 0)
-            throw new InvalidOperationException(
+            throw new HistoricalDataUnavailableException(
                 "No historical signals were found for the requested source and period.");
 
         var parameters = request.Parameters
