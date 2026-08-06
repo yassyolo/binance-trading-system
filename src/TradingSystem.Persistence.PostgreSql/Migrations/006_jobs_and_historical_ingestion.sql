@@ -1,4 +1,4 @@
-/*ALTER TABLE trading_dashboard.jobs
+ALTER TABLE trading_dashboard.jobs
     ADD COLUMN IF NOT EXISTS processing_worker_id varchar(200), 
     ADD COLUMN IF NOT EXISTS processing_started_at_utc timestamptz, 
     ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0, 
@@ -36,4 +36,4 @@ BEGIN
     IF unit  =  'd' THEN RETURN make_interval(days  =>  amount); END IF;
     RAISE EXCEPTION 'Unsupported interval: %',  value;
 END;
-$$;*/
+$$;

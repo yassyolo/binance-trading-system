@@ -1,4 +1,4 @@
-/*BEGIN;
+BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS trading_replay;
 
@@ -67,4 +67,3 @@ REVOKE UPDATE,  DELETE,  TRUNCATE ON trading_replay.steps FROM PUBLIC;
 REVOKE UPDATE,  DELETE,  TRUNCATE ON trading_replay.results FROM PUBLIC;
 
 COMMIT;
-*/

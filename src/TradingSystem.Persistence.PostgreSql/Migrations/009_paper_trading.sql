@@ -1,4 +1,4 @@
-/*CREATE SCHEMA IF NOT EXISTS trading_paper;
+CREATE SCHEMA IF NOT EXISTS trading_paper;
 
 CREATE TABLE IF NOT EXISTS trading_paper.positions (
     position_id UUID PRIMARY KEY, 
@@ -57,4 +57,3 @@ create index if not exists ix_trading_paper_positions_signal_id
 -- persist the originating signal. New positions will be linked automatically after deployment.
 
 commit;
-*/

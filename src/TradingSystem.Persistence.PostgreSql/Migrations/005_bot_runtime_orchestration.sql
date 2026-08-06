@@ -1,4 +1,4 @@
-/*ALTER TABLE trading_dashboard.bot_configurations
+ALTER TABLE trading_dashboard.bot_configurations
     ADD COLUMN IF NOT EXISTS runtime_version bigint NOT NULL DEFAULT 1, 
     ADD COLUMN IF NOT EXISTS runtime_updated_at_utc timestamptz NOT NULL DEFAULT now(), 
     ADD COLUMN IF NOT EXISTS runtime_updated_by varchar(128) NOT NULL DEFAULT 'migration', 
@@ -28,4 +28,4 @@ CREATE TABLE IF NOT EXISTS trading_dashboard.bot_configuration_refresh_log(
 );
 
 CREATE INDEX IF NOT EXISTS ix_bot_configuration_refresh_log_bot
-    ON trading_dashboard.bot_configuration_refresh_log(bot_name,  refreshed_at_utc DESC);*/
+    ON trading_dashboard.bot_configuration_refresh_log(bot_name,  refreshed_at_utc DESC);

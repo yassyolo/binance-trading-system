@@ -1,4 +1,4 @@
-/*begin;
+begin;
 
 alter table trading_paper.positions
     add column if not exists signal_id text null;
@@ -14,4 +14,3 @@ create index if not exists ix_trading_paper_positions_signal_id
 -- persist the originating signal. New positions will be linked automatically after deployment.
 
 commit;
-*/

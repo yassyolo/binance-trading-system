@@ -71,18 +71,62 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
         return rows.AsList();
     }
 
-    public async Task<IReadOnlyList<ReplayJob>> QueryAsync(ReplayJobStatus? status,  int skip,  int take,  CancellationToken ct)
-    {
-        await using var connection  =  await connections.OpenAsync(ct);
-        var rows  =  await connection.QueryAsync<JobRow>(new CommandDefinition("""
-            select replay_id ReplayId, name Name, mode Mode, status Status, requested_by RequestedBy, request::text RequestJson, last_global_position LastGlobalPosition, processed_events ProcessedEvents, failed_events FailedEvents, progress_percent ProgressPercent, progress_stage ProgressStage, error Error, created_at_utc CreatedAtUtc, started_at_utc StartedAtUtc, completed_at_utc CompletedAtUtc, deterministic_hash DeterministicHash from trading_replay.jobs
-            where (@status is null or status = @status)
-            order by created_at_utc desc offset @skip limit @take
-            """,  new { status  =  status?.ToString(),  skip  =  Math.Max(0,  skip),  take  =  Math.Clamp(take,  1,  500) },  cancellationToken: ct));
-        return rows.Select(Map).ToArray();
-    }
+	public async Task<IReadOnlyList<ReplayJob>> QueryAsync(
+	ReplayJobStatus? status,
+	int skip,
+	int take,
+	CancellationToken ct)
+	{
+		const string sql = """
+        select
+            replay_id as ReplayId,
+            name as Name,
+            mode as Mode,
+            status as Status,
+            requested_by as RequestedBy,
+            request::text as RequestJson,
+            last_global_position as LastGlobalPosition,
+            processed_events as ProcessedEvents,
+            failed_events as FailedEvents,
+            progress_percent as ProgressPercent,
+            progress_stage as ProgressStage,
+            error as Error,
+            created_at_utc as CreatedAtUtc,
+            started_at_utc as StartedAtUtc,
+            completed_at_utc as CompletedAtUtc,
+            deterministic_hash as DeterministicHash
+        from trading_replay.jobs
+        where (
+                cast(@Status as text) is null
+                or status = cast(@Status as text)
+              )
+        order by created_at_utc desc
+        offset @Skip
+        limit @Take;
+        """;
 
-    public async Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId,  CancellationToken ct)
+		var parameters = new
+		{
+			Status = status?.ToString(),
+			Skip = Math.Max(0, skip),
+			Take = Math.Clamp(take, 1, 500)
+		};
+
+		await using var connection = await connections.OpenAsync(ct);
+
+		var rows = await connection.QueryAsync<JobRow>(
+			new CommandDefinition(
+				sql,
+				parameters,
+				commandTimeout: connections.CommandTimeoutSeconds,
+				cancellationToken: ct));
+
+		return rows
+			.Select(Map)
+			.ToArray();
+	}
+
+	public async Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId,  CancellationToken ct)
     {
         await using var connection  =  await connections.OpenAsync(ct);
         var json  =  await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
@@ -155,46 +199,152 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
         return await connection.ExecuteScalarAsync<bool>(new CommandDefinition("select cancellation_requested from trading_replay.jobs where replay_id = @replayId",  new { replayId },  cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(CreateReplayRequest request,  long afterGlobalPosition,  int take,  CancellationToken ct)
-    {
-        const string sql  =  """
-            select global_position GlobalPosition, event_id EventId, event_type EventType, event_version EventVersion, 
-                   aggregate_type AggregateType, aggregate_id AggregateId, aggregate_version AggregateVersion, 
-                   occurred_at_utc OccurredAtUtc, recorded_at_utc RecordedAtUtc, bot_name BotName, symbol Symbol, 
-                   position_id PositionId, signal_id SignalId, correlation_id CorrelationId, causation_id CausationId, 
-                   actor Actor, payload::text PayloadJson, metadata::text MetadataJson
-            from trading_event_store.events
-            where global_position>@after
-              and (@fromPosition is null or global_position>=@fromPosition)
-              and (@toPosition is null or global_position<=@toPosition)
-              and (@fromUtc is null or occurred_at_utc>=@fromUtc)
-              and (@toUtc is null or occurred_at_utc<=@toUtc)
-              and (@botName is null or bot_name = @botName)
-              and (@symbol is null or symbol = @symbol)
-              and (@correlationId is null or correlation_id = @correlationId)
-            order by global_position asc limit @take;
-            """;
-        await using var connection  =  await connections.OpenAsync(ct);
-        var rows  =  await connection.QueryAsync<EventRow>(new CommandDefinition(sql,  new { after  =  afterGlobalPosition,  fromPosition  =  request.FromGlobalPosition,  toPosition  =  request.ToGlobalPosition,  request.FromUtc,  request.ToUtc,  request.BotName,  request.Symbol,  request.CorrelationId,  take  =  Math.Clamp(take,  1,  1000) },  cancellationToken: ct));
-        return rows.Select(x  =>  x.ToStored()).ToArray();
-    }
+	public async Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(
+	CreateReplayRequest request,
+	long afterGlobalPosition,
+	int take,
+	CancellationToken ct)
+	{
+		const string sql = """
+        select
+            global_position as GlobalPosition,
+            event_id as EventId,
+            event_type as EventType,
+            event_version as EventVersion,
+            aggregate_type as AggregateType,
+            aggregate_id as AggregateId,
+            aggregate_version as AggregateVersion,
+            occurred_at_utc as OccurredAtUtc,
+            recorded_at_utc as RecordedAtUtc,
+            bot_name as BotName,
+            symbol as Symbol,
+            position_id as PositionId,
+            signal_id as SignalId,
+            correlation_id as CorrelationId,
+            causation_id as CausationId,
+            actor as Actor,
+            payload::text as PayloadJson,
+            metadata::text as MetadataJson
+        from trading_event_store.events
+        where global_position > @AfterGlobalPosition
+          and (
+                cast(@FromGlobalPosition as bigint) is null
+                or global_position >= cast(@FromGlobalPosition as bigint)
+              )
+          and (
+                cast(@ToGlobalPosition as bigint) is null
+                or global_position <= cast(@ToGlobalPosition as bigint)
+              )
+          and (
+                cast(@FromUtc as timestamptz) is null
+                or occurred_at_utc >= cast(@FromUtc as timestamptz)
+              )
+          and (
+                cast(@ToUtc as timestamptz) is null
+                or occurred_at_utc <= cast(@ToUtc as timestamptz)
+              )
+          and (
+                cast(@BotName as text) is null
+                or bot_name = cast(@BotName as text)
+              )
+          and (
+                cast(@Symbol as text) is null
+                or symbol = cast(@Symbol as text)
+              )
+          and (
+                cast(@CorrelationId as text) is null
+                or correlation_id = cast(@CorrelationId as text)
+              )
+        order by global_position asc
+        limit @Take;
+        """;
 
-    public async Task<long> CountAsync(CreateReplayRequest request,  CancellationToken ct)
-    {
-        await using var connection  =  await connections.OpenAsync(ct);
-        return await connection.ExecuteScalarAsync<long>(new CommandDefinition("""
-            select count(*) from trading_event_store.events
-            where (@fromPosition is null or global_position>=@fromPosition)
-              and (@toPosition is null or global_position<=@toPosition)
-              and (@fromUtc is null or occurred_at_utc>=@fromUtc)
-              and (@toUtc is null or occurred_at_utc<=@toUtc)
-              and (@botName is null or bot_name = @botName)
-              and (@symbol is null or symbol = @symbol)
-              and (@correlationId is null or correlation_id = @correlationId);
-            """,  new { fromPosition  =  request.FromGlobalPosition,  toPosition  =  request.ToGlobalPosition,  request.FromUtc,  request.ToUtc,  request.BotName,  request.Symbol,  request.CorrelationId },  cancellationToken: ct));
-    }
+		var parameters = new
+		{
+			AfterGlobalPosition = Math.Max(0, afterGlobalPosition),
+			FromGlobalPosition = request.FromGlobalPosition,
+			ToGlobalPosition = request.ToGlobalPosition,
+			FromUtc = request.FromUtc,
+			ToUtc = request.ToUtc,
+			BotName = request.BotName,
+			Symbol = request.Symbol,
+			CorrelationId = request.CorrelationId,
+			Take = Math.Clamp(take, 1, 1000)
+		};
 
-    private static ReplayJob Map(JobRow row)  =>  new(row.ReplayId,  row.Name,  Enum.Parse<ReplayMode>(row.Mode), 
+		await using var connection = await connections.OpenAsync(ct);
+
+		var rows = await connection.QueryAsync<EventRow>(
+			new CommandDefinition(
+				sql,
+				parameters,
+				commandTimeout: connections.CommandTimeoutSeconds,
+				cancellationToken: ct));
+
+		return rows
+			.Select(x => x.ToStored())
+			.ToArray();
+	}
+
+	public async Task<long> CountAsync(
+	CreateReplayRequest request,
+	CancellationToken ct)
+	{
+		const string sql = """
+        select count(*)
+        from trading_event_store.events
+        where (
+                cast(@FromGlobalPosition as bigint) is null
+                or global_position >= cast(@FromGlobalPosition as bigint)
+              )
+          and (
+                cast(@ToGlobalPosition as bigint) is null
+                or global_position <= cast(@ToGlobalPosition as bigint)
+              )
+          and (
+                cast(@FromUtc as timestamptz) is null
+                or occurred_at_utc >= cast(@FromUtc as timestamptz)
+              )
+          and (
+                cast(@ToUtc as timestamptz) is null
+                or occurred_at_utc <= cast(@ToUtc as timestamptz)
+              )
+          and (
+                cast(@BotName as text) is null
+                or bot_name = cast(@BotName as text)
+              )
+          and (
+                cast(@Symbol as text) is null
+                or symbol = cast(@Symbol as text)
+              )
+          and (
+                cast(@CorrelationId as text) is null
+                or correlation_id = cast(@CorrelationId as text)
+              );
+        """;
+
+		var parameters = new
+		{
+			FromGlobalPosition = request.FromGlobalPosition,
+			ToGlobalPosition = request.ToGlobalPosition,
+			FromUtc = request.FromUtc,
+			ToUtc = request.ToUtc,
+			BotName = request.BotName,
+			Symbol = request.Symbol,
+			CorrelationId = request.CorrelationId
+		};
+
+		await using var connection = await connections.OpenAsync(ct);
+
+		return await connection.ExecuteScalarAsync<long>(
+			new CommandDefinition(
+				sql,
+				parameters,
+				commandTimeout: connections.CommandTimeoutSeconds,
+				cancellationToken: ct));
+	}
+
+	private static ReplayJob Map(JobRow row)  =>  new(row.ReplayId,  row.Name,  Enum.Parse<ReplayMode>(row.Mode), 
         Enum.Parse<ReplayJobStatus>(row.Status),  row.RequestedBy, 
         JsonSerializer.Deserialize<CreateReplayRequest>(row.RequestJson,  EventJson.Options)!, 
         row.LastGlobalPosition,  row.ProcessedEvents,  row.FailedEvents,  row.ProgressPercent, 

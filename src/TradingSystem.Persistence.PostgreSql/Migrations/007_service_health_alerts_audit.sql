@@ -1,4 +1,4 @@
-/*create schema if not exists trading_dashboard;
+create schema if not exists trading_dashboard;
 
 -- Migration 004 originally used last_seen_utc while the runtime store uses
 -- last_seen_at_utc. Normalize the schema without losing existing values.
@@ -285,4 +285,4 @@ create index if not exists ix_historical_trade_summaries_bot_closed_at
     on trading_history.trade_summaries (bot_name, closed_at_utc desc);
 
 create index if not exists ix_historical_trade_summaries_symbol_closed_at
-    on trading_history.trade_summaries (symbol, closed_at_utc desc);*/
+    on trading_history.trade_summaries (symbol, closed_at_utc desc);

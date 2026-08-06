@@ -1,4 +1,4 @@
-/*CREATE SCHEMA IF NOT EXISTS trading_dashboard;
+CREATE SCHEMA IF NOT EXISTS trading_dashboard;
 CREATE TABLE IF NOT EXISTS trading_dashboard.bot_configurations(
  bot_name varchar(64) PRIMARY KEY, strategy_type varchar(64) NOT NULL, symbol varchar(32) NOT NULL, 
  environment varchar(16) NOT NULL CHECK(environment IN('Demo', 'Production')), signal_source varchar(64) NOT NULL, 
@@ -37,4 +37,4 @@ VALUES
 ('BOT8014', 'TpOnlyGrid', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, 400, 200, 2, 180), 
 ('BOT8015', 'ProtectedStop3', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, null, null, 1, 180), 
 ('BOT8016', 'AlligatorMultiTimeframe', 'BTCUSDC', 'Demo', 'Internal', true, true, 0.002, 50, null, null, 1, 180)
-ON CONFLICT(bot_name) DO NOTHING;*/
+ON CONFLICT(bot_name) DO NOTHING;
