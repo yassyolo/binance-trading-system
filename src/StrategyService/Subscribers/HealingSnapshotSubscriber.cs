@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using TradingSystem.Application.Healing;
 using TradingSystem.Contracts.Messaging;
@@ -12,7 +10,8 @@ namespace StrategyService.Subscribers;
 public sealed class HealingSnapshotSubscriber(
     IConnectionMultiplexer redis,
     HealingServiceRegistry registry,
-    ILogger<HealingSnapshotSubscriber> logger) : BackgroundService
+    ILogger<HealingSnapshotSubscriber> logger) 
+    : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
@@ -36,7 +35,9 @@ public sealed class HealingSnapshotSubscriber(
                 });
 
                 subscribed = true;
+                
                 logger.LogInformation("Subscribed to healing snapshots. Channel = {Channel}", channel);
+                
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -45,10 +46,7 @@ public sealed class HealingSnapshotSubscriber(
             }
             catch (RedisException exception)
             {
-                logger.LogWarning(
-                    exception,
-                    "Could not subscribe to healing snapshots because Redis is unavailable. Channel = {Channel}. Retrying.",
-                    channel);
+                logger.LogWarning(exception, "Could not subscribe to healing snapshots because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
             catch (Exception exception)
             {

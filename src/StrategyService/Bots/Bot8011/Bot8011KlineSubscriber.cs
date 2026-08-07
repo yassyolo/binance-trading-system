@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using StrategyService.Bots.Bot8011.Configuration;
 using TradingSystem.Contracts.Messaging;
 
 namespace StrategyService.Bots.Bot8011;

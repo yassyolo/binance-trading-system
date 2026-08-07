@@ -2,8 +2,9 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using TradingSystem.Contracts.Indicators;
 using TradingSystem.Domain.MarketData;
-using TradingSystem.Indicators.Abstractions;
 using TradingSystem.Indicators.Common;
+using TradingSystem.Indicators.Bollinger.Configuration;
+using TradingSystem.Indicators.Contracts;
 
 namespace TradingSystem.Indicators.Bollinger;
 

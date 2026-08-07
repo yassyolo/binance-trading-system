@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using TradingSystem.Indicators.Abstractions;
+using TradingSystem.Indicators.Contracts;
 using TradingSystem.Indicators.Alligator;
 using TradingSystem.Indicators.Bollinger;
+using TradingSystem.Indicators.Alligator.Configuration;
+using TradingSystem.Indicators.Bollinger.Configuration;
 
 namespace TradingSystem.Indicators;
 

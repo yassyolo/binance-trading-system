@@ -1,4 +1,7 @@
+using TradingSystem.Backtesting.Bots.Bot8011.Models;
+using TradingSystem.Backtesting.Bots.Bot8011.Models.Enums;
 using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Models;
 using TradingSystem.Domain.MarketData;
 
@@ -251,23 +254,5 @@ public sealed class Bot8011BacktestEngine
             throw new ArgumentException("Invalid BOT8011 options.");
         if (options.TakeProfitCloseFraction is <= 0 or > 1)
             throw new ArgumentException("TakeProfitCloseFraction must be in (0,  1].");
-    }
-
-    private enum LifecycleStage { InitialProtection, Stop3Active, Closed }
-    private sealed class SimulatedPosition
-    {
-        public required string Id { get; init; }
-        public required TradeSide Side { get; init; }
-        public required DateTime EntryTimeUtc { get; init; }
-        public required decimal EntryPrice { get; init; }
-        public required decimal InitialQuantity { get; init; }
-        public required decimal RemainingQuantity { get; set; }
-        public required decimal InitialStopLoss { get; init; }
-        public required decimal TakeProfit { get; init; }
-        public decimal? Stop3Current { get; set; }
-        public LifecycleStage Stage { get; set; }
-        public decimal RealizedGross { get; set; }
-        public decimal Fees { get; set; }
-        public bool PartialTpReached { get; set; }
-    }
+    }    
 }

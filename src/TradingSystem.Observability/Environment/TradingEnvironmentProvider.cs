@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
+using TradingSystem.Observability.Environment.Configuration;
 
 namespace TradingSystem.Observability.Environment;
 
@@ -12,8 +13,7 @@ public sealed class TradingEnvironmentProvider(
     {
         get
         {
-            var environmentOverride =
-                System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim();
+            var environmentOverride = System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim();
 
             if (!string.IsNullOrWhiteSpace(environmentOverride))
                 return environmentOverride;

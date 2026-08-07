@@ -1,10 +1,13 @@
 using System.Globalization;
 using System.Text.Json;
+using TradingSystem.Binance.Exceptions;
 using TradingSystem.Binance.Market.Contracts;
 
 namespace TradingSystem.Binance.Market;
 
-public sealed class BinanceFuturesMarketClient(HttpClient httpClient) : IBinanceFuturesMarketClient
+public sealed class BinanceFuturesMarketClient(
+    HttpClient httpClient) 
+    : IBinanceFuturesMarketClient
 {
     public async Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken ct = default)
     {

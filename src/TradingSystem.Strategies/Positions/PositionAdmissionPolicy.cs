@@ -1,17 +1,7 @@
 using TradingSystem.Domain.Enums;
+using TradingSystem.Strategies.Positions.Models;
 
 namespace TradingSystem.Strategies.Positions;
-
-public sealed record PositionAdmissionParameters(
-    bool EnableLong,
-    bool EnableShort,
-    int SideLimit,
-    bool CloseOppositeFirst);
-
-public sealed record PositionAdmissionDecision(
-    bool Allowed,
-    IReadOnlyCollection<string> PositionsToClose,
-    string Reason);
 
 public sealed class PositionAdmissionPolicy
 {

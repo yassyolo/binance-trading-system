@@ -1,3 +1,5 @@
+using TradingSystem.Backtesting.Strategies.Contracts;
+
 namespace TradingSystem.Backtesting.Strategies;
 
 public sealed class BacktestStrategyRegistry(IEnumerable<IBacktestStrategyFactory> factories)

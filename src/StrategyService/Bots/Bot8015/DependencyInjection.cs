@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Healing;
+using StrategyService.Bots.Bot8015.Configuration;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Healing.Contracts;
 using TradingSystem.Application.Orders;
-using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Positions.Contracts;
+using TradingSystem.Application.Strategies.Contracts;
 using TradingSystem.Binance.Startup;
 
 namespace StrategyService.Bots.Bot8015;

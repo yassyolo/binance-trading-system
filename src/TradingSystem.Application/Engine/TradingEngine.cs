@@ -1,15 +1,23 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Engine.Configuration;
+using TradingSystem.Application.Engine.Contracts;
+using TradingSystem.Application.Engine.Models;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Risk;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Risk.Contracts;
+using TradingSystem.Application.Strategies.Contracts;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.Application.Time;
 using TradingSystem.BotRuntime.Configuration;
-using TradingSystem.BotRuntime.Runtime;
+using TradingSystem.BotRuntime.Runtime.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Signals;
-using TradingSystem.EventStore;
+using TradingSystem.EventStore.Constants;
+using TradingSystem.EventStore.Contracts;
+using TradingSystem.EventStore.Models;
 
 namespace TradingSystem.Application.Engine;
 

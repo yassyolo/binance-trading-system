@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingSystem.Observability.Environment;
-using TradingSystem.Observability.History;
-using TradingSystem.Signals.Abstractions;
+using TradingSystem.Signals.Contracts;
 using TradingSystem.Signals.Configuration;
 using TradingSystem.Signals.Models;
+using TradingSystem.Signals.Models.Enums;
+using TradingSystem.Observability.Environment;
+using TradingSystem.Observability.Pipeline;
+using TradingSystem.Signals.Abstractions;
 
 namespace TradingSystem.Signals.Services;
 

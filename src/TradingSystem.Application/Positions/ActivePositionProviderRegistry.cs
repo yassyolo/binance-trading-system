@@ -1,3 +1,6 @@
+using TradingSystem.Application.Positions.Contracts;
+using TradingSystem.Application.Positions.Models;
+
 namespace TradingSystem.Application.Positions;
 
 public sealed class ActivePositionProviderRegistry : IActivePositionProvider

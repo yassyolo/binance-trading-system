@@ -1,7 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net;
-using TradingSystem.Binance;
+using TradingSystem.Binance.Exceptions;
+using TradingSystem.Binance.Resilience.Configuration;
 
 namespace TradingSystem.Binance.Resilience;
 

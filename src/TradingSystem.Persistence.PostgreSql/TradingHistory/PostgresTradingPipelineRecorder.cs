@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
-using TradingSystem.Observability.History;
+using TradingSystem.Observability.History.Models;
+using TradingSystem.Observability.Pipeline;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.TradingHistory;

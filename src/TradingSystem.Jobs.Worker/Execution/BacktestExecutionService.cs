@@ -1,8 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.DependencyInjection;
-using TradingSystem.Analytics.Abstractions;
+using TradingSystem.Analytics.Contracts;
 using TradingSystem.Backtesting.Bots.Bot8011;
 using TradingSystem.Backtesting.Bots.Bot8012;
 using TradingSystem.Backtesting.Bots.Bot8013;
@@ -10,10 +9,12 @@ using TradingSystem.Backtesting.Bots.Bot8014;
 using TradingSystem.Backtesting.Bots.Bot8015;
 using TradingSystem.Backtesting.Bots.Bot8016;
 using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.Dashboard.Contracts;
-using TradingSystem.JobOrchestration;
-using TradingSystem.Optimization.Analytics;
+using TradingSystem.JobOrchestration.Contracts;
+using TradingSystem.Jobs.Worker.Exceptions;
+using TradingSystem.Optimization.Mapping;
 
 namespace TradingSystem.Jobs.Worker.Execution;
 
@@ -80,11 +81,9 @@ public sealed class BacktestExecutionService(
                 ct);
 
         if (signals.Count == 0)
-            throw new HistoricalDataUnavailableException(
-                "No historical signals were found for the requested source and period.");
+            throw new HistoricalDataUnavailableException("No historical signals were found for the requested source and period.");
 
-        var parameters = request.Parameters
-            ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var parameters = request.Parameters ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         return request.BotName.Trim().ToUpperInvariant() switch
         {

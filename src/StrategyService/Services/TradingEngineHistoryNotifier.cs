@@ -1,12 +1,16 @@
-using TradingSystem.Application.Engine;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Engine.Contracts;
+using TradingSystem.Application.Execution.Models;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.Domain.Signals;
-using TradingSystem.HistoricalDatabase;
+using TradingSystem.HistoricalDatabase.EventStore;
+using TradingSystem.HistoricalDatabase.Models;
+using TradingSystem.HistoricalDatabase.Models.Enums;
 using TradingSystem.Observability.Environment;
-using TradingSystem.Observability.History;
-using TradingSystem.Prometheus;
+using TradingSystem.Observability.History.Models;
+using TradingSystem.Observability.Pipeline;
+using TradingSystem.Prometheus.PrometheusMetrics;
 
 namespace StrategyService.Services;
 
@@ -20,11 +24,7 @@ public sealed class TradingEngineHistoryNotifier(
     ITradingEnvironmentProvider environment)
     : ITradingEngineNotifier
 {
-    public async Task DecisionMadeAsync(
-        TradeSignal signal,
-        decimal markPrice,
-        StrategyDecision decision,
-        CancellationToken ct)
+    public async Task DecisionMadeAsync(TradeSignal signal, decimal markPrice, StrategyDecision decision, CancellationToken ct)
     {
         var strategy = strategies.GetRequired(signal.BotName);
         var decisionName = decision.ShouldOpen ? "Open" : "Block";
@@ -37,7 +37,6 @@ public sealed class TradingEngineHistoryNotifier(
             .WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName)
             .Inc();
 
-        // Final signal outcomes are persisted exactly once by TradingSignalHandler.
         await historicalEvents.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
@@ -66,10 +65,7 @@ public sealed class TradingEngineHistoryNotifier(
         await notifications.DecisionMadeAsync(signal, markPrice, decision, ct);
     }
 
-    public async Task ExecutionCompletedAsync(
-        TradeSignal signal,
-        TradeExecutionResult result,
-        CancellationToken ct)
+    public async Task ExecutionCompletedAsync(TradeSignal signal, TradeExecutionResult result, CancellationToken ct)
     {
         metrics.Executions
             .WithLabels(
@@ -140,10 +136,7 @@ public sealed class TradingEngineHistoryNotifier(
         await notifications.ExecutionCompletedAsync(signal, result, ct);
     }
 
-    public async Task ProcessingFailedAsync(
-        TradeSignal signal,
-        Exception exception,
-        CancellationToken ct)
+    public async Task ProcessingFailedAsync(TradeSignal signal, Exception exception, CancellationToken ct)
     {
         metrics.ProcessingFailures
             .WithLabels("trading_engine", signal.BotName, exception.GetType().Name)

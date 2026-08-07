@@ -1,33 +1,11 @@
 using TradingSystem.Domain.Enums;
+using TradingSystem.Strategies.Alligator.Models;
 
 namespace TradingSystem.Strategies.Alligator;
 
-public sealed record AlligatorEntryInput(
-    string Symbol,
-    string Interval,
-    bool IsClosed,
-    decimal Open,
-    decimal High,
-    decimal Low,
-    decimal Close,
-    decimal Teeth,
-    decimal Sma200);
-
-public sealed record AlligatorEntryParameters(
-    string Symbol,
-    string Interval,
-    bool EnableLong,
-    bool EnableShort,
-    bool UseMa200Filter,
-    decimal MinimumCandleRange);
-
-public sealed record AlligatorEntryDecision(PositionSide Side, string Reason);
-
 public sealed class AlligatorEntryPolicy
 {
-    public AlligatorEntryDecision? Evaluate(
-        AlligatorEntryInput input,
-        AlligatorEntryParameters parameters)
+    public AlligatorEntryDecision? Evaluate(AlligatorEntryInput input, AlligatorEntryParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(parameters);

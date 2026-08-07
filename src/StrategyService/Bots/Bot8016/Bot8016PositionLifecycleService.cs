@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8016.Configuration;
 using TradingSystem.Application.Locking;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.BotRuntime.Configuration;

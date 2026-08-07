@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Runtime.Configuration;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Runtime;
+using TradingSystem.BotRuntime.Runtime.Contracts;
 
 namespace StrategyService.Runtime;
 
@@ -18,6 +20,7 @@ public static class DependencyInjection
         services.AddSingleton<IBotRuntimeConfigurationProvider, CachedBotRuntimeConfigurationProvider>();
         services.AddHostedService<BotCommandWorker>();
         services.AddHostedService<BotConfigurationRefreshWorker>();
+        
         return services;
     }
 }

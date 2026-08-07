@@ -1,4 +1,7 @@
-using Microsoft.Extensions.Configuration;using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using TradingSystem.Operations.Configuration;
+using TradingSystem.Operations.Workers;
 
 namespace TradingSystem.Operations;
 

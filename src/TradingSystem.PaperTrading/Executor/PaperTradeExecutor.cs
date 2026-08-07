@@ -1,12 +1,20 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Engine;
+using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Application.Execution;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Enums;
-using TradingSystem.EventStore;
-using TradingSystem.Observability.History;
+using TradingSystem.EventStore.Constants;
+using TradingSystem.EventStore.Contracts;
+using TradingSystem.EventStore.Models;
+using TradingSystem.Observability.History.Models;
+using TradingSystem.Observability.Pipeline;
 using TradingSystem.PaperTrading.Configuration;
+using TradingSystem.PaperTrading.Contracts;
+using TradingSystem.PaperTrading.Models;
+using TradingSystem.PaperTrading.Models.Enums;
 
 namespace TradingSystem.PaperTrading.Executor;
 

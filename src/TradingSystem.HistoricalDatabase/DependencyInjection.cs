@@ -1,7 +1,10 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Hosting; // Add this using directive
+using Microsoft.Extensions.Hosting;
+using TradingSystem.HistoricalDatabase.Configuration;
+using TradingSystem.HistoricalDatabase.Workers;
+using TradingSystem.HistoricalDatabase.EventStore; // Add this using directive
 
 namespace TradingSystem.HistoricalDatabase;
 

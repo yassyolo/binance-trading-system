@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Services.Configuration;
 
 namespace StrategyService.Services;
 

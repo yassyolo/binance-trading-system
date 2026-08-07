@@ -1,11 +1,14 @@
 using System.Globalization;
 using System.Text.Json;
 using TradingSystem.Application.MarketData;
+using TradingSystem.Binance.Exceptions;
 using TradingSystem.Domain.MarketData;
 
 namespace TradingSystem.Binance.Market;
 
-public sealed class BinanceHistoricalCandleRangeSource(HttpClient httpClient) : IHistoricalCandleRangeSource
+public sealed class BinanceHistoricalCandleRangeSource(
+    HttpClient httpClient) 
+    : IHistoricalCandleRangeSource
 {
     private const int PageLimit = 1500;
 

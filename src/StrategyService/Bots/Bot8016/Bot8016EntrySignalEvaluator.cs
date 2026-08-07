@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8016.Configuration;
 using TradingSystem.Strategies.Alligator;
 
 namespace StrategyService.Bots.Bot8016;

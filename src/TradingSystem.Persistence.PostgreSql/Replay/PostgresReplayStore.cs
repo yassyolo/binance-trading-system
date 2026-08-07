@@ -1,8 +1,12 @@
 using System.Text.Json;
 using Dapper;
-using TradingSystem.EventStore;
+using TradingSystem.EventStore.Models;
 using TradingSystem.Persistence.PostgreSql.Connections;
-using TradingSystem.ReplayEngine;
+using TradingSystem.ReplayEngine.Accumulator;
+using TradingSystem.ReplayEngine.Contracts;
+using TradingSystem.ReplayEngine.Models;
+using TradingSystem.ReplayEngine.Models.Enums;
+using TradingSystem.ReplayEngine.Store;
 
 namespace TradingSystem.Persistence.PostgreSql.Replay;
 
@@ -71,11 +75,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 		return rows.AsList();
 	}
 
-	public async Task<IReadOnlyList<ReplayJob>> QueryAsync(
-	ReplayJobStatus? status,
-	int skip,
-	int take,
-	CancellationToken ct)
+	public async Task<IReadOnlyList<ReplayJob>> QueryAsync(ReplayJobStatus? status, int skip, int take, CancellationToken ct)
 	{
 		const string sql = """
         select
@@ -375,5 +375,6 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 		int ProgressPercent, string? ProgressStage, string? Error, DateTime CreatedAtUtc,
 		DateTime? StartedAtUtc, DateTime? CompletedAtUtc, string? DeterministicHash);
 	private sealed record EventRow(long GlobalPosition, Guid EventId, string EventType, int EventVersion, string AggregateType, string AggregateId, long AggregateVersion, DateTime OccurredAtUtc, DateTime RecordedAtUtc, string? BotName, string? Symbol, string? PositionId, string? SignalId, string? CorrelationId, string? CausationId, string? Actor, string PayloadJson, string MetadataJson)
-	{ public StoredTradingEvent ToStored() => new(GlobalPosition, new EventEnvelope(EventId, EventType, EventVersion, AggregateType, AggregateId, AggregateVersion, OccurredAtUtc, RecordedAtUtc, BotName, Symbol, PositionId, SignalId, CorrelationId, CausationId, Actor, PayloadJson, MetadataJson)); }
+	{ 
+		public StoredTradingEvent ToStored() => new(GlobalPosition, new EventEnvelope(EventId, EventType, EventVersion, AggregateType, AggregateId, AggregateVersion, OccurredAtUtc, RecordedAtUtc, BotName, Symbol, PositionId, SignalId, CorrelationId, CausationId, Actor, PayloadJson, MetadataJson)); }
 }

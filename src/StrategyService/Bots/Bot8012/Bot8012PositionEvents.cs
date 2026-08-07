@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Options; 
-using TradingSystem.Application.Orders; 
-using TradingSystem.Application.Positions; 
+using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8012.Configuration;
+using TradingSystem.Application.Orders;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 
 namespace StrategyService.Bots.Bot8012;

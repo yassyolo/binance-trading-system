@@ -1,8 +1,9 @@
 using Microsoft.Extensions.Logging;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Exchange;
-using TradingSystem.Binance.Orders;
+using TradingSystem.Binance.Execution.Models;
 using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Orders.Models;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 

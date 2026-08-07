@@ -18,11 +18,7 @@ public sealed record BotRuntimeConfiguration(
     DateTime UpdatedAtUtc, 
     bool RestartRequired);
 
-public interface IBotRuntimeConfigurationStore
-{
-    Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken ct);
-    Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken ct);
-}
+
 
 public interface IBotRuntimeConfigurationProvider
 {

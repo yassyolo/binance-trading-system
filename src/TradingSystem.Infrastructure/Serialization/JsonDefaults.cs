@@ -5,7 +5,7 @@ namespace TradingSystem.Infrastructure.Serialization;
 
 public static class JsonDefaults
 {
-    public static JsonSerializerOptions Messaging {  get;  }  =  CreateMessaging();
+    public static JsonSerializerOptions Messaging { get; }  =  CreateMessaging();
 
     private static JsonSerializerOptions CreateMessaging()
     {

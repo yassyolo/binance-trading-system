@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.Binance.Execution;
 using TradingSystem.Binance.Exchange;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Resilience;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
+using StrategyService.Bots.Bot8015.Configuration;
+using TradingSystem.Binance.Execution.Models;
 
 namespace StrategyService.Bots.Bot8015;
 

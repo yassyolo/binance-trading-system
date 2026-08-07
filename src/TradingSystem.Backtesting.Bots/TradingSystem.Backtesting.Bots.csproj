@@ -1,10 +1,10 @@
-<Project Sdk = "Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 	</PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include = "..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
-    <ProjectReference Include = "..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
-    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
-  <ProjectReference Include = "..\TradingSystem.Strategies\TradingSystem.Strategies.csproj" /></ItemGroup>
+    <ProjectReference Include="..\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
+    <ProjectReference Include="..\TradingSystem.Domain\TradingSystem.Domain.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  <ProjectReference Include="..\TradingSystem.Strategies\TradingSystem.Strategies.csproj" /></ItemGroup>
 </Project>

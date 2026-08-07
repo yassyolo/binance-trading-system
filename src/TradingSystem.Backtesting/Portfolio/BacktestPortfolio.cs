@@ -1,4 +1,4 @@
-using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Costs.Contracts;
 using TradingSystem.Backtesting.Models;
 
 namespace TradingSystem.Backtesting.Portfolio;

@@ -1,5 +1,6 @@
-using TradingSystem.Analytics.Abstractions;
+using TradingSystem.Analytics.Contracts;
 using TradingSystem.Analytics.Models;
+using TradingSystem.Analytics.Models.Enums;
 
 namespace TradingSystem.Analytics.Services;
 

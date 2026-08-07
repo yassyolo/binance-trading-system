@@ -1,0 +1,38 @@
+﻿namespace TradingSystem.Backtesting.Bots.Configuration;
+
+public sealed record Bot8016BacktestOptions 
+{ 
+    public string BotName { get; init; } = "BOT8016"; 
+    
+    public string Symbol { get; init; } = "BTCUSDC"; 
+    
+    public string EntryTimeframe { get; init; } = "5m"; 
+    
+    public string ExitTimeframe { get; init; } = "1m"; 
+    
+    public decimal InitialBalance { get; init; } = 10_000m; 
+    
+    public decimal Quantity { get; init; } = .002m; 
+    
+    public int Leverage { get; init; } = 50; 
+    
+    public decimal InitialStopLossFallback { get; init; } = 300m; 
+    
+    public decimal TakeProfitPercent { get; init; } = .12m;
+    
+    public decimal Stop3EntryOffset { get; init; } = 0m; 
+    
+    public bool UseMa200Filter { get; init; } = true; 
+    
+    public decimal MinimumSignalCandleRange { get; init; } = 50m; 
+    
+    public bool EnableLong { get; init; } = true; 
+    
+    public bool EnableShort { get; init; } = true; 
+    
+    public decimal TakerFeeRate { get; init; } = .0004m; 
+    
+    public decimal SlippageBasisPoints { get; init; } = 1m; 
+    
+    public decimal TickSize { get; init; } = .1m; 
+}

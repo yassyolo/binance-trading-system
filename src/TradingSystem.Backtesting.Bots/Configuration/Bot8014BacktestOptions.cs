@@ -1,0 +1,38 @@
+using TradingSystem.Backtesting.Bots.Common;
+
+namespace TradingSystem.Backtesting.Bots.Configuration;
+
+public sealed record Bot8014BacktestOptions : ITpOnlyGridBacktestOptions
+{
+    public string BotName{ get; init; } = "BOT8014";
+    
+    public string Symbol{ get; init; } = "BTCUSDC";
+    
+    public decimal InitialBalance{ get; init; } = 10_000m;
+    
+    public decimal Quantity{ get; init; } = .002m;
+    
+    public int Leverage{ get; init; } = 50;
+    
+    public decimal PriceDistance{ get; init; } = 400m;
+    
+    public decimal ProfitDistance{ get; init; } = 200m;
+    
+    public int OrderSideLimit{ get; init; } = 2;
+    
+    public int CooldownSeconds{ get; init; } = 180;
+    
+    public bool EnableLong{ get; init; } = true;
+    
+    public bool EnableShort{ get; init; } = true;
+    
+    public decimal EntryFeeRate{ get; init; } = .0004m;
+    
+    public decimal ExitFeeRate{ get; init; } = .0004m;
+    
+    public decimal SlippageBasisPoints{ get; init; } = 1m;
+    
+    public decimal TickSize{ get; init; } = .1m;
+    
+    public bool ForceCloseAtEnd{ get; init; } = true;
+}

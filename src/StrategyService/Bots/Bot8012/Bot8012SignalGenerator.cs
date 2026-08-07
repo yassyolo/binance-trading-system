@@ -1,5 +1,7 @@
-using Microsoft.Extensions.Options; 
-using TradingSystem.Signals.Abstractions; 
+using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8012.Configuration;
+using TradingSystem.Signals.Abstractions;
+using TradingSystem.Signals.Constants;
 using TradingSystem.Signals.Models;
 
 namespace StrategyService.Bots.Bot8012;

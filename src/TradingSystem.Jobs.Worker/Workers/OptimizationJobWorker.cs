@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TradingSystem.Dashboard.Contracts;
-using TradingSystem.JobOrchestration;
+using TradingSystem.JobOrchestration.Contracts;
+using TradingSystem.JobOrchestration.Models;
+using TradingSystem.Jobs.Worker.Configuration;
 using TradingSystem.Jobs.Worker.Execution;
 
 namespace TradingSystem.Jobs.Worker.Workers;
@@ -42,10 +44,7 @@ public sealed class OptimizationJobWorker(
 			}
 			catch (Exception exception)
 			{
-				logger.LogError(
-					exception,
-					"Optimization worker polling cycle failed. Worker = {WorkerId}. The worker will retry.",
-					workerId);
+				logger.LogError(exception, "Optimization worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
 			}
 
 			try
@@ -59,10 +58,7 @@ public sealed class OptimizationJobWorker(
 		}
 	}
 
-	private async Task ProcessSafelyAsync(
-		DashboardJob job,
-		JobWorkerOptions settings,
-		CancellationToken ct)
+	private async Task ProcessSafelyAsync(DashboardJob job, JobWorkerOptions settings, CancellationToken ct)
 	{
 		try
 		{
@@ -90,9 +86,7 @@ public sealed class OptimizationJobWorker(
 					? job.AttemptCount
 					: settings.MaximumAttempts;
 
-				var retrySeconds = Math.Min(
-					300,
-					Math.Pow(2, Math.Max(1, job.AttemptCount)));
+				var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
 				await queue.FailAsync(
 					job.JobId,
@@ -107,10 +101,7 @@ public sealed class OptimizationJobWorker(
 			}
 			catch (Exception persistenceException)
 			{
-				logger.LogError(
-					persistenceException,
-					"Could not persist failure for optimization job {JobId}. It will be reclaimed after the processing timeout.",
-					job.JobId);
+				logger.LogError(persistenceException, "Could not persist failure for optimization job {JobId}. It will be reclaimed after the processing timeout.", job.JobId);
 			}
 		}
 	}

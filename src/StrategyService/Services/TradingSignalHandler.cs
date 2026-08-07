@@ -1,9 +1,13 @@
 using TradingSystem.Application.Engine;
+using TradingSystem.Application.Engine.Models;
 using TradingSystem.Application.Execution;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Domain.Signals;
 using TradingSystem.Observability.Environment;
-using TradingSystem.Observability.History;
+using TradingSystem.Observability.History.Models;
+using TradingSystem.Observability.Pipeline;
 
 namespace StrategyService.Services;
 
@@ -16,19 +20,13 @@ public sealed class TradingSignalHandler(
     ILogger<TradingSignalHandler> logger)
     : ITradingSignalHandler
 {
-    public async Task<bool> HandleAsync(
-        TradeSignal signal,
-        CancellationToken ct)
+    public async Task<bool> HandleAsync(TradeSignal signal, CancellationToken ct)
     {
         var strategyVersion = ResolveStrategyVersion(signal.BotName);
 
         await TryRecordSignalAsync(signal, strategyVersion, ct);
 
-        using var contextScope = signalContext.Push(
-            new TradingSignalExecutionContext(
-                signal.SignalId,
-                strategyVersion,
-                signal.Source));
+        using var contextScope = signalContext.Push(new TradingSignalExecutionContext(signal.SignalId, strategyVersion, signal.Source));
 
         TradingEngineResult result;
 

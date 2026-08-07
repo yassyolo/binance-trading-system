@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.MarketData;
 using TradingSystem.Domain.MarketData;
-using TradingSystem.JobOrchestration;
+using TradingSystem.JobOrchestration.Contracts;
+using TradingSystem.JobOrchestration.Models;
+using TradingSystem.Jobs.Worker.Configuration;
 
 namespace TradingSystem.Jobs.Worker.Workers;
 
@@ -9,7 +11,8 @@ public sealed class HistoricalDataIngestionWorker(
 	IHistoricalCandleRangeSource source,
 	IHistoricalMarketDataStore store,
 	IOptions<HistoricalDataIngestionOptions> options,
-	ILogger<HistoricalDataIngestionWorker> logger) : BackgroundService
+	ILogger<HistoricalDataIngestionWorker> logger) 
+	: BackgroundService
 {
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{

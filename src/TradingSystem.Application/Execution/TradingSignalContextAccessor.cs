@@ -1,16 +1,7 @@
-﻿namespace TradingSystem.Application.Execution;
+﻿using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
 
-public sealed record TradingSignalExecutionContext(
-    string SignalId,
-    string StrategyVersion,
-    string? Source);
-
-public interface ITradingSignalContextAccessor
-{
-    TradingSignalExecutionContext? Current { get; }
-
-    IDisposable Push(TradingSignalExecutionContext context);
-}
+namespace TradingSystem.Application.Execution;
 
 public sealed class TradingSignalContextAccessor : ITradingSignalContextAccessor
 {

@@ -1,8 +1,9 @@
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using StrategyService.Bots.Bot8015.Configuration;
 using System.Linq;
 using TradingSystem.Application.Locking;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Binance.Market.Contracts;
 using TradingSystem.Binance.Orders;
 using TradingSystem.Domain.Enums;

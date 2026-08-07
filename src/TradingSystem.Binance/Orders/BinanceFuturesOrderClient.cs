@@ -5,7 +5,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using TradingSystem.Binance.Configuration;
+using TradingSystem.Binance.Exceptions;
 using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Orders.Models;
 using TradingSystem.Binance.Positions;
 
 namespace TradingSystem.Binance.Orders;
@@ -202,12 +204,27 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         return symbol.Trim().ToUpperInvariant();
     }
 
-    private static string DecimalString(decimal value) => value.ToString("0.########", CultureInfo.InvariantCulture);
-    private static string StringValue(JsonElement element, string name) => element.TryGetProperty(name, out var value) ? value.GetString() ?? string.Empty : string.Empty;
-    private static string FlexibleString(JsonElement element, string name) => !element.TryGetProperty(name, out var value) ? string.Empty : value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
-    private static decimal NumberValue(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) return 0; if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number; return decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number) ? number : 0; }
-    private static long? LongValue(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) return null; if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number; return long.TryParse(value.GetString(), out number) ? number : null; }
-    private static DateTime UnixTime(long? milliseconds) => milliseconds is > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds.Value).UtcDateTime : DateTime.UnixEpoch;
-    private static BinanceOrderResult ParseOrder(string json) { using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientOrderId"), OrderId = FlexibleString(root, "orderId"), Status = StringValue(root, "status"), AveragePrice = NumberValue(root, "avgPrice"), ExecutedQuantity = NumberValue(root, "executedQty"), CumulativeQuoteQuantity = NumberValue(root, "cumQuote") }; }
-    private static BinanceAlgoOrderResult ParseAlgo(string json) { using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceAlgoOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientAlgoId"), AlgoOrderId = FlexibleString(root, "algoId"), Status = StringValue(root, "status") }; }
+    private static string DecimalString(decimal value)
+        => value.ToString("0.########", CultureInfo.InvariantCulture);
+   
+    private static string StringValue(JsonElement element, string name) 
+        => element.TryGetProperty(name, out var value) ? value.GetString() ?? string.Empty : string.Empty;
+    
+    private static string FlexibleString(JsonElement element, string name) 
+        => !element.TryGetProperty(name, out var value) ? string.Empty : value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+    
+    private static decimal NumberValue(JsonElement element, string name) 
+    { if (!element.TryGetProperty(name, out var value)) return 0; if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number; return decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number) ? number : 0; }
+    
+    private static long? LongValue(JsonElement element, string name) 
+    { if (!element.TryGetProperty(name, out var value)) return null; if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number; return long.TryParse(value.GetString(), out number) ? number : null; }
+    
+    private static DateTime UnixTime(long? milliseconds) 
+        => milliseconds is > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds.Value).UtcDateTime : DateTime.UnixEpoch;
+    
+    private static BinanceOrderResult ParseOrder(string json) 
+    { using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientOrderId"), OrderId = FlexibleString(root, "orderId"), Status = StringValue(root, "status"), AveragePrice = NumberValue(root, "avgPrice"), ExecutedQuantity = NumberValue(root, "executedQty"), CumulativeQuoteQuantity = NumberValue(root, "cumQuote") }; }
+    
+    private static BinanceAlgoOrderResult ParseAlgo(string json) {
+        using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceAlgoOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientAlgoId"), AlgoOrderId = FlexibleString(root, "algoId"), Status = StringValue(root, "status") }; }
 }

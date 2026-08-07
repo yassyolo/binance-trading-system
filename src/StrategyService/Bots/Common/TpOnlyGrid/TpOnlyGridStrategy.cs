@@ -1,4 +1,5 @@
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Strategies.Contracts;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Bots.Common.TpOnlyGrid;

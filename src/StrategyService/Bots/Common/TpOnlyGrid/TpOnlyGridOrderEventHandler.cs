@@ -1,5 +1,5 @@
 using TradingSystem.Application.Orders;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 
 namespace StrategyService.Bots.Common.TpOnlyGrid;

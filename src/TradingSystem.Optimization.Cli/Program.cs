@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using TradingSystem.Backtesting.Bots;
 using TradingSystem.Backtesting.Bots.Bot8012;
+using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.HistoricalData;
 using TradingSystem.Optimization;
+using TradingSystem.Optimization.Configuration;
 using TradingSystem.Optimization.Engine;
 using TradingSystem.Optimization.Models;
 using TradingSystem.Optimization.ParameterSpaces;

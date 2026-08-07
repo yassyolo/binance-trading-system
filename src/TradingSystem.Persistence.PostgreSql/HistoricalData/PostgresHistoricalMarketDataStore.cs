@@ -1,8 +1,9 @@
 using Dapper;
 using TradingSystem.Domain.MarketData;
-using TradingSystem.JobOrchestration;
 using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.JobOrchestration.Models;
+using TradingSystem.JobOrchestration.Contracts;
 
 namespace TradingSystem.Persistence.PostgreSql.HistoricalData;
 

@@ -1,11 +1,11 @@
-<Project Sdk = "Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 	</PropertyGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj"/><ProjectReference Include = "../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj"/><ProjectReference Include = "../TradingSystem.Persistence.PostgreSql/TradingSystem.Persistence.PostgreSql.csproj"/>  <ProjectReference Include = "../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
+ <ItemGroup><ProjectReference Include="../TradingSystem.Dashboard.Application/TradingSystem.Dashboard.Application.csproj" /><ProjectReference Include="../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" /><ProjectReference Include="../TradingSystem.Persistence.PostgreSql/TradingSystem.Persistence.PostgreSql.csproj" />  <ProjectReference Include="../TradingSystem.PaperTrading/TradingSystem.PaperTrading.csproj" />
   </ItemGroup>
- <ItemGroup><PackageReference Include = "Microsoft.AspNetCore.OpenApi" Version = "8.0.8"/><PackageReference Include = "Swashbuckle.AspNetCore" Version = "6.6.2"/><PackageReference Include = "Microsoft.AspNetCore.Authentication.JwtBearer" Version = "8.0.8"/></ItemGroup>
-  <ItemGroup><ProjectReference Include = "../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
-  <ItemGroup><ProjectReference Include = "../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
- <ItemGroup><ProjectReference Include = "../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
+ <ItemGroup><PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" /><PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" /><PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../TradingSystem.Operations/TradingSystem.Operations.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../TradingSystem.EventStore/TradingSystem.EventStore.csproj" /></ItemGroup>
+ <ItemGroup><ProjectReference Include="../TradingSystem.ReplayEngine/TradingSystem.ReplayEngine.csproj" /></ItemGroup>
 </Project>

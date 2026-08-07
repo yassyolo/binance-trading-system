@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8013.Configuration;
 using StrategyService.Bots.Common.TpOnlyGrid;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Healing;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Healing.Contracts;
 using TradingSystem.Application.Orders;
-using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Positions.Contracts;
+using TradingSystem.Application.Strategies.Contracts;
 using TradingSystem.Binance.Startup;
 using TradingSystem.Strategies.Grid;
 

@@ -1,6 +1,6 @@
-using TradingSystem.Application.Engine;
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Engine.Contracts;
+using TradingSystem.Application.Execution.Models;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Services;

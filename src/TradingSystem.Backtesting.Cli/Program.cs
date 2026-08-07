@@ -4,7 +4,7 @@ using TradingSystem.Application.MarketData;
 using TradingSystem.Backtesting;
 using TradingSystem.Backtesting.Engine;
 using TradingSystem.Backtesting.Models;
-using TradingSystem.Backtesting.Reporting;
+using TradingSystem.Backtesting.Reporting.Writers;
 using TradingSystem.Backtesting.Strategies;
 using TradingSystem.Binance.Market;
 using TradingSystem.HistoricalData;
@@ -86,7 +86,7 @@ Console.WriteLine($"Reports: {Path.GetFullPath(output)}");
 internal sealed class CliArguments
 {
     private CliArguments(Dictionary<string,  string> values)  =>  Values  =  values;
-    public IReadOnlyDictionary<string,  string> Values {  get;  }
+    public IReadOnlyDictionary<string,  string> Values { get; }
     public bool Has(string key)  =>  Values.ContainsKey(key);
     public string Get(string key,  string fallback)  =>  Values.TryGetValue(key,  out var value) ? value : fallback;
     public int GetInt(string key,  int fallback)  =>  int.TryParse(Get(key,  ""),  NumberStyles.Integer,  CultureInfo.InvariantCulture,  out var value) ? value : fallback;

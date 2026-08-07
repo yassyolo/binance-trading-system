@@ -2,6 +2,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using TradingSystem.PortfolioManagement.Performance;
+using TradingSystem.PortfolioManagement.Position;
+using TradingSystem.PortfolioManagement.Provider;
 
 namespace TradingSystem.PortfolioManagement.Configuration;
 

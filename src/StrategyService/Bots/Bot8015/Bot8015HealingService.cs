@@ -1,8 +1,9 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Healing;
-using TradingSystem.Application.Positions;
 using TradingSystem.Contracts.UserStream;
 using TradingSystem.Application.Time;
+using StrategyService.Bots.Bot8015.Configuration;
+using TradingSystem.Application.Healing.Contracts;
+using TradingSystem.Application.Positions.Contracts;
 
 namespace StrategyService.Bots.Bot8015;
 

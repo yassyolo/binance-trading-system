@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Costs.Contracts;
 using TradingSystem.Backtesting.Engine;
 using TradingSystem.Backtesting.Execution;
 using TradingSystem.Backtesting.Metrics;
 using TradingSystem.Backtesting.Risk;
 using TradingSystem.Backtesting.Strategies;
+using TradingSystem.Backtesting.Strategies.Contracts;
 
 namespace TradingSystem.Backtesting;
 

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Strategies;
+using StrategyService.Bots.Bot8015.Configuration;
+using TradingSystem.Application.Strategies.Contracts;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Bots.Bot8015;

@@ -1,9 +1,5 @@
-using TradingSystem.Backtesting.Bots.Bot8011;
-using TradingSystem.Backtesting.Bots.Bot8012;
-using TradingSystem.Backtesting.Bots.Bot8013;
-using TradingSystem.Backtesting.Bots.Bot8014;
-using TradingSystem.Backtesting.Bots.Bot8015;
 using TradingSystem.Backtesting.Bots.Bot8016;
+using TradingSystem.Backtesting.Bots.Configuration;
 
 namespace TradingSystem.Optimization.ParameterSpaces;
 

@@ -1,5 +1,5 @@
-using TradingSystem.Application.Healing;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Healing.Contracts;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Contracts.UserStream;
 

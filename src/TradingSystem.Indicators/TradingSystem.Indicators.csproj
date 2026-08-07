@@ -1,10 +1,10 @@
-<Project Sdk = "Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" />
-    <ProjectReference Include = "../TradingSystem.Contracts/TradingSystem.Contracts.csproj" />
-    <ProjectReference Include = "../TradingSystem.Domain/TradingSystem.Domain.csproj" />
-    <PackageReference Include = "Microsoft.Extensions.DependencyInjection.Abstractions" Version = "9.0.0" />
-    <PackageReference Include = "Microsoft.Extensions.Options.ConfigurationExtensions" Version = "9.0.0" />
+    <ProjectReference Include="../TradingSystem.Application/TradingSystem.Application.csproj" />
+    <ProjectReference Include="../TradingSystem.Contracts/TradingSystem.Contracts.csproj" />
+    <ProjectReference Include="../TradingSystem.Domain/TradingSystem.Domain.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
   </ItemGroup>
 </Project>

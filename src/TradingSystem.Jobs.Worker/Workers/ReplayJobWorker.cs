@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.ReplayEngine;
+using TradingSystem.Jobs.Worker.Configuration;
+using TradingSystem.ReplayEngine.Models;
+using TradingSystem.ReplayEngine.Store;
 
 namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class ReplayJobWorker(
 	IReplayJobStore jobs,
-	ReplayEngine.ReplayEngine engine,
+	ReplayEngine.Engine.ReplayEngine engine,
 	IOptions<JobWorkerOptions> options,
 	ILogger<ReplayJobWorker> logger)
 	: BackgroundService
@@ -38,10 +40,7 @@ public sealed class ReplayJobWorker(
 			}
 			catch (Exception exception)
 			{
-				logger.LogError(
-					exception,
-					"Replay worker polling cycle failed. Worker = {WorkerId}. The worker will retry.",
-					workerId);
+				logger.LogError(exception, "Replay worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
 			}
 
 			try
@@ -69,25 +68,16 @@ public sealed class ReplayJobWorker(
 		{
 			try
 			{
-				if (await jobs.IsCancellationRequestedAsync(
-						job.ReplayId,
-						CancellationToken.None))
+				if (await jobs.IsCancellationRequestedAsync(job.ReplayId, CancellationToken.None))
 				{
-					await jobs.MarkCancelledAsync(
-						job.ReplayId,
-						CancellationToken.None);
+					await jobs.MarkCancelledAsync(job.ReplayId, CancellationToken.None);
 
-					logger.LogInformation(
-						"Replay {ReplayId} was cancelled.",
-						job.ReplayId);
+					logger.LogInformation("Replay {ReplayId} was cancelled.", job.ReplayId);
 				}
 			}
 			catch (Exception persistenceException)
 			{
-				logger.LogError(
-					persistenceException,
-					"Could not persist cancellation for replay {ReplayId}.",
-					job.ReplayId);
+				logger.LogError(persistenceException, "Could not persist cancellation for replay {ReplayId}.", job.ReplayId);
 			}
 		}
 		catch (Exception exception)

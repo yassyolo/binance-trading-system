@@ -8,10 +8,7 @@ public static class WebSocketMessageReader
 {
     private const int MaximumMessageSizeBytes = 1024 * 1024;
 
-    public static async Task<string?> ReadTextMessageAsync(
-        ClientWebSocket socket,
-        int bufferSizeBytes,
-        CancellationToken ct)
+    public static async Task<string?> ReadTextMessageAsync(ClientWebSocket socket, int bufferSizeBytes, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(socket);
         if (bufferSizeBytes <= 0)

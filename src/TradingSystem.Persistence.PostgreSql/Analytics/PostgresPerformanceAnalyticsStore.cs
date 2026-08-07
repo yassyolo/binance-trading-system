@@ -1,12 +1,15 @@
 using System.Text.Json;
 using Dapper;
-using TradingSystem.Analytics.Abstractions;
+using TradingSystem.Analytics.Contracts;
 using TradingSystem.Analytics.Models;
+using TradingSystem.Analytics.Models.Enums;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.Analytics;
 
-public sealed class PostgresPerformanceAnalyticsStore(ITradingDbConnectionFactory connections) : IPerformanceAnalyticsStore
+public sealed class PostgresPerformanceAnalyticsStore(
+	ITradingDbConnectionFactory connections) 
+	: IPerformanceAnalyticsStore
 {
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 

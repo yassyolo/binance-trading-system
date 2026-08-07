@@ -1,6 +1,7 @@
 using System.Text.Json;
-using TradingSystem.Binance.Orders;
 using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.UserStream.Contracts;
+using TradingSystem.Binance.UserStream.Models;
 
 namespace TradingSystem.Binance.UserStream;
 
@@ -21,11 +22,7 @@ public sealed class BinanceOrdersSnapshotProvider(
         var algoOrders = await algoOrdersTask;
 
         return new BinanceOrdersSnapshot(
-            normalOrders
-                .Select(order => JsonSerializer.SerializeToElement(order))
-                .ToArray(),
-            algoOrders
-                .Select(order => JsonSerializer.SerializeToElement(order))
-                .ToArray());
+            normalOrders.Select(o => JsonSerializer.SerializeToElement(o)).ToArray(),
+            algoOrders.Select(order => JsonSerializer.SerializeToElement(order)).ToArray());
     }
 }

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using TradingSystem.Binance.Configuration;
-using TradingSystem.Binance.Orders;
 using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Orders.Models;
 
 namespace TradingSystem.Binance.Exchange;
 

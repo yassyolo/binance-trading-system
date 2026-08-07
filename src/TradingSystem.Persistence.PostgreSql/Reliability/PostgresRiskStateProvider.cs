@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using TradingSystem.Application.Risk;
 using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.PaperTrading.Configuration;
-using TradingSystem.Reconciliation;
+using TradingSystem.Reconciliation.Contracts;
 
 namespace TradingSystem.Persistence.PostgreSql.Reliability;
 

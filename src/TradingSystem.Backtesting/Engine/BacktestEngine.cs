@@ -1,10 +1,11 @@
-using TradingSystem.Backtesting.Costs;
+using TradingSystem.Backtesting.Costs.Contracts;
 using TradingSystem.Backtesting.Execution;
 using TradingSystem.Backtesting.Metrics;
 using TradingSystem.Backtesting.Models;
 using TradingSystem.Backtesting.Portfolio;
 using TradingSystem.Backtesting.Risk;
 using TradingSystem.Backtesting.Strategies;
+using TradingSystem.Backtesting.Strategies.Models;
 using TradingSystem.Domain.MarketData;
 
 namespace TradingSystem.Backtesting.Engine;

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using TradingSystem.Dashboard.Api.Middlewares;
 
 namespace TradingSystem.Dashboard.Api.Hardening;
 

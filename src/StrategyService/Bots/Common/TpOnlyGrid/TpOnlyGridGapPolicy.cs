@@ -1,8 +1,9 @@
-using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies;
+using TradingSystem.Application.Positions.Models;
+using TradingSystem.Application.Strategies.Models;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Strategies.Grid;
+using TradingSystem.Strategies.Grid.Models;
 
 namespace StrategyService.Bots.Common.TpOnlyGrid;
 

@@ -1,12 +1,14 @@
-using TradingSystem.Binance.DependencyInjection;
+using TradingSystem.Binance;
 using TradingSystem.Binance.UserStream;
-using TradingSystem.Infrastructure.DependencyInjection;
+using TradingSystem.Binance.UserStream.Configuration;
+using TradingSystem.Binance.UserStream.Contracts;
+using TradingSystem.Infrastructure;
 using TradingSystem.Operations;
-using TradingSystem.Persistence.PostgreSql.Configuration;
-using TradingSystem.Redis.DependencyInjection;
-using UserStreamService;
+using TradingSystem.Persistence.PostgreSql;
+using TradingSystem.Redis;
 using UserStreamService.Configuration;
 using UserStreamService.Services;
+using UserStreamService.Workers;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -52,7 +54,7 @@ builder.Services.AddSingleton<IBinanceUserStreamClient, BinanceUserStreamClient>
 builder.Services.AddSingleton<IBinanceOrdersSnapshotProvider, BinanceOrdersSnapshotProvider>();
 builder.Services.AddSingleton<UserStreamEventProcessor>();
 builder.Services.AddSingleton<HealingPublisher>();
-builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<UserStreamWorker>();
 
 builder.Services.AddPostgresTradingHistory(builder.Configuration);
 builder.Services.AddServiceHeartbeat(builder.Configuration, "UserStreamService");

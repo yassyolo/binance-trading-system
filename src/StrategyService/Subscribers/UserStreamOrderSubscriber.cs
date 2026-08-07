@@ -1,15 +1,17 @@
 using System.Globalization;
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 using TradingSystem.Application.Events;
 using TradingSystem.Application.Orders;
-using TradingSystem.Binance.Execution;
+using TradingSystem.Binance.Execution.Models;
 using TradingSystem.Contracts.Messaging;
-using TradingSystem.HistoricalDatabase;
+using TradingSystem.HistoricalDatabase.EventStore;
+using TradingSystem.HistoricalDatabase.Models;
+using TradingSystem.HistoricalDatabase.Models.Enums;
 using TradingSystem.Observability.Environment;
-using TradingSystem.Observability.History;
-using TradingSystem.Prometheus;
+using TradingSystem.Observability.History.Models;
+using TradingSystem.Observability.Pipeline;
+using TradingSystem.Prometheus.PrometheusMetrics;
 
 namespace StrategyService.Subscribers;
 

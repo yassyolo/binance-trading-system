@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Options;
-
-
-using TradingSystem.Binance.Orders;
+using StrategyService.Bots.Bot8016.Configuration;
 using TradingSystem.Binance.Orders.Contracts;
+using TradingSystem.Binance.Orders.Models;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 

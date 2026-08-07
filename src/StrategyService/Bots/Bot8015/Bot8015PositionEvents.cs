@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8015.Configuration;
 using TradingSystem.Application.Locking;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Orders;
 using TradingSystem.Domain.Enums;
-using TradingSystem.Observability.History;
+using TradingSystem.Observability.Pipeline;
 
 namespace StrategyService.Bots.Bot8015
 {

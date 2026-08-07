@@ -1,4 +1,5 @@
 namespace TradingSystem.Signals.Models;
+
 public sealed record GeneratedTradingSignal(
     string SignalId, 
     string BotName, 

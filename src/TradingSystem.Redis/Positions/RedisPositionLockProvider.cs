@@ -17,8 +17,7 @@ public sealed class RedisPositionLockProvider(
         return await db.StringSetAsync(key, token, ttl, When.NotExists)?new H(db, key, token):null;
     }
     
-    sealed class H(IDatabase db, RedisKey key, RedisValue token)
-        :IAsyncDisposable
+    sealed class H(IDatabase db, RedisKey key, RedisValue token) :IAsyncDisposable
     {
         int d;
         public async ValueTask DisposeAsync()

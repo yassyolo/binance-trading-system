@@ -1,5 +1,6 @@
 using Dapper;
-using TradingSystem.JobOrchestration;
+using TradingSystem.JobOrchestration.Contracts;
+using TradingSystem.JobOrchestration.Models;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.Jobs;

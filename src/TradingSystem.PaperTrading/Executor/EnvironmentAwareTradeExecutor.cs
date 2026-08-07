@@ -1,4 +1,6 @@
 using TradingSystem.Application.Execution;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Enums;
 

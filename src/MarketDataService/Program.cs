@@ -1,9 +1,10 @@
-using MarketDataService;
 using MarketDataService.Configuration;
-using TradingSystem.Infrastructure.DependencyInjection;
+using MarketDataService.Services;
+using MarketDataService.Workers;
+using TradingSystem.Infrastructure;
 using TradingSystem.Operations;
-using TradingSystem.Persistence.PostgreSql.Configuration;
-using TradingSystem.Redis.DependencyInjection;
+using TradingSystem.Persistence.PostgreSql;
+using TradingSystem.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -16,7 +17,7 @@ builder.Services.AddOptions<MarketDataOptions>()
 builder.Services.AddTradingInfrastructure();
 builder.Services.AddTradingRedis(builder.Configuration);
 builder.Services.AddSingleton<KlinePublisher>();
-builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<MarketDataWorker>();
 builder.Services.AddPostgresTradingHistory(builder.Configuration);
 builder.Services.AddServiceHeartbeat(builder.Configuration, "MarketDataService");
 

@@ -1,9 +1,10 @@
-using Microsoft.Extensions.Options; 
-using TradingSystem.Application.Execution; 
-using TradingSystem.Application.Healing; 
-using TradingSystem.Application.Orders; 
-using TradingSystem.Application.Positions;
-using TradingSystem.Application.Strategies; 
+using Microsoft.Extensions.Options;
+using StrategyService.Bots.Bot8012.Configuration;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Healing.Contracts;
+using TradingSystem.Application.Orders;
+using TradingSystem.Application.Positions.Contracts;
+using TradingSystem.Application.Strategies.Contracts;
 using TradingSystem.Binance.Startup;
 using TradingSystem.Signals.Abstractions;
 

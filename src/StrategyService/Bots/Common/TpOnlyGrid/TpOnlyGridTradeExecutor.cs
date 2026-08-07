@@ -1,5 +1,6 @@
-using TradingSystem.Application.Execution;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Execution.Models;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Execution;
 using TradingSystem.BotRuntime.Configuration;

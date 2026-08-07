@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
-using TradingSystem.Application.Execution;
+using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Contracts.Messaging;
 using TradingSystem.Contracts.Signals;

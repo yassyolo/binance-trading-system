@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Engine;
-using TradingSystem.Application.Positions;
+using StrategyService.Bots.Bot8016.Configuration;
+using TradingSystem.Application.Engine.Contracts;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.BotRuntime.Configuration;
-using TradingSystem.BotRuntime.Runtime;
-using TradingSystem.PaperTrading;
+using TradingSystem.BotRuntime.Runtime.Contracts;
+using TradingSystem.PaperTrading.Contracts;
 using TradingSystem.PaperTrading.Executor;
+using TradingSystem.PaperTrading.Models.Enums;
 
 namespace StrategyService.Bots.Bot8016;
 
@@ -93,10 +95,7 @@ public sealed class Bot8016EntryCoordinator(
         await ProcessLiveEntryAsync(signal, runtimeConfiguration, cancellationToken);
     }
 
-    private async Task ProcessPaperEntryAsync(
-        Bot8016EntrySignal signal,
-        BotRuntimeConfiguration runtimeConfiguration,
-        CancellationToken cancellationToken)
+    private async Task ProcessPaperEntryAsync(Bot8016EntrySignal signal, BotRuntimeConfiguration runtimeConfiguration, CancellationToken cancellationToken)
     {
         var openPaperPositions = await paperTradingStore.QueryAsync(
             _options.BotName,
@@ -111,9 +110,8 @@ public sealed class Bot8016EntryCoordinator(
 
         if (sameSideCount >= sideLimit)
         {
-            logger.LogInformation(
-                "BOT8016 paper signal blocked by side limit. Side = {Side}, Count = {Count}, Limit = {Limit}",
-                signal.Side, sameSideCount, sideLimit);
+            logger.LogInformation("BOT8016 paper signal blocked by side limit. Side = {Side}, Count = {Count}, Limit = {Limit}", signal.Side, sameSideCount, sideLimit);
+            
             return;
         }
 

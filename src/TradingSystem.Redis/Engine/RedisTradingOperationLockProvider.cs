@@ -1,6 +1,7 @@
 using StackExchange.Redis;
-using TradingSystem.Application.Engine;
+using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Domain.Enums;
+using TradingSystem.Redis.Constants;
 
 namespace TradingSystem.Redis.Engine;
 
@@ -10,10 +11,18 @@ public sealed class RedisTradingOperationLockProvider(IConnectionMultiplexer red
     private readonly IDatabase _db = redis.GetDatabase();
     public async Task<IAsyncDisposable?> TryAcquireAsync(string bot, string symbol, PositionSide side, TimeSpan ttl, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested(); if(ttl<=TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(ttl));
-        var key = keys.OperationLock(bot, symbol, side); var token = Guid.NewGuid().ToString("N");
-        return await _db.StringSetAsync(key, token, ttl, When.NotExists) ? new Handle(_db, key, token) : null;
+        ct.ThrowIfCancellationRequested(); 
+        
+        if(ttl<=TimeSpan.Zero) 
+            throw new ArgumentOutOfRangeException(nameof(ttl));
+        
+        var key = keys.OperationLock(bot, symbol, side); 
+        var token = Guid.NewGuid().ToString("N");
+        
+        return await _db.StringSetAsync(key, token, ttl, When.NotExists) 
+            ? new Handle(_db, key, token) : null;
     }
+    
     private sealed class Handle(IDatabase db, RedisKey key, RedisValue token) : IAsyncDisposable
     {
         private int _disposed;

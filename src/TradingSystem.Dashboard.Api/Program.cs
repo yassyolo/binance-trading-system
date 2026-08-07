@@ -1,4 +1,3 @@
-using TradingSystem.PaperTrading;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
@@ -12,11 +11,20 @@ using TradingSystem.Dashboard.Api.Hardening;
 using TradingSystem.Dashboard.Application;
 using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Operations;
-using TradingSystem.Persistence.PostgreSql.Configuration;
 using TradingSystem.Persistence.PostgreSql.Dashboard;
-using TradingSystem.EventStore;
 using TradingSystem.ReplayEngine;
 using TradingSystem.PaperTrading.Configuration;
+using TradingSystem.PaperTrading.Contracts;
+using TradingSystem.Persistence.PostgreSql;
+using TradingSystem.EventStore.TradingTimeline;
+using TradingSystem.EventStore.Contracts;
+using TradingSystem.Dashboard.Api.Middlewares;
+using TradingSystem.Dashboard.Application.Contracts;
+using TradingSystem.ReplayEngine.Models.Enums;
+using TradingSystem.ReplayEngine.Store;
+using TradingSystem.EventStore.Models;
+using TradingSystem.ReplayEngine.Models;
+using TradingSystem.PaperTrading.Models.Enums;
 
 var builder  =  WebApplication.CreateBuilder(args);
 
@@ -199,13 +207,17 @@ api.MapPost("/replays",  async (CreateReplayRequest request,  HttpContext http, 
 {
     if (string.IsNullOrWhiteSpace(request.Name)  ||  request.Name.Length > 150)
         throw new ApiValidationException(new Dictionary<string,  string[]> { ["name"]  =  ["Replay name is required and must be at most 150 characters."] });
+    
     if (request.FromGlobalPosition.HasValue  &&  request.ToGlobalPosition.HasValue  &&  request.FromGlobalPosition > request.ToGlobalPosition)
         throw new ApiValidationException(new Dictionary<string,  string[]> { ["range"]  =  ["FromGlobalPosition must not be greater than ToGlobalPosition."] });
+    
     if (request.FromUtc.HasValue  &&  request.ToUtc.HasValue  &&  request.FromUtc >= request.ToUtc)
         throw new ApiValidationException(new Dictionary<string,  string[]> { ["range"]  =  ["FromUtc must be earlier than ToUtc."] });
+    
     if (request.Mode == ReplayMode.StrategyComparison  &&  (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId)  ||  string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
         throw new ApiValidationException(new Dictionary<string,  string[]> { ["candidateStrategy"]  =  ["Strategy comparison requires candidate plugin id and version."] });
     var id  =  await store.EnqueueAsync(request with { BatchSize  =  Math.Clamp(request.BatchSize,  1,  1000) },  UserName(http),  ct);
+    
     return Results.Accepted($"/api/v1/replays/{id}",  new { replayId  =  id });
 }).RequireAuthorization("Operator").RequireRateLimiting("write");
 

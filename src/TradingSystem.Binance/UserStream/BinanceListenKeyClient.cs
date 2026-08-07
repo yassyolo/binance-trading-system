@@ -1,11 +1,15 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using TradingSystem.Binance.Exceptions;
+using TradingSystem.Binance.UserStream.Configuration;
+using TradingSystem.Binance.UserStream.Contracts;
 
 namespace TradingSystem.Binance.UserStream;
 
 public sealed class BinanceListenKeyClient(
     HttpClient http,
-    IOptions<BinanceUserStreamOptions> options) : IBinanceListenKeyClient
+    IOptions<BinanceUserStreamOptions> options) 
+    : IBinanceListenKeyClient
 {
     private readonly BinanceUserStreamOptions _options = options.Value;
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
-using TradingSystem.Dashboard.Application;
+using TradingSystem.Dashboard.Application.Contracts;
+using TradingSystem.Dashboard.Application.Models;
 using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Persistence.PostgreSql.Connections;
 namespace TradingSystem.Persistence.PostgreSql.Dashboard;
@@ -104,7 +105,11 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
     }
 
     public async Task<JobAcceptedDto> EnqueueBacktestAsync(BacktestRequest r, string user, CancellationToken ct)
-    { DashboardValidation.Validate(r); return await Job("Backtest", r, user, ct); }
+    { 
+        DashboardValidation.Validate(r); 
+        
+        return await Job("Backtest", r, user, ct); 
+    }
 
     public Task<JobAcceptedDto> EnqueueOptimizationAsync(OptimizationRequest r, string user, CancellationToken ct)
         => Job("Optimization", r, user, ct);

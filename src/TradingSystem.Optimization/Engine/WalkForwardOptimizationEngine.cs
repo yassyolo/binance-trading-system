@@ -1,5 +1,6 @@
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Domain.MarketData;
+using TradingSystem.Optimization.Configuration;
 using TradingSystem.Optimization.Models;
 using TradingSystem.Optimization.Scoring;
 
@@ -77,16 +78,26 @@ public sealed class WalkForwardOptimizationEngine(
     private static IReadOnlyList<HistoricalBotSignal> SliceSignals(IReadOnlyList<HistoricalBotSignal> signals, IReadOnlyList<MarketCandle> candles)
     {
         var from = candles.First().OpenTimeUtc;
+       
         var to = candles.Last().CloseTimeUtc;
+        
         return signals.Where(x => x.TimeUtc >= from && x.TimeUtc <= to).ToArray();
     }
 
     private static void Validate(WalkForwardOptions options, int candleCount)
     {
-        if (options.TrainingBars < 2) throw new ArgumentOutOfRangeException(nameof(options.TrainingBars));
-        if (options.TestingBars < 1) throw new ArgumentOutOfRangeException(nameof(options.TestingBars));
-        if (options.StepBars < 1) throw new ArgumentOutOfRangeException(nameof(options.StepBars));
-        if (options.TopCandidatesPerWindow < 1) throw new ArgumentOutOfRangeException(nameof(options.TopCandidatesPerWindow));
+        if (options.TrainingBars < 2) 
+            throw new ArgumentOutOfRangeException(nameof(options.TrainingBars));
+        
+        if (options.TestingBars < 1) 
+            throw new ArgumentOutOfRangeException(nameof(options.TestingBars));
+        
+        if (options.StepBars < 1) 
+            throw new ArgumentOutOfRangeException(nameof(options.StepBars));
+        
+        if (options.TopCandidatesPerWindow < 1) 
+            throw new ArgumentOutOfRangeException(nameof(options.TopCandidatesPerWindow));
+        
         if (candleCount < options.TrainingBars + options.TestingBars)
             throw new InvalidOperationException("Not enough candles for one walk-forward window.");
     }

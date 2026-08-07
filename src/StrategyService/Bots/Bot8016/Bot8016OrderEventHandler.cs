@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
-
-
+using StrategyService.Bots.Bot8016.Configuration;
 using TradingSystem.Application.Orders;
 
 namespace StrategyService.Bots.Bot8016;

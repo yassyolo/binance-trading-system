@@ -1,9 +1,10 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using TradingSystem.Application.Engine;
+using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Domain.Enums;
-using TradingSystem.PaperTrading;
+using TradingSystem.PaperTrading.Contracts;
 using TradingSystem.PaperTrading.Executor;
+using TradingSystem.PaperTrading.Models;
 
 namespace StrategyService.Runtime;
 
@@ -14,64 +15,44 @@ public sealed class PaperPositionCloseWorker(
     ILogger<PaperPositionCloseWorker> logger)
     : BackgroundService
 {
-    private static readonly TimeSpan InitialDelay =
-        TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(2);
 
-    private static readonly TimeSpan CheckInterval =
-        TimeSpan.FromSeconds(2);
-
-    protected override async Task ExecuteAsync(
-        CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(
-                InitialDelay,
-                stoppingToken);
+            await Task.Delay(InitialDelay, stoppingToken);
 
-            using var timer = new PeriodicTimer(
-                CheckInterval);
+            using var timer = new PeriodicTimer(CheckInterval);
 
-            logger.LogInformation(
-                "{Worker} started. CheckInterval = {CheckInterval}",
-                nameof(PaperPositionCloseWorker),
-                CheckInterval);
+            logger.LogInformation("{Worker} started. CheckInterval = {CheckInterval}", nameof(PaperPositionCloseWorker), CheckInterval);
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
                 try
                 {
-                    await ProcessOpenPositionsAsync(
-                        stoppingToken);
+                    await ProcessOpenPositionsAsync(stoppingToken);
                 }
-                catch (OperationCanceledException)
-                    when (stoppingToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
                 }
                 catch (Exception exception)
                 {
-                    logger.LogError(
-                        exception,
-                        "Unexpected error while processing open paper positions.");
+                    logger.LogError(exception, "Unexpected error while processing open paper positions.");
                 }
             }
         }
-        catch (OperationCanceledException)
-            when (stoppingToken.IsCancellationRequested)
-        {
-            // Expected when the host is stopping during the initial delay.
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {}
         finally
         {
-            logger.LogInformation(
-                "{Worker} stopped.",
-                nameof(PaperPositionCloseWorker));
+            logger.LogInformation("{Worker} stopped.", nameof(PaperPositionCloseWorker));
         }
     }
 
-    private async Task ProcessOpenPositionsAsync(
-        CancellationToken ct)
+    private async Task ProcessOpenPositionsAsync(CancellationToken ct)
     {
         var openPositions = await store.GetOpenAsync(ct);
 
@@ -135,17 +116,11 @@ public sealed class PaperPositionCloseWorker(
         {
             ct.ThrowIfCancellationRequested();
 
-            await ProcessPositionAsync(
-                position,
-                markPrice,
-                ct);
+            await ProcessPositionAsync(position, markPrice, ct);
         }
     }
 
-    private async Task ProcessPositionAsync(
-        PaperTradingPosition position,
-        decimal markPrice,
-        CancellationToken ct)
+    private async Task ProcessPositionAsync(PaperTradingPosition position, decimal markPrice, CancellationToken ct)
     {
         if (!HasValidExitLevels(position))
         {
@@ -153,10 +128,7 @@ public sealed class PaperPositionCloseWorker(
             return;
         }
 
-        var closeReason = ResolveCloseReason(
-            position,
-            markPrice);
-
+        var closeReason = ResolveCloseReason(position, markPrice);
         if (closeReason is null)
             return;
 

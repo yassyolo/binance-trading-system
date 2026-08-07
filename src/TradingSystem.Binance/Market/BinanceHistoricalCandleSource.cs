@@ -1,17 +1,16 @@
 using System.Globalization;
 using System.Text.Json;
 using TradingSystem.Application.MarketData;
+using TradingSystem.Binance.Exceptions;
 using TradingSystem.Domain.MarketData;
 
 namespace TradingSystem.Binance.Market;
 
-public sealed class BinanceHistoricalCandleSource(HttpClient httpClient) : IHistoricalCandleSource
+public sealed class BinanceHistoricalCandleSource(
+    HttpClient httpClient) 
+    : IHistoricalCandleSource
 {
-    public async Task<IReadOnlyList<MarketCandle>> LoadLatestAsync(
-        string symbol,
-        string interval,
-        int limit,
-        CancellationToken ct)
+    public async Task<IReadOnlyList<MarketCandle>> LoadLatestAsync(string symbol, string interval, int limit, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);

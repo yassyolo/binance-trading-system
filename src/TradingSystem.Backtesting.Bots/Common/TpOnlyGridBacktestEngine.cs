@@ -2,6 +2,7 @@ using TradingSystem.Backtesting.Models;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Strategies.Grid;
+using TradingSystem.Strategies.Grid.Models;
 
 namespace TradingSystem.Backtesting.Bots.Common;
 

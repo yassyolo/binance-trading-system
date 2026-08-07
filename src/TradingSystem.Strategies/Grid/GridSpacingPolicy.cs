@@ -1,22 +1,7 @@
 using TradingSystem.Domain.Enums;
+using TradingSystem.Strategies.Grid.Models;
 
 namespace TradingSystem.Strategies.Grid;
-
-public sealed record GridPositionReference(
-    PositionSide Side,
-    decimal TakeProfitPrice,
-    DateTime OpenedAtUtc);
-
-public sealed record GridSpacingParameters(
-    decimal PriceDistance,
-    decimal ProfitDistance,
-    int SideLimit);
-
-public sealed record PolicyDecision(bool Allowed, string Reason)
-{
-    public static PolicyDecision Allow(string reason) => new(true, reason);
-    public static PolicyDecision Block(string reason) => new(false, reason);
-}
 
 public sealed class GridSpacingPolicy
 {

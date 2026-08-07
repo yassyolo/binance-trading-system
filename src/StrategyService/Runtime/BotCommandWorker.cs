@@ -1,9 +1,14 @@
 using Microsoft.Extensions.Options;
+using StrategyService.Runtime.Configuration;
 using System.Text.Json;
-using TradingSystem.Application.Execution;
+using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.BotRuntime.Commands;
-using TradingSystem.BotRuntime.Runtime;
-using TradingSystem.Operations;
+using TradingSystem.BotRuntime.Commands.Models;
+using TradingSystem.BotRuntime.Commands.Models.Enums;
+using TradingSystem.BotRuntime.Runtime.Contracts;
+using TradingSystem.BotRuntime.Runtime.Models.Enums;
+using TradingSystem.Operations.Contracts;
+using TradingSystem.Operations.Models;
 
 namespace StrategyService.Runtime;
 
@@ -18,24 +23,18 @@ public sealed class BotCommandWorker(
     : BackgroundService
 {
     private readonly BotRuntimeOptions _options = options.Value;
+    private readonly string _workerId = $"{Environment.MachineName}:{Guid.NewGuid():N}";
 
-    private readonly string _workerId =
-        $"{Environment.MachineName}:{Guid.NewGuid():N}";
-
-    protected override async Task ExecuteAsync(
-        CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!_options.Enabled)
         {
-            logger.LogInformation(
-                "Bot command worker is disabled.");
+            logger.LogInformation("Bot command worker is disabled.");
 
             return;
         }
 
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(
-                Math.Max(1, _options.CommandPollSeconds)));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, _options.CommandPollSeconds)));
 
         do
         {
@@ -43,54 +42,36 @@ public sealed class BotCommandWorker(
             {
                 await ProcessBatchAsync(stoppingToken);
             }
-            catch (OperationCanceledException)
-                when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception exception)
             {
-                logger.LogError(
-                    exception,
-                    "Bot command batch failed. Worker = {WorkerId}",
-                    _workerId);
+                logger.LogError(exception, "Bot command batch failed. Worker = {WorkerId}", _workerId);
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task ProcessBatchAsync(
-        CancellationToken ct)
+    private async Task ProcessBatchAsync(CancellationToken ct)
     {
         var commands = await queue.ClaimPendingAsync(
             _workerId,
             _options.CommandBatchSize,
-            TimeSpan.FromSeconds(
-                Math.Max(
-                    10,
-                    _options.CommandProcessingTimeoutSeconds)),
-            ct);
+            TimeSpan.FromSeconds(Math.Max(10, _options.CommandProcessingTimeoutSeconds)), ct);
 
         foreach (var command in commands)
         {
             try
             {
-                await ProcessAsync(
-                    command,
-                    ct);
+                await ProcessAsync(command, ct);
 
-                await queue.CompleteAsync(
-                    command.CommandId,
-                    _workerId,
-                    ct);
+                await queue.CompleteAsync(command.CommandId, _workerId, ct);
 
                 await TryAuditAsync(command, "Completed", null);
 
-                logger.LogInformation(
-                    "Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",
-                    command.CommandId,
-                    command.BotName,
-                    command.Command);
+                logger.LogInformation("Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}", command.CommandId, command.BotName, command.Command);
             }
             catch (UnsupportedBotCommandException exception)
             {
@@ -102,10 +83,7 @@ public sealed class BotCommandWorker(
 
                 await TryAuditAsync(command, "Rejected", exception.Message);
 
-                logger.LogWarning(
-                    "Bot command rejected. CommandId = {CommandId} Reason = {Reason}",
-                    command.CommandId,
-                    exception.Message);
+                logger.LogWarning("Bot command rejected. CommandId = {CommandId} Reason = {Reason}", command.CommandId, exception.Message);
             }
             catch (Exception exception)
             {
@@ -213,17 +191,11 @@ public sealed class BotCommandWorker(
             command.BotName);
     }
 
-    private async Task ProcessClosePositionAsync(
-        BotCommand command,
-        CancellationToken ct)
+    private async Task ProcessClosePositionAsync(BotCommand command, CancellationToken ct)
     {
-        var positionIdentifier =
-            ReadRequiredPositionIdentifier(command);
+        var positionIdentifier = ReadRequiredPositionIdentifier(command);
 
-        var reason =
-            string.IsNullOrWhiteSpace(command.Reason)
-                ? "MANUAL_POSITION_CLOSE"
-                : command.Reason.Trim();
+        var reason = string.IsNullOrWhiteSpace(command.Reason) ? "MANUAL_POSITION_CLOSE" : command.Reason.Trim();
 
         var result = await tradeExecutor.CloseAsync(
             command.BotName,
@@ -329,15 +301,10 @@ public sealed class BotCommandWorker(
             return true;
 
         return exception is InvalidOperationException &&
-               exception.Message.StartsWith(
-                   "Runtime state was not found for bot",
-                   StringComparison.OrdinalIgnoreCase);
+               exception.Message.StartsWith("Runtime state was not found for bot", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task TryAuditAsync(
-        BotCommand command,
-        string status,
-        string? error)
+    private async Task TryAuditAsync(BotCommand command, string status, string? error)
     {
         try
         {

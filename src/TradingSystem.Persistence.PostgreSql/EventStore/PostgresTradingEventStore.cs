@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Dapper;
-using TradingSystem.EventStore;
+using TradingSystem.EventStore.Constants;
+using TradingSystem.EventStore.Contracts;
+using TradingSystem.EventStore.Models;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.EventStore;

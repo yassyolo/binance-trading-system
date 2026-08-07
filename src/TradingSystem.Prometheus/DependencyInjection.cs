@@ -1,6 +1,9 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using TradingSystem.Prometheus.Configuration;
+using TradingSystem.Prometheus.PrometheusMetrics;
+using TradingSystem.Prometheus.Workers;
 
 namespace TradingSystem.Prometheus;
 

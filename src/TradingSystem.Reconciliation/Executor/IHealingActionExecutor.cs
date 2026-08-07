@@ -1,4 +1,6 @@
-﻿namespace TradingSystem.Reconciliation.Executor;
+﻿using TradingSystem.Reconciliation.Models;
+
+namespace TradingSystem.Reconciliation.Executor;
 
 public interface IHealingActionExecutor
 {

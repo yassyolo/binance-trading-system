@@ -1,7 +1,8 @@
 ﻿using Dapper;
 using Microsoft.Extensions.Logging;
 using TradingSystem.Persistence.PostgreSql.Connections;
-using TradingSystem.PortfolioManagement;
+using TradingSystem.PortfolioManagement.Models;
+using TradingSystem.PortfolioManagement.Performance;
 
 namespace TradingSystem.Persistence.PostgreSql.Portfolio;
 

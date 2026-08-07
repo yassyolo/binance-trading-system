@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Contracts.Messaging;
 using TradingSystem.Contracts.UserStream;
-using TradingSystem.Redis.Messaging;
+using TradingSystem.Redis.Messaging.Contracts;
 using UserStreamService.Configuration;
 
 namespace UserStreamService.Services;

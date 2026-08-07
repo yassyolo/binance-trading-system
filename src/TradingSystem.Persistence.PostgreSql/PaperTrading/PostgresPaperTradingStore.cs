@@ -1,7 +1,10 @@
 using Dapper;
-using TradingSystem.PaperTrading;
+using TradingSystem.PaperTrading.Contracts;
+using TradingSystem.PaperTrading.Models;
+using TradingSystem.PaperTrading.Models.Enums;
 using TradingSystem.Persistence.PostgreSql.Connections;
-using TradingSystem.PortfolioManagement;
+using TradingSystem.PortfolioManagement.Models;
+using TradingSystem.PortfolioManagement.Position;
 
 namespace TradingSystem.Persistence.PostgreSql.PaperTrading;
 

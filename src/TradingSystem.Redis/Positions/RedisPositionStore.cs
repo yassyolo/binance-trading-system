@@ -1,9 +1,10 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
-using TradingSystem.Application.Positions;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
+using TradingSystem.Redis.Constants;
 
 namespace TradingSystem.Redis.Positions;
 

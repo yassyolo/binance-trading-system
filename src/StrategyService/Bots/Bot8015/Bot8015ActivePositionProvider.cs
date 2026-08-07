@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Positions;
-using TradingSystem.Binance.Execution;
+using StrategyService.Bots.Bot8015.Configuration;
+using TradingSystem.Application.Positions.Contracts;
+using TradingSystem.Application.Positions.Models;
+using TradingSystem.Binance.Execution.Models;
 using TradingSystem.Binance.Orders.Contracts;
 
 namespace StrategyService.Bots.Bot8015;

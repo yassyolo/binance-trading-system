@@ -1,4 +1,4 @@
-<Project Sdk = "Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup>
-  <ItemGroup><ProjectReference Include = "../TradingSystem.Application/TradingSystem.Application.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../TradingSystem.Application/TradingSystem.Application.csproj" /></ItemGroup>
 </Project>

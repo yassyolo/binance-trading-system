@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using StrategyService.Bots.Bot8015.Configuration;
 using TradingSystem.Contracts.Messaging;
 
 namespace StrategyService.Bots.Bot8015;
