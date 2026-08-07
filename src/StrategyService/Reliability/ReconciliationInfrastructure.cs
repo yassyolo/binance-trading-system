@@ -53,20 +53,27 @@ public sealed class BinanceExchangeStateProvider(
 }
 
 public sealed class SafeHealingActionExecutor(
-    IPositionStore store) : IHealingActionExecutor
+    ILogger<SafeHealingActionExecutor> logger) : IHealingActionExecutor
 {
-    public async Task<bool> ExecuteAsync(
+    public Task<bool> ExecuteAsync(
         ReconciliationFinding finding,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         if (finding.SuggestedAction != HealingActionType.DeleteStaleLocalPosition ||
             finding.ShortId is null)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
-        await store.DeleteAsync(finding.BotName, finding.ShortId, ct);
-        return true;
+        logger.LogWarning(
+            "Automatic healing refused destructive local-position deletion. Bot = {Bot}, Position = {Position}, Finding = {FindingId}. Manual review is required.",
+            finding.BotName,
+            finding.ShortId,
+            finding.Id);
+
+        return Task.FromResult(false);
     }
 }
 

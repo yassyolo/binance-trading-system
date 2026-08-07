@@ -4,6 +4,7 @@ using TradingSystem.Application.Engine;
 using TradingSystem.Application.Execution;
 using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Enums;
+using TradingSystem.EventStore;
 using TradingSystem.Observability.History;
 using TradingSystem.PaperTrading.Configuration;
 
@@ -14,6 +15,7 @@ public sealed class PaperTradeExecutor(
     IMarketPriceProvider prices,
     IBotRuntimeConfigurationProvider configurations,
     ITradingPipelineRecorder history,
+    ITradingEventStore eventStore,
     ITradingSignalContextAccessor signalContext,
     IOptions<PaperTradingOptions> options,
     ILogger<PaperTradeExecutor> logger)
@@ -86,6 +88,23 @@ public sealed class PaperTradeExecutor(
 
         await store.CreateAsync(position, ct);
         await TryRecordPositionOpenedAsync(position, ct);
+        await TryRecordDomainPositionEventAsync(
+            position,
+            TradingEventTypes.PositionOpened,
+            new
+            {
+                position.ShortId,
+                position.Symbol,
+                Side = position.Side.ToString(),
+                position.Quantity,
+                position.EntryPrice,
+                position.TakeProfitPrice,
+                position.StopLossPrice,
+                position.EntryFee,
+                position.Source
+            },
+            position.OpenedAtUtc,
+            ct);
 
         return TradeExecutionResult.Success(
             position.ShortId,
@@ -165,7 +184,67 @@ public sealed class PaperTradeExecutor(
             closedAtUtc,
             ct);
 
+        await TryRecordDomainPositionEventAsync(
+            position,
+            TradingEventTypes.PositionClosed,
+            new
+            {
+                position.ShortId,
+                position.Symbol,
+                Side = position.Side.ToString(),
+                position.Quantity,
+                ExitPrice = exitPrice,
+                ExitFee = exitFee,
+                GrossPnl = grossPnl,
+                RealizedPnl = realizedPnl,
+                Reason = reason,
+                position.Source
+            },
+            closedAtUtc,
+            ct);
+
         return TradeExecutionResult.Success(position.ShortId, reason);
+    }
+
+
+    private async Task TryRecordDomainPositionEventAsync(
+        PaperTradingPosition position,
+        string eventType,
+        object payload,
+        DateTime occurredAtUtc,
+        CancellationToken ct)
+    {
+        try
+        {
+            await eventStore.AppendAsync(
+                new AppendTradingEvent(
+                    EventType: eventType,
+                    AggregateType: "PaperPosition",
+                    AggregateId: position.ShortId,
+                    Payload: payload,
+                    OccurredAtUtc: occurredAtUtc,
+                    BotName: position.BotName,
+                    Symbol: position.Symbol,
+                    PositionId: position.ShortId,
+                    SignalId: position.SignalId,
+                    CorrelationId: position.SignalId ?? position.ShortId,
+                    CausationId: position.SignalId,
+                    Actor: position.Source),
+                ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}",
+                eventType,
+                position.BotName,
+                position.ShortId);
+        }
     }
 
     private async Task TryRecordPositionOpenedAsync(

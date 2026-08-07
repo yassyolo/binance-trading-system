@@ -67,7 +67,17 @@ returning j.job_id JobId,
         await using var c = await factory.OpenAsync(ct);
         await c.ExecuteAsync(
             new CommandDefinition(
-                "update trading_dashboard.jobs set status = 'Completed', result_run_id = @runId, progress_percent = 100, progress_stage = 'Completed', completed_at_utc = now(), processing_worker_id = null where job_id = @id",
+                """
+                update trading_dashboard.jobs
+                set status = 'Completed',
+                    result_run_id = @runId,
+                    progress_percent = 100,
+                    progress_stage = 'Completed',
+                    completed_at_utc = now(),
+                    completed_by_worker_id = processing_worker_id,
+                    processing_worker_id = null
+                where job_id = @id
+                """,
                 new { id, runId },
                 cancellationToken: ct
             )
@@ -79,7 +89,16 @@ returning j.job_id JobId,
         await using var c = await factory.OpenAsync(ct);
         await c.ExecuteAsync(
             new CommandDefinition(
-                "update trading_dashboard.jobs set status = case when attempt_count>=@max then 'Failed' else 'Pending' end, error = @error, next_attempt_at_utc = case when attempt_count>=@max then null else now()+@retry end, completed_at_utc = case when attempt_count>=@max then now() else null end, processing_worker_id = null where job_id = @id",
+                """
+                update trading_dashboard.jobs
+                set status = case when attempt_count>=@max then 'Failed' else 'Pending' end,
+                    error = @error,
+                    next_attempt_at_utc = case when attempt_count>=@max then null else now()+@retry end,
+                    completed_at_utc = case when attempt_count>=@max then now() else null end,
+                    completed_by_worker_id = case when attempt_count>=@max then processing_worker_id else completed_by_worker_id end,
+                    processing_worker_id = null
+                where job_id = @id
+                """,
                 new { id, error = error[..Math.Min(error.Length, 4000)], max = maxAttempts, retry },
                 cancellationToken: ct
             )

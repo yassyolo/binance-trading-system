@@ -169,22 +169,34 @@ public sealed class OperationalAlertCandidateSource(
             string InstanceId,
             DateTime LastSeenUtc)>(new CommandDefinition(
             """
+                with latest as (
+                    select component,
+                           instance_id,
+                           last_seen_at_utc,
+                           stale_after_seconds,
+                           row_number() over(
+                               partition by component
+                               order by last_seen_at_utc desc, instance_id desc) as rn
+                    from trading_dashboard.service_heartbeats
+                )
                 select component Component,
                        instance_id InstanceId,
                        last_seen_at_utc LastSeenUtc
-                from trading_dashboard.service_heartbeats
-                where last_seen_at_utc + make_interval(secs => stale_after_seconds) < now();
+                from latest
+                where rn = 1
+                  and last_seen_at_utc + make_interval(secs => stale_after_seconds) < now();
                 """,
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));
 
         result.AddRange(stale.Select(item => new AlertCandidate(
-            $"operational:heartbeat:{item.Component}:{item.InstanceId}",
+            $"operational:heartbeat:{item.Component}",
             AlertSeverity.Critical,
             "ServiceHeartbeatMissing",
-            $"{item.Component} instance {item.InstanceId} has a stale heartbeat.",
+            $"{item.Component} has no healthy heartbeat. Latest instance {item.InstanceId} is stale.",
             Metadata: new Dictionary<string, string>
             {
+                ["instanceId"] = item.InstanceId,
                 ["lastSeenUtc"] = item.LastSeenUtc.ToString("O")
             })));
 

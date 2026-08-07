@@ -10,37 +10,37 @@ namespace TradingSystem.Persistence.PostgreSql.BotRuntime;
 
 public sealed class PostgresBotRuntimeStateStore(ITradingDbConnectionFactory factory) : IBotRuntimeStateStore
 {
-    public async Task<BotRuntimeState?> GetAsync(string botName,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        return await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
-            """
+	public async Task<BotRuntimeState?> GetAsync(string botName, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		return await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
+			"""
             select bot_name BotName,  runtime_status Status,  runtime_version Version, 
                    runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
                    runtime_reason Reason,  execution_enabled ExecutionEnabled
             from trading_dashboard.bot_configurations
             where bot_name  =  @botName
-            """,  new { botName },  cancellationToken: ct));
-    }
+            """, new { botName }, cancellationToken: ct));
+	}
 
-    public async Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
-            """
+	public async Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
+			"""
             select bot_name BotName,  runtime_status Status,  runtime_version Version, 
                    runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
                    runtime_reason Reason,  execution_enabled ExecutionEnabled
             from trading_dashboard.bot_configurations
             order by bot_name
-            """,  cancellationToken: ct))).AsList();
-    }
+            """, cancellationToken: ct))).AsList();
+	}
 
-    public async Task<BotRuntimeState> TransitionAsync(string botName,  BotRuntimeStatus status,  long expectedVersion,  string user,  string reason,  bool executionEnabled,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        var updated  =  await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
-            """
+	public async Task<BotRuntimeState> TransitionAsync(string botName, BotRuntimeStatus status, long expectedVersion, string user, string reason, bool executionEnabled, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		var updated = await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
+			"""
             update trading_dashboard.bot_configurations
             set runtime_status  =  @status, 
                 execution_enabled  =  @executionEnabled, 
@@ -52,14 +52,14 @@ public sealed class PostgresBotRuntimeStateStore(ITradingDbConnectionFactory fac
             returning bot_name BotName,  runtime_status Status,  runtime_version Version, 
                       runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
                       runtime_reason Reason,  execution_enabled ExecutionEnabled
-            """,  new { botName,  status  =  status.ToString(),  expectedVersion,  user,  reason,  executionEnabled },  cancellationToken: ct));
-        return updated ?? throw new DBConcurrencyException($"Runtime state for '{botName}' was changed concurrently.");
-    }
+            """, new { botName, status = status.ToString(), expectedVersion, user, reason, executionEnabled }, cancellationToken: ct));
+		return updated ?? throw new DBConcurrencyException($"Runtime state for '{botName}' was changed concurrently.");
+	}
 }
 
 public sealed class PostgresBotRuntimeConfigurationStore(ITradingDbConnectionFactory factory) : IBotRuntimeConfigurationStore
 {
-    private const string Projection  =  """
+	private const string Projection = """
         select bot_name BotName,  strategy_type StrategyType,  symbol Symbol,  environment Environment, 
                signal_source SignalSource,  enable_long EnableLong,  enable_short EnableShort, 
                quantity Quantity,  leverage Leverage,  price_distance PriceDistance, 
@@ -69,29 +69,29 @@ public sealed class PostgresBotRuntimeConfigurationStore(ITradingDbConnectionFac
         from trading_dashboard.bot_configurations
         """;
 
-    public async Task<BotRuntimeConfiguration?> GetAsync(string botName,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        return await connection.QuerySingleOrDefaultAsync<BotRuntimeConfiguration>(new CommandDefinition(
-            Projection + " where bot_name  =  @botName",  new { botName },  cancellationToken: ct));
-    }
+	public async Task<BotRuntimeConfiguration?> GetAsync(string botName, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		return await connection.QuerySingleOrDefaultAsync<BotRuntimeConfiguration>(new CommandDefinition(
+			Projection + " where bot_name  =  @botName", new { botName }, cancellationToken: ct));
+	}
 
-    public async Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        return (await connection.QueryAsync<BotRuntimeConfiguration>(new CommandDefinition(
-            Projection + " where updated_at_utc > @changedSinceUtc order by updated_at_utc",  new { changedSinceUtc },  cancellationToken: ct))).AsList();
-    }
+	public async Task<IReadOnlyCollection<BotRuntimeConfiguration>> GetChangedSinceAsync(DateTime changedSinceUtc, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		return (await connection.QueryAsync<BotRuntimeConfiguration>(new CommandDefinition(
+			Projection + " where updated_at_utc > @changedSinceUtc order by updated_at_utc", new { changedSinceUtc }, cancellationToken: ct))).AsList();
+	}
 }
 
 public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory) : IBotCommandQueue
 {
-    public async Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId,  int batchSize,  TimeSpan processingTimeout,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        await using var transaction  =  await connection.BeginTransactionAsync(ct);
-        var rows  =  (await connection.QueryAsync<CommandRow>(new CommandDefinition(
-            """
+	public async Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId, int batchSize, TimeSpan processingTimeout, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		await using var transaction = await connection.BeginTransactionAsync(ct);
+		var rows = (await connection.QueryAsync<CommandRow>(new CommandDefinition(
+			"""
             with candidates as (
                 select command_id
                 from trading_dashboard.bot_commands
@@ -110,42 +110,47 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
                       c.status Status,  c.requested_by RequestedBy,  c.reason Reason, 
                       c.payload::text Payload,  c.requested_at_utc RequestedAtUtc, 
                       c.attempt_count AttemptCount
-            """,  new { workerId,  batchSize  =  Math.Clamp(batchSize,  1,  100),  processingTimeout },  transaction,  cancellationToken: ct))).AsList();
-        await transaction.CommitAsync(ct);
-        return rows.Select(x  =>  new BotCommand(x.CommandId,  x.BotName,  Enum.Parse<BotCommandType>(x.Command,  true),  Enum.Parse<BotCommandStatus>(x.Status,  true),  x.RequestedBy,  x.Reason,  JsonDocument.Parse(x.Payload),  x.RequestedAtUtc,  x.AttemptCount)).ToArray();
-    }
+            """, new { workerId, batchSize = Math.Clamp(batchSize, 1, 100), processingTimeout }, transaction, cancellationToken: ct))).AsList();
+		await transaction.CommitAsync(ct);
+		return rows.Select(x => new BotCommand(x.CommandId, x.BotName, Enum.Parse<BotCommandType>(x.Command, true), Enum.Parse<BotCommandStatus>(x.Status, true), x.RequestedBy, x.Reason, JsonDocument.Parse(x.Payload), x.RequestedAtUtc, x.AttemptCount)).ToArray();
+	}
 
-    public Task CompleteAsync(Guid commandId,  string workerId,  CancellationToken ct)
-         =>  UpdateTerminalAsync(commandId,  workerId,  "Completed",  null,  ct);
+	public Task CompleteAsync(Guid commandId, string workerId, CancellationToken ct)
+		 => UpdateTerminalAsync(commandId, workerId, "Completed", null, ct);
 
-    public async Task FailAsync(Guid commandId,  string workerId,  string error,  bool retryable,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        var status  =  retryable ? "Pending" : "Failed";
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
+	public async Task FailAsync(Guid commandId, string workerId, string error, bool retryable, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		var status = retryable ? "Pending" : "Failed";
+		await connection.ExecuteAsync(new CommandDefinition(
+			"""
             update trading_dashboard.bot_commands
             set status  =  @status,  error  =  @error, 
                 next_attempt_at_utc  =  case when @retryable then now() + make_interval(secs  =>  least(300,  power(2,  greatest(attempt_count, 1))::int)) else next_attempt_at_utc end, 
-                completed_at_utc  =  case when @retryable then null else now() end, 
+                completed_at_utc  =  case when @retryable then null else now() end,
+                completed_by_worker_id = case when @retryable then completed_by_worker_id else @workerId end,
                 processing_worker_id  =  null
             where command_id  =  @commandId and processing_worker_id  =  @workerId and status  =  'Processing'
-            """,  new { commandId,  workerId,  error,  retryable,  status },  cancellationToken: ct));
-    }
+            """, new { commandId, workerId, error, retryable, status }, cancellationToken: ct));
+	}
 
-    public Task RejectAsync(Guid commandId,  string workerId,  string reason,  CancellationToken ct)
-         =>  UpdateTerminalAsync(commandId,  workerId,  "Rejected",  reason,  ct);
+	public Task RejectAsync(Guid commandId, string workerId, string reason, CancellationToken ct)
+		 => UpdateTerminalAsync(commandId, workerId, "Rejected", reason, ct);
 
-    private async Task UpdateTerminalAsync(Guid commandId,  string workerId,  string status,  string? error,  CancellationToken ct)
-    {
-        await using var connection  =  await factory.OpenAsync(ct);
-        await connection.ExecuteAsync(new CommandDefinition(
-            """
+	private async Task UpdateTerminalAsync(Guid commandId, string workerId, string status, string? error, CancellationToken ct)
+	{
+		await using var connection = await factory.OpenAsync(ct);
+		await connection.ExecuteAsync(new CommandDefinition(
+			"""
             update trading_dashboard.bot_commands
-            set status  =  @status,  completed_at_utc  =  now(),  error  =  @error,  processing_worker_id  =  null
+            set status  =  @status,
+                completed_at_utc  =  now(),
+                error  =  @error,
+                completed_by_worker_id = @workerId,
+                processing_worker_id  =  null
             where command_id  =  @commandId and processing_worker_id  =  @workerId and status  =  'Processing'
-            """,  new { commandId,  workerId,  status,  error },  cancellationToken: ct));
-    }
+            """, new { commandId, workerId, status, error }, cancellationToken: ct));
+	}
 
-    private sealed record CommandRow(Guid CommandId,  string BotName,  string Command,  string Status,  string RequestedBy,  string Reason,  string Payload,  DateTime RequestedAtUtc,  int AttemptCount);
+	private sealed record CommandRow(Guid CommandId, string BotName, string Command, string Status, string RequestedBy, string Reason, string Payload, DateTime RequestedAtUtc, int AttemptCount);
 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using TradingSystem.Application.Execution;
 using TradingSystem.BotRuntime.Commands;
 using TradingSystem.BotRuntime.Runtime;
+using TradingSystem.Operations;
 
 namespace StrategyService.Runtime;
 
@@ -11,6 +12,7 @@ public sealed class BotCommandWorker(
     IBotRuntimeStateStore stateStore,
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
+    IAuditLog auditLog,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotCommandWorker> logger)
     : BackgroundService
@@ -82,6 +84,8 @@ public sealed class BotCommandWorker(
                     _workerId,
                     ct);
 
+                await TryAuditAsync(command, "Completed", null);
+
                 logger.LogInformation(
                     "Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",
                     command.CommandId,
@@ -96,6 +100,8 @@ public sealed class BotCommandWorker(
                     exception.Message,
                     ct);
 
+                await TryAuditAsync(command, "Rejected", exception.Message);
+
                 logger.LogWarning(
                     "Bot command rejected. CommandId = {CommandId} Reason = {Reason}",
                     command.CommandId,
@@ -104,6 +110,7 @@ public sealed class BotCommandWorker(
             catch (Exception exception)
             {
                 var retryable =
+                    !IsPermanentFailure(exception) &&
                     command.AttemptCount <
                     _options.MaximumCommandAttempts;
 
@@ -113,6 +120,9 @@ public sealed class BotCommandWorker(
                     exception.Message,
                     retryable,
                     ct);
+
+                if (!retryable)
+                    await TryAuditAsync(command, "Failed", exception.Message);
 
                 logger.LogError(
                     exception,
@@ -223,10 +233,14 @@ public sealed class BotCommandWorker(
 
         if (!result.Succeeded)
         {
-            throw new InvalidOperationException(
+            var message =
                 $"Position close failed for bot '{command.BotName}' " +
-                $"and position '{positionIdentifier}': {result.Reason}",
-                result.Exception);
+                $"and position '{positionIdentifier}': {result.Reason}";
+
+            if (result.Reason.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                throw new PermanentBotCommandException(message, result.Exception);
+
+            throw new InvalidOperationException(message, result.Exception);
         }
 
         logger.LogInformation(
@@ -308,6 +322,62 @@ public sealed class BotCommandWorker(
 
         return true;
     }
+
+    private static bool IsPermanentFailure(Exception exception)
+    {
+        if (exception is PermanentBotCommandException)
+            return true;
+
+        return exception is InvalidOperationException &&
+               exception.Message.StartsWith(
+                   "Runtime state was not found for bot",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task TryAuditAsync(
+        BotCommand command,
+        string status,
+        string? error)
+    {
+        try
+        {
+            await auditLog.WriteAsync(
+                new AuditEvent(
+                    AuditId: Guid.NewGuid(),
+                    OccurredAtUtc: DateTime.UtcNow,
+                    Actor: command.RequestedBy,
+                    Action: $"BotCommand.{command.Command}.{status}",
+                    EntityType: "BotCommand",
+                    EntityId: command.CommandId.ToString(),
+                    Reason: command.Reason,
+                    CorrelationId: command.CommandId.ToString(),
+                    IpAddress: null,
+                    OldValueJson: null,
+                    NewValueJson: null,
+                    Metadata: new Dictionary<string, string>
+                    {
+                        ["botName"] = command.BotName,
+                        ["command"] = command.Command.ToString(),
+                        ["status"] = status,
+                        ["attemptCount"] = command.AttemptCount.ToString(),
+                        ["workerId"] = _workerId,
+                        ["error"] = error ?? string.Empty
+                    }),
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Bot command audit persistence failed. CommandId = {CommandId}",
+                command.CommandId);
+        }
+    }
+
+    private sealed class PermanentBotCommandException(
+        string message,
+        Exception? innerException = null)
+        : Exception(message, innerException);
 
     private sealed class UnsupportedBotCommandException(
         string message)

@@ -345,21 +345,63 @@ public sealed class TradingEngine(
 		CancellationToken ct,
 		string? positionId = null)
 	{
-		_ = await eventStore.AppendAsync(
-			new AppendTradingEvent(
-				EventType: eventType,
-				AggregateType: "Signal",
-				AggregateId: signal.SignalId,
-				Payload: payload,
-				OccurredAtUtc: clock.UtcNow,
-				BotName: signal.BotName,
-				Symbol: signal.Symbol,
-				PositionId: positionId,
-				SignalId: signal.SignalId,
-				CorrelationId: signal.SignalId,
-				CausationId: signal.SignalId,
-				Actor: signal.Source),
-			ct);
+		var request = new AppendTradingEvent(
+			EventType: eventType,
+			AggregateType: "Signal",
+			AggregateId: signal.SignalId,
+			Payload: payload,
+			OccurredAtUtc: clock.UtcNow,
+			BotName: signal.BotName,
+			Symbol: signal.Symbol,
+			PositionId: positionId,
+			SignalId: signal.SignalId,
+			CorrelationId: signal.SignalId,
+			CausationId: signal.SignalId,
+			Actor: signal.Source);
+
+		Exception? lastError = null;
+
+		for (var attempt = 1; attempt <= 5; attempt++)
+		{
+			try
+			{
+				_ = await eventStore.AppendAsync(request, ct);
+				return;
+			}
+			catch (OperationCanceledException) when (ct.IsCancellationRequested)
+			{
+				throw;
+			}
+			catch (Exception exception) when (IsTransientEventStoreFailure(exception))
+			{
+				lastError = exception;
+				logger.LogWarning(
+					exception,
+					"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5",
+					signal.SignalId,
+					eventType,
+					attempt);
+
+				if (attempt < 5)
+					await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt, 3)), ct);
+			}
+		}
+
+		throw new InvalidOperationException(
+			$"EventStore remained unavailable while persisting '{eventType}' for signal '{signal.SignalId}'.",
+			lastError);
+	}
+
+	private static bool IsTransientEventStoreFailure(Exception exception)
+	{
+		if (exception is TimeoutException)
+			return true;
+
+		if (exception.InnerException is TimeoutException)
+			return true;
+
+		var typeName = exception.GetType().FullName ?? exception.GetType().Name;
+		return typeName.StartsWith("Npgsql.", StringComparison.Ordinal);
 	}
 
 	private TradingEngineResult? ValidateTimestamp(TradeSignal signal, DateTime now)
