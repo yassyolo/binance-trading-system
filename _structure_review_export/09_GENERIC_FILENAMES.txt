@@ -1,0 +1,5 @@
+﻿BINANCE TRADING SYSTEM
+GENERIC / AGGREGATE FILE NAME CANDIDATES
+Generated: 2026-08-07 23:51:53
+
+C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\Enums.cs

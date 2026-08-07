@@ -1,16 +1,18 @@
 ﻿using Dapper;
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Risk;
 using TradingSystem.Persistence.PostgreSql.Connections;
 using TradingSystem.PaperTrading.Configuration;
 using TradingSystem.Reconciliation.Contracts;
+using TradingSystem.Application.Risk.Models;
+using TradingSystem.Application.Risk.Contracts;
 
 namespace TradingSystem.Persistence.PostgreSql.Reliability;
 
 public sealed class PostgresRiskStateProvider(
     ITradingDbConnectionFactory connections,
     IReconciliationFindingStore findings,
-    IOptions<PaperTradingOptions> paperOptions) : IRiskStateProvider
+    IOptions<PaperTradingOptions> paperOptions) 
+    : IRiskStateProvider
 {
     public async Task<RiskStateSnapshot> GetAsync(
         DateTime atUtc,

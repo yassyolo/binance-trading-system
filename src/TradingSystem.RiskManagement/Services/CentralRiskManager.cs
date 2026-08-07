@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingSystem.Application.Risk;
 using TradingSystem.Application.Risk.Contracts;
+using TradingSystem.Application.Risk.Models;
 using TradingSystem.Application.Time;
 using TradingSystem.Domain.Enums;
 using TradingSystem.PortfolioManagement.Provider;

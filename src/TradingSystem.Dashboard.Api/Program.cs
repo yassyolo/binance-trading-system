@@ -4,15 +4,11 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using TradingSystem.Dashboard.Api.Hardening;
-using TradingSystem.Dashboard.Application;
 using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Operations;
 using TradingSystem.Persistence.PostgreSql.Dashboard;
-using TradingSystem.ReplayEngine;
 using TradingSystem.PaperTrading.Configuration;
 using TradingSystem.PaperTrading.Contracts;
 using TradingSystem.Persistence.PostgreSql;
@@ -25,6 +21,8 @@ using TradingSystem.ReplayEngine.Store;
 using TradingSystem.EventStore.Models;
 using TradingSystem.ReplayEngine.Models;
 using TradingSystem.PaperTrading.Models.Enums;
+using TradingSystem.Dashboard.Api.Exceptions;
+using TradingSystem.Dashboard.Api.Validation;
 
 var builder  =  WebApplication.CreateBuilder(args);
 

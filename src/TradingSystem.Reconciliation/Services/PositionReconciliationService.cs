@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.Positions.Contracts;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Positions;
 using TradingSystem.Reconciliation.Configuration;
 using TradingSystem.Reconciliation.Contracts;

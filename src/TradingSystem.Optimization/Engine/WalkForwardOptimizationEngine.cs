@@ -1,4 +1,5 @@
 using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Optimization.Configuration;
 using TradingSystem.Optimization.Models;

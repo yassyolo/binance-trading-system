@@ -1,0 +1,60 @@
+﻿BINANCE TRADING SYSTEM
+PROJECT INDEX
+Generated: 2026-08-07 23:51:48
+
+Total projects: 54
+
+ 1. C:\Users\Yo\Desktop\binance-trading-system\src\IndicatorServices\IndicatorServices.csproj
+ 2. C:\Users\Yo\Desktop\binance-trading-system\src\MarketDataService\MarketDataService.csproj
+ 3. C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\StrategyService.csproj
+ 4. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Analytics\TradingSystem.Analytics.csproj
+ 5. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Application\TradingSystem.Application.csproj
+ 6. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\TradingSystem.Backtesting.Bots.csproj
+ 7. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Cli\TradingSystem.Backtesting.Cli.csproj
+ 8. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Reporting\TradingSystem.Backtesting.Reporting.csproj
+ 9. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj
+10. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Binance\TradingSystem.Binance.csproj
+11. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotBacktesting.Cli\TradingSystem.BotBacktesting.Cli.csproj
+12. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\TradingSystem.BotRuntime.csproj
+13. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Contracts\TradingSystem.Contracts.csproj
+14. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\TradingSystem.Dashboard.Api.csproj
+15. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Application\TradingSystem.Dashboard.Application.csproj
+16. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Contracts\TradingSystem.Dashboard.Contracts.csproj
+17. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Domain\TradingSystem.Domain.csproj
+18. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.EventStore\TradingSystem.EventStore.csproj
+19. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData.Cli\TradingSystem.HistoricalData.Cli.csproj
+20. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj
+21. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalDatabase\TradingSystem.HistoricalDatabase.csproj
+22. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Indicators\TradingSystem.Indicators.csproj
+23. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Infrastructure\TradingSystem.Infrastructure.csproj
+24. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.JobOrchestration\TradingSystem.JobOrchestration.csproj
+25. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\TradingSystem.Jobs.Worker.csproj
+26. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\TradingSystem.Observability.csproj
+27. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\TradingSystem.Operations.csproj
+28. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization.Cli\TradingSystem.Optimization.Cli.csproj
+29. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\TradingSystem.Optimization.csproj
+30. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\TradingSystem.PaperTrading.csproj
+31. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Persistence.PostgreSql\TradingSystem.Persistence.PostgreSql.csproj
+32. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PortfolioManagement\TradingSystem.PortfolioManagement.csproj
+33. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Prometheus\TradingSystem.Prometheus.csproj
+34. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\TradingSystem.Reconciliation.csproj
+35. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Redis\TradingSystem.Redis.csproj
+36. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.ReplayEngine\TradingSystem.ReplayEngine.csproj
+37. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\TradingSystem.RiskManagement.csproj
+38. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Signals\TradingSystem.Signals.csproj
+39. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Strategies\TradingSystem.Strategies.csproj
+40. C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\TradingSystem.StrategyPlugins.csproj
+41. C:\Users\Yo\Desktop\binance-trading-system\src\UserStreamService\UserStreamService.csproj
+42. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Backtesting.Bots.Tests\TradingSystem.Backtesting.Bots.Tests.csproj
+43. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Backtesting.Tests\TradingSystem.Backtesting.Tests.csproj
+44. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.BotRuntime.Tests\TradingSystem.BotRuntime.Tests.csproj
+45. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Dashboard.Api.Tests\TradingSystem.Dashboard.Api.Tests.csproj
+46. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.EventStore.Tests\TradingSystem.EventStore.Tests.csproj
+47. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.JobOrchestration.Tests\TradingSystem.JobOrchestration.Tests.csproj
+48. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Operations.Tests\TradingSystem.Operations.Tests.csproj
+49. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Optimization.Tests\TradingSystem.Optimization.Tests.csproj
+50. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.PaperTrading.Tests\TradingSystem.PaperTrading.Tests.csproj
+51. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.ReplayEngine.Tests\TradingSystem.ReplayEngine.Tests.csproj
+52. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.RiskManagement.Tests\TradingSystem.RiskManagement.Tests.csproj
+53. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.Strategies.Tests\TradingSystem.Strategies.Tests.csproj
+54. C:\Users\Yo\Desktop\binance-trading-system\tests\TradingSystem.StrategyPlugins.Tests\TradingSystem.StrategyPlugins.Tests.csproj

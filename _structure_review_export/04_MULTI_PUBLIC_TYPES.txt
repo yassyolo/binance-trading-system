@@ -1,0 +1,166 @@
+﻿BINANCE TRADING SYSTEM
+FILES WITH MULTIPLE PUBLIC TOP-LEVEL TYPES
+Generated: 2026-08-07 23:51:51
+
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8011\Bot8011Stop3OrderService.cs
+PUBLIC TYPES: 2
+  public sealed record CreatedStop3Order(string AlgoOrderId, string ClientAlgoId, string? Status, decimal TriggerPrice);
+  public sealed class Bot8011Stop3OrderService(
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8015\Bot8015Stop3OrderService.cs
+PUBLIC TYPES: 2
+  public sealed record CreatedStop3Order(string AlgoOrderId, string ClientAlgoId, string? Status, decimal TriggerPrice);
+  public sealed class Bot8015Stop3OrderService(
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8016\Bot8016MarketModels.cs
+PUBLIC TYPES: 3
+  public sealed record Bot8016Candle(
+  public sealed record Bot8016IndicatorSnapshot(
+  public sealed record Bot8016EntrySignal(
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Application\Risk\RiskContracts.cs
+PUBLIC TYPES: 6
+  public sealed record RiskEvaluationContext
+  public sealed record RiskDecision(bool Allowed,  string Code,  string Reason)
+  public interface ICentralRiskManager
+  public sealed class NullCentralRiskManager : ICentralRiskManager
+  public sealed record RiskStateSnapshot(
+  public interface IRiskStateProvider
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Bot8012\Bot8012Optimizer.cs
+PUBLIC TYPES: 2
+  public sealed record Bot8012OptimizationSpace
+  public sealed class Bot8012Optimizer(Bot8012BacktestEngine engine,  GridSearchOptimizer optimizer)
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\BotSimulationModels.cs
+PUBLIC TYPES: 6
+  public sealed record BotExecution(
+  public sealed record BotPositionResult
+  public sealed record BotEquityPoint(
+  public sealed record BotBacktestMetrics
+  public sealed record BotSignalDecision(
+  public sealed record BotBacktestResult<TOptions>
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Common\TpOnlyGridBacktestEngine.cs
+PUBLIC TYPES: 2
+  public interface ITpOnlyGridBacktestOptions
+  public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Optimization\GridSearchOptimizer.cs
+PUBLIC TYPES: 2
+  public sealed record OptimizationResult<TOptions, TMetrics>(
+  public sealed class GridSearchOptimizer
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Execution\CandleFillResolver.cs
+PUBLIC TYPES: 2
+  public sealed record ProtectiveFill(ExitReason Reason,  decimal Price);
+  public sealed class CandleFillResolver
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\BacktestResult.cs
+PUBLIC TYPES: 2
+  public sealed record BacktestResult
+  public sealed record SignalMarker(DateTime TimeUtc,  TradeSide Side,  decimal Price,  bool Executed,  string Reason);
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Models\Enums.cs
+PUBLIC TYPES: 5
+  public enum TradeSide { Long,  Short }
+  public enum EntryExecutionMode { SignalCandleClose,  NextCandleOpen }
+  public enum IntrabarConflictPolicy { StopLossFirst,  TakeProfitFirst,  WorstCase,  BestCase }
+  public enum ExitReason { TakeProfit,  StopLoss,  Strategy,  ReverseSignal,  BacktestEnd }
+  public enum DecisionType { None,  Open,  Close,  CloseAndReverse }
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting\Risk\PositionSizeCalculator.cs
+PUBLIC TYPES: 2
+  public sealed record PositionSizeResult(bool Succeeded,  decimal Quantity,  string Reason)
+  public sealed class PositionSizeCalculator
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.BotRuntime\Configuration\BotRuntimeConfiguration.cs
+PUBLIC TYPES: 2
+  public sealed record BotRuntimeConfiguration(
+  public interface IBotRuntimeConfigurationProvider
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Api\Hardening\ApiExceptions.cs
+PUBLIC TYPES: 3
+  public sealed class ApiValidationException(IReadOnlyDictionary<string,  string[]> errors)
+  public sealed class ApiConflictException(string message) : Exception(message);
+  public sealed class ApiNotFoundException(string message) : Exception(message);
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Dashboard.Contracts\DashboardContracts.cs
+PUBLIC TYPES: 28
+  public enum BotRuntimeStatus { Stopped,  Running,  Paused,  EmergencyStopped,  Faulted }
+  public enum TradingEnvironment { Demo,  Production }
+  public enum BotCommandType { Start,  Stop,  Pause,  Resume,  EmergencyStop,  ClosePosition,  CancelTakeProfit,  RecreateTakeProfit }
+  public enum BotCommandStatus { Pending,  Processing,  Completed,  Failed,  Rejected }
+  public sealed record BotOverviewDto(
+  public sealed record LiveOverviewDto(
+  public sealed record ComponentHealthDto(string Component,  string Status,  DateTime? LastSeenUtc,  string? Details);
+  public sealed record SignalRowDto(long Id,  string SignalId,  DateTime TimeUtc,  string BotName,  string Symbol,  string Source,  string Side,  decimal? Price,  string? Decision,  string? BlockReason,  string StrategyVersion,  string Environment);
+  public sealed record PositionRowDto(string PositionId,  string BotName,  string Symbol,  string Side,  string Status,  decimal Quantity,  decimal? EntryPrice,  decimal? TakeProfitPrice,  decimal? CurrentPrice,  decimal UnrealizedPnl,  decimal? RealizedPnl,  DateTime OpenedAtUtc,  DateTime? ClosedAtUtc,  string StrategyVersion,  string Environment);
+  public sealed record TradeHistoryRowDto(string PositionId,  string BotName,  string Symbol,  string Side,  decimal? EntryPrice,  decimal? ExitPrice,  decimal Quantity,  decimal? RealizedPnl,  decimal? Fees,  TimeSpan? Duration,  string? Source,  string StrategyVersion,  string Environment,  string? CloseReason,  DateTime OpenedAtUtc,  DateTime? ClosedAtUtc);
+  public sealed record AnalyticsSummaryDto(decimal TotalPnl,  decimal DailyPnl,  decimal WeeklyPnl,  decimal MonthlyPnl,  decimal WinRate,  decimal AverageWin,  decimal AverageLoss,  decimal MaxDrawdownPercent,  decimal AverageHoldingMinutes,  int Signals,  int OpenedSignals,  int BlockedSignals,  IReadOnlyDictionary<string, int> BlockReasons,  decimal LongPnl,  decimal ShortPnl);
+  public sealed record EquityPointDto(DateTime TimeUtc,  decimal Equity,  decimal DrawdownPercent);
+  public sealed record PriceCandleDto(DateTime OpenTimeUtc,  decimal Open,  decimal High,  decimal Low,  decimal Close,  decimal Volume);
+  public sealed record ChartMarkerDto(DateTime TimeUtc,  string Kind,  string Side,  decimal Price,  string? Label);
+  public sealed record PriceChartDto(IReadOnlyCollection<PriceCandleDto> Candles,  IReadOnlyCollection<ChartMarkerDto> Markers);
+  public sealed record BotConfigurationDto(string BotName,  string StrategyType,  string Symbol,  TradingEnvironment Environment,  string SignalSource,  bool EnableLong,  bool EnableShort,  decimal Quantity,  int Leverage,  decimal? PriceDistance,  decimal? ProfitDistance,  int? OrderSideLimit,  int CooldownSeconds,  long Version,  DateTime UpdatedAtUtc,  string UpdatedBy,  bool RestartRequired);
+  public sealed record UpdateBotConfigurationRequest(long ExpectedVersion,  string StrategyType,  string Symbol,  TradingEnvironment Environment,  string SignalSource,  bool EnableLong,  bool EnableShort,  decimal Quantity,  int Leverage,  decimal? PriceDistance,  decimal? ProfitDistance,  int? OrderSideLimit,  int CooldownSeconds,  string Reason);
+  public sealed record BotCommandRequest(BotCommandType Command,  string Reason,  bool Confirmed,  bool CancelOpenOrders  =  false,  bool CloseOpenPositions  =  false,  string? PositionId  =  null);
+  public sealed record BotCommandDto(Guid CommandId,  string BotName,  BotCommandType Command,  BotCommandStatus Status,  string RequestedBy,  string Reason,  DateTime RequestedAtUtc,  DateTime? CompletedAtUtc,  string? Error);
+  public sealed record BacktestRequest(string BotName,  string Symbol,  DateTime FromUtc,  DateTime ToUtc,  decimal InitialBalance,  string SignalSource,  decimal CommissionPercent,  decimal SlippagePercent,  IReadOnlyDictionary<string, string> Parameters);
+  public sealed record OptimizationRangeDto(string Name,  decimal From,  decimal To,  decimal Step);
+  public sealed record OptimizationRequest(string BotName,  string Symbol,  DateTime FromUtc,  DateTime ToUtc,  decimal InitialBalance,  string SignalSource,  IReadOnlyCollection<OptimizationRangeDto> Ranges,  int TopResults,  bool WalkForward,  int? TrainBars,  int? TestBars,  int? StepBars);
+  public sealed record JobAcceptedDto(Guid JobId,  string Type,  string Status,  DateTime CreatedAtUtc);
+  public sealed record RunSummaryDto(Guid RunId,  string RunType,  string BotName,  string StrategyVersion,  string Symbol,  string Interval,  DateTime StartedAtUtc,  DateTime? CompletedAtUtc,  string Status,  decimal? NetProfit,  decimal? WinRatePercent,  decimal? MaxDrawdownPercent,  decimal? Score);
+  public sealed record OptimizationTrialDto(Guid TrialId,  int Rank,  IReadOnlyDictionary<string, string> Parameters,  decimal Score,  decimal NetProfit,  decimal DrawdownPercent,  decimal WinRatePercent,  int Trades,  bool Selected);
+  public sealed record StrategyComparisonDto(Guid LeftRunId,  Guid RightRunId,  string LeftLabel,  string RightLabel,  decimal NetProfitDifference,  decimal DrawdownDifference,  decimal WinRateDifference,  decimal ScoreDifference);
+  public sealed record AlertDto(long AlertId,  string Severity,  string Type,  string Message,  string? BotName,  string? PositionId,  DateTime CreatedAtUtc,  bool Acknowledged,  DateTime? AcknowledgedAtUtc,  string? AcknowledgedBy);
+  public sealed record AuditEventDto(Guid AuditId, DateTime OccurredAtUtc, string Actor, string Action, string EntityType, string? EntityId, string? Reason, string? CorrelationId, string? IpAddress, string? OldValueJson, string? NewValueJson);
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalDatabase\EventStore\IHistoricalEventStore.cs
+PUBLIC TYPES: 2
+  public interface IHistoricalEventStore
+  public interface IHistoricalEventSink
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Indicators\Common\IndicatorMath.cs
+PUBLIC TYPES: 2
+  public static class IndicatorMath
+  public sealed class SmoothedMovingAverage
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Persistence.PostgreSql\BotRuntime\PostgresBotRuntimeConfigurationStore.cs
+PUBLIC TYPES: 2
+  public sealed class PostgresBotRuntimeConfigurationStore(ITradingDbConnectionFactory factory) : IBotRuntimeConfigurationStore
+  public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory) : IBotCommandQueue
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Persistence.PostgreSql\Operations\PostgresOperationalStore.cs
+PUBLIC TYPES: 2
+  public sealed class PostgresOperationalStore(
+  public sealed class OperationalAlertCandidateSource(
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Persistence.PostgreSql\TradingHistory\ITradingHistoryQueryService.cs
+PUBLIC TYPES: 4
+  public interface ITradingHistoryQueryService
+  public sealed record SignalListItem(string SignalId, string BotName, string StrategyVersion, string Symbol, string Side, string Source, string Environment, DateTime SignalTimeUtc, decimal? ReferencePrice, string? Reason);
+  public sealed record TradingSummary(long Signals, long OpenDecisions, long BlockedDecisions, long Positions, long ClosedPositions, decimal RealizedPnl);
+  public sealed record BlockReasonSummary(string Reason, long Count);
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PortfolioManagement\Configuration\PortfolioOptions.cs
+PUBLIC TYPES: 2
+  public sealed class PortfolioOptions
+  public sealed class PortfolioOptionsValidator : IValidateOptions<PortfolioOptions>
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Prometheus\Workers\PrometheusWorkers.cs
+PUBLIC TYPES: 2
+  public sealed class PrometheusMetricServerWorker(
+  public sealed class PortfolioMetricsWorker(
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\Configuration\CentralRiskOptions.cs
+PUBLIC TYPES: 3
+  public sealed class CentralRiskOptions
+  public sealed class RiskBotProfile
+  public sealed class EmptyRiskStateProvider : IRiskStateProvider
+
+FILE: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Signals\Configuration\SignalGenerationOptions.cs
+PUBLIC TYPES: 2
+  public sealed class SignalGenerationOptions
+  public sealed class BotSignalModeOptions

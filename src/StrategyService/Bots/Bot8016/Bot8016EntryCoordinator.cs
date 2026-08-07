@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8016.Configuration;
+using StrategyService.Bots.Bot8016.Models;
 using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.BotRuntime.Configuration;

@@ -1,4 +1,4 @@
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Optimization.Models;
 using TradingSystem.Optimization.Scoring;
 
@@ -8,8 +8,8 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
 {
     public async Task<IReadOnlyList<ParameterTrial<TOptions>>> RunAsync<TOptions,  TResult>(
         IEnumerable<TOptions> candidates, 
-        Func<TOptions,  CancellationToken,  Task<TResult>> run, 
-        Func<TResult,  BotBacktestMetrics> metricsSelector, 
+        Func<TOptions, CancellationToken,  Task<TResult>> run, 
+        Func<TResult, BotBacktestMetrics> metricsSelector, 
         OptimizationScoreWeights weights, 
         int top  =  50, 
         CancellationToken ct = default)

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 
 namespace TradingSystem.Backtesting.Reporting.Writers;
 

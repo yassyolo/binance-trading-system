@@ -1,4 +1,4 @@
-﻿using TradingSystem.Backtesting.Bots.Common;
+﻿using TradingSystem.Backtesting.Bots.Models;
 
 namespace TradingSystem.Optimization.Models;
 

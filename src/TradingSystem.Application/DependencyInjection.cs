@@ -11,6 +11,7 @@ using TradingSystem.Application.Healing;
 using TradingSystem.Application.Positions;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Risk;
+using TradingSystem.Application.Risk.Contracts;
 using TradingSystem.Application.Strategies;
 
 namespace TradingSystem.Application;

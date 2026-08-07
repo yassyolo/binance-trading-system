@@ -1,0 +1,8 @@
+﻿BINANCE TRADING SYSTEM
+GIT STATUS
+Generated: 2026-08-07 23:51:54
+
+=== STATUS ===
+?? _structure_review_export/
+
+=== NAME STATUS ===

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8016.Configuration;
+using StrategyService.Bots.Bot8016.Models;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Orders.Models;
 using TradingSystem.Domain.Enums;

@@ -1,3 +1,5 @@
+using StrategyService.Bots.Bot8016.Models;
+
 namespace StrategyService.Bots.Bot8016;
 
 public sealed class Bot8016MarketState

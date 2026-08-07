@@ -4,7 +4,7 @@ using TradingSystem.Application.Locking;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Orders.Contracts;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Bots.Bot8016;

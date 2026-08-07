@@ -1,5 +1,5 @@
 using System.Globalization;
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
 
 namespace TradingSystem.Backtesting.Bots.Signals;

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using TradingSystem.Dashboard.Api.Middlewares;
 
-namespace TradingSystem.Dashboard.Api.Hardening;
+namespace TradingSystem.Dashboard.Api.Exceptions;
 
 public sealed class GlobalExceptionHandler(
     IProblemDetailsService problemDetails,

@@ -1,5 +1,9 @@
-using Dapper;using TradingSystem.Persistence.PostgreSql.Connections;
+using Dapper;
+using TradingSystem.Persistence.PostgreSql.Connections;
+using TradingSystem.Persistence.PostgreSql.TradingHistory.Models;
+
 namespace TradingSystem.Persistence.PostgreSql.TradingHistory;
+
 public sealed class TradingHistoryQueryService(
     ITradingDbConnectionFactory factory)
     :ITradingHistoryQueryService

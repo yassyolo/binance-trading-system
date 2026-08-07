@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.Engine.Contracts;
-using TradingSystem.Application.Execution;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Execution.Models;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.EventStore.Constants;
 using TradingSystem.EventStore.Contracts;

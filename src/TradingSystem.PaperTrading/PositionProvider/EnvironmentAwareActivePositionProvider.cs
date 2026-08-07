@@ -1,7 +1,7 @@
 using TradingSystem.Application.Positions;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Positions.Models;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 
 namespace TradingSystem.PaperTrading.Position;
 

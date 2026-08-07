@@ -1,7 +1,7 @@
 using System.Text.Json;
 using TradingSystem.Analytics.Models;
 using TradingSystem.Analytics.Models.Enums;
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 
 namespace TradingSystem.Optimization.Mapping;
 

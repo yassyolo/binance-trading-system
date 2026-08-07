@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.RiskManagement.Configuration;
 using TradingSystem.RiskManagement.Contracts;
 using TradingSystem.RiskManagement.Models;

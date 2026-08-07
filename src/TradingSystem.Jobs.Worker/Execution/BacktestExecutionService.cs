@@ -10,6 +10,7 @@ using TradingSystem.Backtesting.Bots.Bot8015;
 using TradingSystem.Backtesting.Bots.Bot8016;
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.Dashboard.Contracts;
 using TradingSystem.JobOrchestration.Contracts;

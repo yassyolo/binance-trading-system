@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8012.Configuration;
 using TradingSystem.Application.Execution.Contracts;
@@ -6,7 +5,7 @@ using TradingSystem.Application.Execution.Models;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
 using TradingSystem.Binance.Execution;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Enums;
 
 namespace StrategyService.Bots.Bot8012;

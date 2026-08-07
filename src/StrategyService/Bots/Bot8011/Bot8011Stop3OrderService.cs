@@ -6,10 +6,9 @@ using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.Positions;
 using StrategyService.Bots.Bot8011.Configuration;
 using TradingSystem.Binance.Execution.Models;
+using StrategyService.Bots.Bot8011.Models;
 
 namespace StrategyService.Bots.Bot8011;
-
-public sealed record CreatedStop3Order(string AlgoOrderId, string ClientAlgoId, string? Status, decimal TriggerPrice);
 
 public sealed class Bot8011Stop3OrderService(
     IOptions<Bot8011Options> options,

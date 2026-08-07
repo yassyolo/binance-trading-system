@@ -1,4 +1,4 @@
-﻿using TradingSystem.Application.Risk;
+﻿using TradingSystem.RiskManagement.Models;
 
 namespace TradingSystem.RiskManagement.Configuration;
 
@@ -32,24 +32,3 @@ public sealed class CentralRiskOptions
     
     public Dictionary<string, RiskBotProfile> BotProfiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
-
-public sealed class RiskBotProfile
-{
-    public decimal Quantity { get; set; }
-   
-    public int Leverage { get; set; } = 1;
-    
-    public decimal? MaximumNotional { get; set; }
-}
-
-public sealed class EmptyRiskStateProvider : IRiskStateProvider
-{
-    public Task<RiskStateSnapshot> GetAsync(DateTime atUtc, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        return Task.FromResult(new RiskStateSnapshot(0m, 0m, 0m, 0, false));
-    }
-}
-
-
-

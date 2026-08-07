@@ -1,6 +1,6 @@
 using TradingSystem.Backtesting.Models;
 
-namespace TradingSystem.Backtesting.Bots.Common;
+namespace TradingSystem.Backtesting.Bots.Models;
 
 public sealed record HistoricalBotSignal(
     DateTime TimeUtc, 

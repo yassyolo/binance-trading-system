@@ -1,6 +1,6 @@
 using TradingSystem.Application.Strategies;
 using TradingSystem.Application.Strategies.Contracts;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 
 namespace TradingSystem.StrategyPlugins.Resolver;
 

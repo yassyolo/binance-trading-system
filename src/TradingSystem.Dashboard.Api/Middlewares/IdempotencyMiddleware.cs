@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
-using TradingSystem.Dashboard.Api.Hardening;
+using TradingSystem.Dashboard.Api.Exceptions;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Dashboard.Api.Middlewares;

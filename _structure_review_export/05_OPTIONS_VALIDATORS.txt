@@ -1,0 +1,168 @@
+﻿BINANCE TRADING SYSTEM
+OPTIONS / VALIDATOR MATRIX
+Generated: 2026-08-07 23:51:52
+
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\MarketDataService\Configuration\MarketDataOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8011\Configuration\Bot8011Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8012\Configuration\Bot8012Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8013\Configuration\Bot8013Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8014\Configuration\Bot8014Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8015\Configuration\Bot8015Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Bot8016\Configuration\Bot8016Options.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Bots\Common\TpOnlyGrid\TpOnlyGridBotOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Runtime\Configuration\BotRuntimeOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\StrategyService\Services\Configuration\TelegramOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Application\Engine\Configuration\TradingEngineOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8011BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8012BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8013BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8014BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8015BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Backtesting.Bots\Configuration\Bot8016BacktestOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Binance\Configuration\BinanceFuturesOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Binance\Resilience\Configuration\BinanceRetryOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Binance\UserStream\Configuration\BinanceUserStreamOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.HistoricalDatabase\Configuration\HistoricalDatabaseOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Indicators\Alligator\Configuration\AlligatorOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Indicators\Bollinger\Configuration\BollingerBandOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Indicators\Bollinger\Configuration\BollingerOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Infrastructure\WebSockets\Configuration\WebSocketOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Configuration\HistoricalDataIngestionOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Jobs.Worker\Configuration\JobWorkerOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Observability\Environment\Configuration\TradingEnvironmentOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\Configuration\AlertEngineOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Operations\Configuration\ServiceHeartbeatOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Optimization\Configuration\WalkForwardOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PaperTrading\Configuration\PaperTradingOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Persistence.PostgreSql\Configuration\PostgresTradingHistoryOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.PortfolioManagement\Configuration\PortfolioOptions.cs
+SIBLING VALIDATOR: False
+VALIDATOR IN SAME FILE: True
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Prometheus\Configuration\PrometheusOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Reconciliation\Configuration\ReconciliationOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Redis\Configuration\RedisOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.RiskManagement\Configuration\CentralRiskOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.Signals\Configuration\SignalGenerationOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\TradingSystem.StrategyPlugins\Configuration\StrategyPluginOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False
+
+OPTIONS: C:\Users\Yo\Desktop\binance-trading-system\src\UserStreamService\Configuration\UserStreamServiceOptions.cs
+SIBLING VALIDATOR: True
+VALIDATOR IN SAME FILE: False

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Runtime.Configuration;
 using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.BotRuntime.Runtime;
 using TradingSystem.BotRuntime.Runtime.Contracts;
 

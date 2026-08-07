@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TradingSystem.Application.Risk;
 using TradingSystem.Application.Risk.Contracts;
-using TradingSystem.PortfolioManagement.Configuration;
+using TradingSystem.PortfolioManagement;
 using TradingSystem.RiskManagement.Configuration;
 using TradingSystem.RiskManagement.Contracts;
 using TradingSystem.RiskManagement.Services;

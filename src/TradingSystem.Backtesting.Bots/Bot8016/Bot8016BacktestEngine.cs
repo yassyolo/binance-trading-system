@@ -1,5 +1,6 @@
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.MarketData;

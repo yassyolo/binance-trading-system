@@ -1,6 +1,7 @@
+using TradingSystem.Dashboard.Api.Exceptions;
 using TradingSystem.Dashboard.Contracts;
 
-namespace TradingSystem.Dashboard.Api.Hardening;
+namespace TradingSystem.Dashboard.Api.Validation;
 
 public static class RequestValidation
 {

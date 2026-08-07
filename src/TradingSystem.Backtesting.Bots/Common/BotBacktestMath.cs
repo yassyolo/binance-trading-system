@@ -1,3 +1,4 @@
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
 
 namespace TradingSystem.Backtesting.Bots.Common;
