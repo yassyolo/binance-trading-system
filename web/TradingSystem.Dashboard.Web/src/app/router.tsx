@@ -1,15 +1,19 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { AlertsPage } from '@/pages/AlertsPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
+import { AuditPage } from '@/pages/AuditPage'
 import { BacktestsPage } from '@/pages/BacktestsPage'
 import { BotDetailsPage } from '@/pages/BotDetailsPage'
 import { BotsPage } from '@/pages/BotsPage'
+import { HealthPage } from '@/pages/HealthPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OptimizationPage } from '@/pages/OptimizationPage'
 import { OverviewPage } from '@/pages/OverviewPage'
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { PaperTradingPage } from '@/pages/PaperTradingPage'
 import { PositionsPage } from '@/pages/PositionsPage'
+import { ReplaysPage } from '@/pages/ReplaysPage'
 import { SignalsPage } from '@/pages/SignalsPage'
 import { TradesPage } from '@/pages/TradesPage'
 
@@ -30,11 +34,11 @@ export const router = createBrowserRouter([
       { path: '/analytics', element: <AnalyticsPage /> },
       { path: '/backtests', element: <BacktestsPage /> },
       { path: '/optimizations', element: <OptimizationPage /> },
-      { path: '/replays', element: <PlaceholderPage title="Replays" description="Replay historical event streams and inspect results." /> },
-      { path: '/health', element: <PlaceholderPage title="Health" description="Service heartbeat and component health monitoring." /> },
-      { path: '/alerts', element: <PlaceholderPage title="Alerts" description="Operational and trading alerts requiring attention." /> },
-      { path: '/audit', element: <PlaceholderPage title="Audit" description="Configuration, command and administrative audit history." /> },
-      { path: '/paper', element: <PlaceholderPage title="Paper Trading" description="Simulated trading account, positions and performance." /> },
+      { path: '/replays', element: <ReplaysPage /> },
+      { path: '/health', element: <HealthPage /> },
+      { path: '/alerts', element: <AlertsPage /> },
+      { path: '/audit', element: <AuditPage /> },
+      { path: '/paper', element: <PaperTradingPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/Card'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 import { PageSection } from '@/components/ui/PageSection'
-import { StatusBadge } from '@/components/ui/StatusBadge'
 
 export function BotDetailsPage() {
   const { botName = '' } = useParams()

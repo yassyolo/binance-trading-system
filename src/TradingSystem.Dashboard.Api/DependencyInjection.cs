@@ -112,42 +112,20 @@ public static class DependencyInjection
         });
     }
 
-    private static void AddPersistence(
-        IServiceCollection services,
-        IConfiguration configuration)
+    private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
     {
         services.AddPostgresTradingHistory(configuration);
-        services.AddServiceHeartbeat(
-            configuration,
-            "DashboardApi");
+        services.AddServiceHeartbeat(configuration, "DashboardApi");
 
         services.AddSingleton<PostgresDashboardStore>();
-
-        services.AddSingleton<IDashboardQueryStore>(
-            provider =>
-                provider.GetRequiredService<PostgresDashboardStore>());
-
-        services.AddSingleton<IBotConfigurationStore>(
-            provider =>
-                provider.GetRequiredService<PostgresDashboardStore>());
-
-        services.AddSingleton<IBotCommandStore>(
-            provider =>
-                provider.GetRequiredService<PostgresDashboardStore>());
-
-        services.AddSingleton<IDashboardJobStore>(
-            provider =>
-                provider.GetRequiredService<PostgresDashboardStore>());
-
-        services.AddSingleton<IAlertCommandStore>(
-            provider =>
-                provider.GetRequiredService<PostgresDashboardStore>());
+        services.AddSingleton<IDashboardQueryStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
+        services.AddSingleton<IBotConfigurationStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
+        services.AddSingleton<IBotCommandStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
+        services.AddSingleton<IDashboardJobStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
+        services.AddSingleton<IAlertCommandStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
     }
 
-    private static void AddAuthentication(
-        IServiceCollection services,
-        IConfiguration configuration,
-        IWebHostEnvironment environment)
+    private static void AddAuthentication(IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         var signingKey =
             configuration["Authentication:SigningKey"];
@@ -155,23 +133,16 @@ public static class DependencyInjection
         if (string.IsNullOrWhiteSpace(signingKey) ||
             signingKey.Length < 32 ||
             (!environment.IsDevelopment() &&
-             signingKey.StartsWith(
-                 "DEVELOPMENT-ONLY",
-                 StringComparison.Ordinal)))
+             signingKey.StartsWith("DEVELOPMENT-ONLY", StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException(
-                "Authentication:SigningKey must be a secure secret with at least 32 characters.");
+            throw new InvalidOperationException("Authentication:SigningKey must be a secure secret with at least 32 characters.");
         }
 
-        services
-            .AddAuthentication(
-                JwtBearerDefaults.AuthenticationScheme)
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
                 options.MapInboundClaims = false;
-                options.RequireHttpsMetadata =
-                    !environment.IsDevelopment();
-
+                options.RequireHttpsMetadata = !environment.IsDevelopment();
                 options.TokenValidationParameters =
                     new TokenValidationParameters
                     {
@@ -182,23 +153,16 @@ public static class DependencyInjection
                         RequireExpirationTime = true,
                         RequireSignedTokens = true,
                         ClockSkew = TimeSpan.FromSeconds(30),
-                        ValidIssuer =
-                            configuration["Authentication:Issuer"]
-                            ?? "TradingDashboard",
-                        ValidAudience =
-                            configuration["Authentication:Audience"]
-                            ?? "TradingDashboard",
-                        IssuerSigningKey =
-                            new SymmetricSecurityKey(
-                                Encoding.UTF8.GetBytes(signingKey)),
+                        ValidIssuer = configuration["Authentication:Issuer"] ?? "TradingDashboard",
+                        ValidAudience = configuration["Authentication:Audience"] ?? "TradingDashboard",
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                         NameClaimType = ClaimTypes.Name,
                         RoleClaimType = ClaimTypes.Role
                     };
             });
     }
 
-    private static void AddAuthorization(
-        IServiceCollection services)
+    private static void AddAuthorization(IServiceCollection services)
     {
         services.AddAuthorization(options =>
         {
