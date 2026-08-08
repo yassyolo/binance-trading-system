@@ -4,6 +4,7 @@ using StrategyService.Bots.Bot8016.Models;
 using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.BotRuntime.Runtime.Contracts;
 using TradingSystem.PaperTrading.Contracts;
 using TradingSystem.PaperTrading.Executor;

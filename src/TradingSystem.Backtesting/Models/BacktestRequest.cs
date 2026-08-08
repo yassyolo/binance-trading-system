@@ -1,3 +1,5 @@
+using TradingSystem.Backtesting.Models.Enums;
+
 namespace TradingSystem.Backtesting.Models;
 
 public sealed record BacktestRequest
@@ -12,15 +14,15 @@ public sealed record BacktestRequest
    
     public DateTime? EndUtc { get;  init; }
    
-    public decimal InitialBalance { get;  init; }  =  10_000m;
+    public decimal InitialBalance { get;  init; } = 10_000m;
     
     public decimal RiskPerTradePercent { get;  init; }  =  1m;
    
-    public EntryExecutionMode EntryExecutionMode { get;  init; }  =  EntryExecutionMode.NextCandleOpen;
+    public EntryExecutionMode EntryExecutionMode { get;  init; } = EntryExecutionMode.NextCandleOpen;
    
-    public IntrabarConflictPolicy ConflictPolicy { get;  init; }  =  IntrabarConflictPolicy.WorstCase;
+    public IntrabarConflictPolicy ConflictPolicy { get;  init; } = IntrabarConflictPolicy.WorstCase;
     
-    public decimal SlippageBasisPoints { get;  init; }  =  1m;
+    public decimal SlippageBasisPoints { get;  init; } = 1m;
     
     public IReadOnlyDictionary<string,  string> StrategyParameters { get;  init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

@@ -6,6 +6,7 @@ using TradingSystem.Backtesting.Bots.Bot8012;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Optimization.Configuration;
 using TradingSystem.Optimization.Engine;

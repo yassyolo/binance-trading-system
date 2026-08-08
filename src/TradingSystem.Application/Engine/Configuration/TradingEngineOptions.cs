@@ -13,13 +13,4 @@ public sealed class TradingEngineOptions
     public TimeSpan MaximumFutureClockSkew { get; set; } = TimeSpan.FromSeconds(10);
     public int PostExecutionCompletionRetryCount { get; set; } = 3;
     public TimeSpan PostExecutionCompletionRetryDelay { get; set; } = TimeSpan.FromMilliseconds(250);
-
-    public static bool IsValid(TradingEngineOptions options) =>
-        options.ProcessingIdempotencyTtl > TimeSpan.Zero &&
-        options.CompletedIdempotencyTtl >= options.ProcessingIdempotencyTtl &&
-        options.OperationLockTtl > TimeSpan.Zero &&
-        options.MaximumSignalAge >= TimeSpan.Zero &&
-        options.MaximumFutureClockSkew >= TimeSpan.Zero &&
-        options.PostExecutionCompletionRetryCount > 0 &&
-        options.PostExecutionCompletionRetryDelay >= TimeSpan.Zero;
 }

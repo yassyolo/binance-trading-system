@@ -12,7 +12,7 @@ using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Bots.Signals;
-using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Dashboard.Contracts.Models.Backtesting;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Jobs.Worker.Exceptions;
 using TradingSystem.Optimization.Mapping;

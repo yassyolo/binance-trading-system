@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using TradingSystem.Binance;
 using TradingSystem.Binance.UserStream;
 using TradingSystem.Binance.UserStream.Configuration;
@@ -38,16 +39,13 @@ builder.Services
 
 builder.Services
     .AddOptions<UserStreamServiceOptions>()
-    .Bind(builder.Configuration.GetSection(UserStreamServiceOptions.SectionName))
-    .Validate(x => x.ReconnectDelaySeconds > 0,
-        "Reconnect delay must be positive.")
-    .Validate(x => x.MinDowntimeForHealingSeconds >= 0,
-        "Minimum downtime for healing cannot be negative.")
-    .Validate(x => x.HealingCooldownSeconds >= 0,
-        "Healing cooldown cannot be negative.")
-    .Validate(x => x.HealingSymbols.Any(symbol => !string.IsNullOrWhiteSpace(symbol)),
-        "At least one non-empty healing symbol is required.")
+    .Bind(builder.Configuration.GetSection(
+        UserStreamServiceOptions.SectionName))
     .ValidateOnStart();
+
+builder.Services.AddSingleton<
+    IValidateOptions<UserStreamServiceOptions>,
+    UserStreamServiceOptionsValidator>();
 
 builder.Services.AddHttpClient<IBinanceListenKeyClient, BinanceListenKeyClient>();
 builder.Services.AddSingleton<IBinanceUserStreamClient, BinanceUserStreamClient>();

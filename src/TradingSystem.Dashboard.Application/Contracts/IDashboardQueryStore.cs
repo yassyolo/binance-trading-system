@@ -1,5 +1,14 @@
 ﻿using TradingSystem.Dashboard.Application.Models;
 using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Dashboard.Contracts.Models.Alerts;
+using TradingSystem.Dashboard.Contracts.Models.Analytics;
+using TradingSystem.Dashboard.Contracts.Models.Audit;
+using TradingSystem.Dashboard.Contracts.Models.Charts;
+using TradingSystem.Dashboard.Contracts.Models.Health;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
+using TradingSystem.Dashboard.Contracts.Models.Positions;
+using TradingSystem.Dashboard.Contracts.Models.Signals;
+using TradingSystem.Dashboard.Contracts.Models.Trades;
 
 namespace TradingSystem.Dashboard.Application.Contracts;
 

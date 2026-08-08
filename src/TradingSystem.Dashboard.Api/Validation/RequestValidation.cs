@@ -1,13 +1,14 @@
 using TradingSystem.Dashboard.Api.Exceptions;
-using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Dashboard.Contracts.Models.Backtesting;
+using TradingSystem.Dashboard.Contracts.Models.Bots;
+using TradingSystem.Dashboard.Contracts.Models.Enums;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
 
 namespace TradingSystem.Dashboard.Api.Validation;
 
 public static class RequestValidation
 {
-    private static readonly HashSet<string> AllowedIntervals = new(
-        ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"],
-        StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> AllowedIntervals = new(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"], StringComparer.OrdinalIgnoreCase);
 
     public static void Validate(UpdateBotConfigurationRequest request)
     {

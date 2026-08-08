@@ -2,6 +2,7 @@ using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Strategies.Alligator;
@@ -102,7 +103,14 @@ public sealed class Bot8016BacktestEngine(AlligatorEntryPolicy entryPolicy, Stop
             }
             if (active is not null)
             {
-                var side = active.Side == PositionSide.Long ? TradeSide.Long : TradeSide.Short; if (!active.TpReached) { var slHit = active.Side == PositionSide.Long ? c.Low <= active.Sl : c.High >= active.Sl; var tpHit = active.Side == PositionSide.Long ? c.High >= active.Tp : c.Low <= active.Tp; if (slHit) { Close(active, active.Sl, c.CloseTimeUtc, "INITIAL_SL"); active = null; } else if (tpHit) { var qty = active.Qty / 2m; Realize(active, active.Tp, qty, c.CloseTimeUtc, "TP_PARTIAL"); active.TpReached = true; active.Remaining -= qty; } }
+                var side = active.Side == PositionSide.Long ? TradeSide.Long : TradeSide.Short; 
+                
+                if (!active.TpReached) 
+                { 
+                    var slHit = active.Side == PositionSide.Long ? c.Low <= active.Sl : c.High >= active.Sl; 
+                    var tpHit = active.Side == PositionSide.Long ? c.High >= active.Tp : c.Low <= active.Tp; 
+                    
+                    if (slHit) { Close(active, active.Sl, c.CloseTimeUtc, "INITIAL_SL"); active = null; } else if (tpHit) { var qty = active.Qty / 2m; Realize(active, active.Tp, qty, c.CloseTimeUtc, "TP_PARTIAL"); active.TpReached = true; active.Remaining -= qty; } }
                 if (active is not null && active.TpReached && !active.Stop3Created && stop3Policy.Breakout(active.Side, c.Close, active.SignalHigh, active.SignalLow)) { active.Stop3 = BotBacktestMath.RoundToStep(stop3Policy.InitialTrigger(active.Side, active.Entry, new(o.Stop3EntryOffset, 0, 0)), o.TickSize); active.Stop3Created = true; }
                 if (active is not null && active.Stop3Created && active.Stop3.HasValue) { var hit = active.Side == PositionSide.Long ? c.Low <= active.Stop3 : c.High >= active.Stop3; if (hit) { Close(active, active.Stop3.Value, c.CloseTimeUtc, "STOP3"); active = null; } else if (latest is not null && stop3Policy.TeethExit(active.Side, c.Close, latest.Teeth)) { Close(active, c.Close, c.CloseTimeUtc, active.Side == PositionSide.Long ? "EXIT_BELOW_TEETH" : "EXIT_ABOVE_TEETH"); active = null; } }
             }

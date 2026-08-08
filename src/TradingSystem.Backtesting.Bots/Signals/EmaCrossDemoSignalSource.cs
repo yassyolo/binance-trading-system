@@ -1,5 +1,5 @@
 using TradingSystem.Backtesting.Bots.Models;
-using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 using TradingSystem.Domain.MarketData;
 
 namespace TradingSystem.Backtesting.Bots.Signals;

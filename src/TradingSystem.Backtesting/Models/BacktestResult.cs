@@ -26,5 +26,3 @@ public sealed record BacktestResult
     
     public required IReadOnlyList<SignalMarker> Signals { get; init; }
 }
-
-public sealed record SignalMarker(DateTime TimeUtc,  TradeSide Side,  decimal Price,  bool Executed,  string Reason);

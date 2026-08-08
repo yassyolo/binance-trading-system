@@ -4,6 +4,7 @@ using TradingSystem.Application.MarketData;
 using TradingSystem.Backtesting;
 using TradingSystem.Backtesting.Engine;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 using TradingSystem.Backtesting.Reporting.Writers;
 using TradingSystem.Backtesting.Strategies;
 using TradingSystem.Binance.Market;

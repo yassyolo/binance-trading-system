@@ -1,27 +1,28 @@
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Bots.Common;
 
 internal static class BotBacktestMath
 {
-    public static decimal RoundToStep(decimal value,  decimal step)
-         =>  step <= 0 ? value : Math.Round(value / step,  MidpointRounding.AwayFromZero) * step;
+    public static decimal RoundToStep(decimal value, decimal step)
+         =>  step <= 0 ? value : Math.Round(value / step, MidpointRounding.AwayFromZero) * step;
 
     public static decimal RoundDown(decimal value,  decimal step)
          =>  step <= 0 ? value : Math.Floor(value / step) * step;
 
-    public static decimal EntrySlippage(decimal price,  TradeSide side,  decimal basisPoints)
+    public static decimal EntrySlippage(decimal price, TradeSide side, decimal basisPoints)
          =>  side == TradeSide.Long
             ? price * (1m + basisPoints / 10_000m)
             : price * (1m - basisPoints / 10_000m);
 
-    public static decimal ExitSlippage(decimal price,  TradeSide side,  decimal basisPoints)
+    public static decimal ExitSlippage(decimal price, TradeSide side, decimal basisPoints)
          =>  side == TradeSide.Long
             ? price * (1m - basisPoints / 10_000m)
             : price * (1m + basisPoints / 10_000m);
 
-    public static decimal UnrealizedPnl(TradeSide side,  decimal entry,  decimal current,  decimal quantity)
+    public static decimal UnrealizedPnl(TradeSide side, decimal entry, decimal current, decimal quantity)
          =>  (side == TradeSide.Long ? current - entry : entry - current) * quantity;
 
     public static BotBacktestMetrics Metrics(

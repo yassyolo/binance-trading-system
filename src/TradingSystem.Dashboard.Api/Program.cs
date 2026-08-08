@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Operations;
 using TradingSystem.Persistence.PostgreSql.Dashboard;
 using TradingSystem.PaperTrading.Configuration;
@@ -23,6 +22,9 @@ using TradingSystem.ReplayEngine.Models;
 using TradingSystem.PaperTrading.Models.Enums;
 using TradingSystem.Dashboard.Api.Exceptions;
 using TradingSystem.Dashboard.Api.Validation;
+using TradingSystem.Dashboard.Contracts.Models.Bots;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
+using TradingSystem.Dashboard.Contracts.Models.Backtesting;
 
 var builder  =  WebApplication.CreateBuilder(args);
 

@@ -1,9 +1,9 @@
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Execution.Models;
+using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Execution;
-
-public sealed record ProtectiveFill(ExitReason Reason,  decimal Price);
 
 public sealed class CandleFillResolver
 {
@@ -13,16 +13,16 @@ public sealed class CandleFillResolver
         var takeHit  =  position.TakeProfit.HasValue  &&  IsPriceTouched(position.TakeProfit.Value,  position.Side,  isStop: false,  candle);
 
         if (!stopHit  &&  !takeHit) return null;
-        if (stopHit  &&  !takeHit) return new(ExitReason.StopLoss,  position.StopLoss!.Value);
-        if (!stopHit  &&  takeHit) return new(ExitReason.TakeProfit,  position.TakeProfit!.Value);
+        if (stopHit  &&  !takeHit) return new(ExitReason.StopLoss, position.StopLoss!.Value);
+        if (!stopHit  &&  takeHit) return new(ExitReason.TakeProfit, position.TakeProfit!.Value);
 
         return policy switch
         {
-            IntrabarConflictPolicy.StopLossFirst  =>  new(ExitReason.StopLoss,  position.StopLoss!.Value), 
-            IntrabarConflictPolicy.TakeProfitFirst  =>  new(ExitReason.TakeProfit,  position.TakeProfit!.Value), 
-            IntrabarConflictPolicy.WorstCase  =>  new(ExitReason.StopLoss,  position.StopLoss!.Value), 
-            IntrabarConflictPolicy.BestCase  =>  new(ExitReason.TakeProfit,  position.TakeProfit!.Value), 
-            _  =>  throw new ArgumentOutOfRangeException(nameof(policy),  policy,  null)
+            IntrabarConflictPolicy.StopLossFirst => new(ExitReason.StopLoss, position.StopLoss!.Value), 
+            IntrabarConflictPolicy.TakeProfitFirst => new(ExitReason.TakeProfit, position.TakeProfit!.Value), 
+            IntrabarConflictPolicy.WorstCase => new(ExitReason.StopLoss, position.StopLoss!.Value), 
+            IntrabarConflictPolicy.BestCase => new(ExitReason.TakeProfit, position.TakeProfit!.Value), 
+            _  =>  throw new ArgumentOutOfRangeException(nameof(policy), policy,  null)
         };
     }
 

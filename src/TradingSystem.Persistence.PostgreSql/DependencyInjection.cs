@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TradingSystem.Analytics.Contracts;
-using TradingSystem.Application.Risk;
+using TradingSystem.Application.Risk.Contracts;
 using TradingSystem.BotRuntime.Commands;
 using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.BotRuntime.Runtime.Contracts;
@@ -40,6 +40,14 @@ public static class DependencyInjection
         var options = configuration
             .GetSection(PostgresTradingHistoryOptions.SectionName)
             .Get<PostgresTradingHistoryOptions>() ?? new();
+
+        if (string.IsNullOrWhiteSpace(options.ConnectionStringName))
+            throw new InvalidOperationException(
+                "TradingHistory ConnectionStringName is required.");
+
+        if (options.CommandTimeoutSeconds <= 0)
+            throw new InvalidOperationException(
+                "TradingHistory CommandTimeoutSeconds must be positive.");
 
         var connectionString = configuration.GetConnectionString(
             options.ConnectionStringName)

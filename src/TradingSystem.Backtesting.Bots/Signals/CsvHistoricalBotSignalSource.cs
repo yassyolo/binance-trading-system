@@ -1,6 +1,7 @@
 using System.Globalization;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Bots.Signals;
 

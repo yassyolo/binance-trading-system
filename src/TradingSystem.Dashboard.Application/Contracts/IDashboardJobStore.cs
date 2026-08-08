@@ -1,4 +1,6 @@
-﻿using TradingSystem.Dashboard.Contracts;
+﻿using TradingSystem.Dashboard.Contracts.Models.Backtesting;
+using TradingSystem.Dashboard.Contracts.Models.Jobs;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
 
 namespace TradingSystem.Dashboard.Application.Contracts;
 

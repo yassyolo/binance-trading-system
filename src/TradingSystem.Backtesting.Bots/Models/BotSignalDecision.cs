@@ -1,4 +1,4 @@
-﻿using TradingSystem.Backtesting.Models;
+﻿using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Bots.Models;
 

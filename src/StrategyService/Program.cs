@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8011;
 using StrategyService.Bots.Bot8012;
 using StrategyService.Bots.Bot8013;
@@ -6,6 +8,7 @@ using StrategyService.Bots.Bot8015;
 using StrategyService.Bots.Bot8016;
 using StrategyService.Reliability;
 using StrategyService.Runtime;
+using StrategyService.Services.Configuration;
 using StrategyService.Subscribers;
 using TradingSystem.Application;
 using TradingSystem.Application.Execution.Contracts;
@@ -37,8 +40,6 @@ builder.Services.AddTradingApplication(builder.Configuration);
 builder.Services.AddSingleton<ITradingSignalHandler, TradingSignalHandler>();
 builder.Services.AddStrategyPluginSystem(builder.Configuration);
 
-// PaperPositionCloseWorker is the single TP/SL polling worker in this host.
-// Disable PaperFillWorker to avoid two workers racing to close the same row.
 builder.Services.AddPaperTrading(
     builder.Configuration,
     addFillWorker: false);
@@ -56,6 +57,14 @@ builder.Services.AddBotRuntimeOrchestration(builder.Configuration);
 builder.Services.AddCentralRiskManagement(builder.Configuration);
 builder.Services.AddTradingReconciliation(builder.Configuration);
 
+builder.Services
+    .AddOptions<TelegramOptions>()
+    .Bind(builder.Configuration.GetSection(TelegramOptions.SectionName))
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<
+    IValidateOptions<TelegramOptions>,
+    TelegramOptionsValidator>();
 builder.Services.AddSingleton<
     IExchangeStateProvider,
     BinanceExchangeStateProvider>();

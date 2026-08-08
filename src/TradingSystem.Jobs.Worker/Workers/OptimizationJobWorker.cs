@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TradingSystem.Dashboard.Contracts;
+using TradingSystem.Dashboard.Contracts.Models.Optimization;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.JobOrchestration.Models;
 using TradingSystem.Jobs.Worker.Configuration;

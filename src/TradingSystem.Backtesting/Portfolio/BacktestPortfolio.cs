@@ -1,5 +1,6 @@
 using TradingSystem.Backtesting.Costs.Contracts;
 using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Portfolio;
 

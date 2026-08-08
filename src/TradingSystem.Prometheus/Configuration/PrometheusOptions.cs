@@ -11,4 +11,3 @@ public sealed class PrometheusOptions
     public string Url { get; set; } = "/metrics";
     public int PortfolioRefreshSeconds { get; set; } = 5;
 }
-

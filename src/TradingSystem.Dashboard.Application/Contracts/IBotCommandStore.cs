@@ -1,4 +1,4 @@
-﻿using TradingSystem.Dashboard.Contracts;
+﻿using TradingSystem.Dashboard.Contracts.Models.Bots;
 
 namespace TradingSystem.Dashboard.Application.Contracts;
 

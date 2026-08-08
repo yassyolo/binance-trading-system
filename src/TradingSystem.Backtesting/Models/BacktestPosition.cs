@@ -1,3 +1,5 @@
+using TradingSystem.Backtesting.Models.Enums;
+
 namespace TradingSystem.Backtesting.Models;
 
 public sealed class BacktestPosition

@@ -22,10 +22,14 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddOptions<TradingEngineOptions>()
-            .Bind(configuration.GetSection(TradingEngineOptions.SectionName))
-            .Validate(TradingEngineOptions.IsValid, TradingEngineOptions.ValidationError)
-            .ValidateOnStart();
+        services
+     .AddOptions<TradingEngineOptions>()
+     .Bind(configuration.GetSection(TradingEngineOptions.SectionName))
+     .ValidateOnStart();
+
+        services.AddSingleton<
+            IValidateOptions<TradingEngineOptions>,
+            TradingEngineOptionsValidator>();
 
         services.AddSingleton<TradingStrategyRegistry>();
         services.AddSingleton<TradeExecutorRegistry>();
