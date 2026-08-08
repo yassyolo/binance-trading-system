@@ -10,14 +10,9 @@ using TradingSystem.Redis;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
-builder.Services
-    .AddOptions<MarketDataOptions>()
-    .Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName))
-    .ValidateOnStart();
 
-builder.Services.AddSingleton<
-    IValidateOptions<MarketDataOptions>,
-    MarketDataOptionsValidator>();
+builder.Services.AddOptions<MarketDataOptions>().Bind(builder.Configuration.GetSection(MarketDataOptions.SectionName)).ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<MarketDataOptions>, MarketDataOptionsValidator>();
 
 builder.Services.AddTradingInfrastructure();
 builder.Services.AddTradingRedis(builder.Configuration);

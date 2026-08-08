@@ -11,12 +11,15 @@ public sealed class TradingStrategyResolver(
 {
     public async Task<ITradingStrategy> ResolveAsync(string botName, CancellationToken ct)
     {
-        var configuration  =  await configurations.GetAsync(botName,  ct);
-        if (!string.IsNullOrWhiteSpace(configuration?.StrategyType) && registry.TryGet(configuration.StrategyType, out var configured))
+        var config  =  await configurations.GetAsync(botName, ct);
+        
+        if (!string.IsNullOrWhiteSpace(config?.StrategyType) 
+            && registry.TryGet(config.StrategyType, out var configured))
             return configured;
 
         return registry.GetRequired(botName);
     }
 
-    public ITradingStrategy ResolveByPluginId(string pluginId) => registry.GetRequired(pluginId);
+    public ITradingStrategy ResolveByPluginId(string pluginId) 
+        => registry.GetRequired(pluginId);
 }

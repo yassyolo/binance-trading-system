@@ -1,5 +1,8 @@
-using TradingSystem.EventStore;
-using TradingSystem.ReplayEngine;
+using TradingSystem.EventStore.Constants;
+using TradingSystem.EventStore.Models;
+using TradingSystem.ReplayEngine.Accumulator;
+using TradingSystem.ReplayEngine.Clock;
+using Xunit;
 
 namespace TradingSystem.ReplayEngine.Tests;
 

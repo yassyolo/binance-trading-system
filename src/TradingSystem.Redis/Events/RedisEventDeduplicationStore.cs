@@ -1,4 +1,5 @@
-using StackExchange.Redis; using TradingSystem.Application.Events;
+using StackExchange.Redis; 
+using TradingSystem.Application.Events;
 
 namespace TradingSystem.Redis.Events;
 

@@ -2,7 +2,9 @@ using System.Text.Json;
 using StackExchange.Redis;
 using TradingSystem.Infrastructure.Serialization;
 using TradingSystem.Redis.Messaging.Contracts;
+
 namespace TradingSystem.Redis.Messaging;
+
 public sealed class RedisStatePublisher(
     IConnectionMultiplexer redis) 
     : IRedisStatePublisher

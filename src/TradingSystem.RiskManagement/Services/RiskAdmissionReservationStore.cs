@@ -6,8 +6,7 @@ namespace TradingSystem.RiskManagement.Services;
 
 public sealed class InMemoryRiskAdmissionReservationStore : IRiskAdmissionReservationStore
 {
-    private readonly ConcurrentDictionary<Guid, RiskAdmissionReservation>
-        _reservations = new();
+    private readonly ConcurrentDictionary<Guid, RiskAdmissionReservation> _reservations = new();
 
     public IReadOnlyCollection<RiskAdmissionReservation> GetActive(DateTime nowUtc)
     {
@@ -25,13 +24,10 @@ public sealed class InMemoryRiskAdmissionReservationStore : IRiskAdmissionReserv
         ArgumentNullException.ThrowIfNull(reservation);
 
         if (string.IsNullOrWhiteSpace(reservation.SignalId))
-            throw new ArgumentException(
-                "Risk reservation SignalId is required.",
-                nameof(reservation));
+            throw new ArgumentException("Risk reservation SignalId is required.", nameof(reservation));
 
-        // A retried evaluation of the same signal must not create two active
-        // reservations. Remove the old reservation before storing the new one.
         RemoveBySignalId(reservation.SignalId);
+       
         _reservations[reservation.ReservationId] = reservation;
     }
 
@@ -44,12 +40,8 @@ public sealed class InMemoryRiskAdmissionReservationStore : IRiskAdmissionReserv
 
         foreach (var item in _reservations)
         {
-            if (!item.Value.SignalId.Equals(
-                    signalId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
+            if (!item.Value.SignalId.Equals(signalId, StringComparison.OrdinalIgnoreCase))
                 continue;
-            }
 
             removed |= _reservations.TryRemove(item.Key, out _);
         }

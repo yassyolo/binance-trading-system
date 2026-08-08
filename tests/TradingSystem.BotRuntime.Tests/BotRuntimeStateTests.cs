@@ -1,4 +1,6 @@
-using TradingSystem.BotRuntime.Runtime;
+using TradingSystem.BotRuntime.Runtime.Models;
+using TradingSystem.BotRuntime.Runtime.Models.Enums;
+using Xunit;
 
 namespace TradingSystem.BotRuntime.Tests;
 

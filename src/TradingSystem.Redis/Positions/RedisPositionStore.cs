@@ -39,33 +39,23 @@ public sealed class RedisPositionStore(
 
 	public async Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string bot, CancellationToken ct)
 	{
-		var ids = await _database
-			.SetMembersAsync(keys.PositionIndex(bot))
-			.WaitAsync(ct);
-
+		var ids = await _database.SetMembersAsync(keys.PositionIndex(bot)).WaitAsync(ct);
 		if (ids.Length == 0)
 			return await LoadLegacyPositionsAndBuildIndexAsync(bot, ct);
 
 		var loadTasks = ids.Select(async id => new
 		{
 			Id = id,
-			Entries = await _database
-				.HashGetAllAsync(keys.Position(bot, id.ToString()))
-				.WaitAsync(ct)
+			Entries = await _database.HashGetAllAsync(keys.Position(bot, id.ToString())).WaitAsync(ct)
 		}).ToArray();
 
 		var loaded = await Task.WhenAll(loadTasks).WaitAsync(ct);
 		var missingIds = loaded.Where(x => x.Entries.Length == 0).Select(x => x.Id).ToArray();
 
 		if (missingIds.Length > 0)
-		{
-			await _database
-				.SetRemoveAsync(keys.PositionIndex(bot), missingIds)
-				.WaitAsync(ct);
-		}
+			await _database.SetRemoveAsync(keys.PositionIndex(bot), missingIds).WaitAsync(ct);
 
-		return loaded
-			.Where(x => x.Entries.Length > 0)
+		return loaded.Where(x => x.Entries.Length > 0)
 			.Select(x => FromEntries(x.Entries))
 			.ToArray();
 	}
@@ -82,9 +72,7 @@ public sealed class RedisPositionStore(
 			throw new InvalidOperationException($"Could not delete position '{id}' for bot '{bot}'.");
 	}
 
-	private async Task<IReadOnlyCollection<BotPosition>> LoadLegacyPositionsAndBuildIndexAsync(
-		string bot,
-		CancellationToken ct)
+	private async Task<IReadOnlyCollection<BotPosition>> LoadLegacyPositionsAndBuildIndexAsync(string bot, CancellationToken ct)
 	{
 		var result = new List<BotPosition>();
 
@@ -99,6 +87,7 @@ public sealed class RedisPositionStore(
 			catch (Exception exception)
 			{
 				logger.LogWarning(exception, "Could not access Redis endpoint {Endpoint}", endpoint);
+				
 				continue;
 			}
 
@@ -117,8 +106,7 @@ public sealed class RedisPositionStore(
 			}
 		}
 
-		return result
-			.GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase)
+		return result.GroupBy(x => x.ShortId, StringComparer.OrdinalIgnoreCase)
 			.Select(x => x.First())
 			.ToArray();
 	}
@@ -236,12 +224,23 @@ public sealed class RedisPositionStore(
 		};
 	}
 
-	private static string String(string? value) => value ?? string.Empty;
-	private static string Decimal(decimal? value) => value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-	private static string Decimal(decimal value) => value.ToString(CultureInfo.InvariantCulture);
-	private static string Boolean(bool value) => value ? "true" : "false";
-	private static string Time(DateTime? value) => value?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty;
-	private static string Time(DateTime value) => value.ToString("O", CultureInfo.InvariantCulture);
+	private static string String(string? value) 
+		=> value ?? string.Empty;
+	
+	private static string Decimal(decimal? value) 
+		=> value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+	
+	private static string Decimal(decimal value) 
+		=> value.ToString(CultureInfo.InvariantCulture);
+	
+	private static string Boolean(bool value)
+		=> value ? "true" : "false";
+	
+	private static string Time(DateTime? value) 
+		=> value?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty;
+	
+	private static string Time(DateTime value) 
+		=> value.ToString("O", CultureInfo.InvariantCulture);
 
 	private static string Get(Dictionary<string, string> values, string key, string fallback = "")
 		=> values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;

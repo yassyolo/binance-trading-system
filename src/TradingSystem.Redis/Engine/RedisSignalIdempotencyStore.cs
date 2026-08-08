@@ -4,7 +4,10 @@ using TradingSystem.Redis.Constants;
 
 namespace TradingSystem.Redis.Engine;
 
-public sealed class RedisSignalIdempotencyStore(IConnectionMultiplexer redis,  RedisKeyFactory keys) : ISignalIdempotencyStore
+public sealed class RedisSignalIdempotencyStore(
+    IConnectionMultiplexer redis, 
+    RedisKeyFactory keys) 
+    : ISignalIdempotencyStore
 {
     private readonly IDatabase _db = redis.GetDatabase();
     

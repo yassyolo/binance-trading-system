@@ -13,7 +13,8 @@ public sealed class Bot8011KlineSubscriber(
     IConnectionMultiplexer redis,
     IOptions<Bot8011Options> options,
     Bot8011TrailingPriceCache cache,
-    ILogger<Bot8011KlineSubscriber> logger) : BackgroundService
+    ILogger<Bot8011KlineSubscriber> logger) 
+    : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
@@ -38,7 +39,9 @@ public sealed class Bot8011KlineSubscriber(
                 });
 
                 subscribed = true;
+                
                 logger.LogInformation("BOT8011 subscribed to trailing-price channel {Channel}", channel);
+                
                 await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -47,10 +50,7 @@ public sealed class Bot8011KlineSubscriber(
             }
             catch (RedisException exception)
             {
-                logger.LogWarning(
-                    exception,
-                    "BOT8011 could not subscribe because Redis is unavailable. Channel = {Channel}. Retrying.",
-                    channel);
+                logger.LogWarning(exception, "BOT8011 could not subscribe because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
             catch (Exception exception)
             {

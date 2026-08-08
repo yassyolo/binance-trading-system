@@ -21,9 +21,7 @@ public sealed class Bot8011Strategy(IOptions<Bot8011Options> options) : ITrading
         if (side == PositionSide.Short && !o.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
 
-        // FIX: Use correct comparison for init-only property
-        var opposite = c.ActivePositions
-            .Where(x => x.Side != side)
+        var opposite = c.ActivePositions.Where(x => x.Side != side)
             .Select(x => x.ShortId)
             .ToArray();
 

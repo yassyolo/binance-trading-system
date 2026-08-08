@@ -13,12 +13,12 @@ public sealed class RecordedStrategyEvaluator : IReplayStrategyEvaluator
     {
         using var document = JsonDocument.Parse(sourceEvent.Event.PayloadJson);
        
-        var decision = document.RootElement.TryGetProperty("decision",  out var d) 
+        var decision = document.RootElement.TryGetProperty("decision", out var d) 
             ? d.GetString() ?? "Unknown" : "Unknown";
         
-        var reason = document.RootElement.TryGetProperty("reason",  out var r) 
+        var reason = document.RootElement.TryGetProperty("reason", out var r) 
             ? r.GetString() ?? "Recorded decision" : "Recorded decision";
         
-        return ValueTask.FromResult<ReplayCandidateDecision?>(new(decision,  reason,  "{}"));
+        return ValueTask.FromResult<ReplayCandidateDecision?>(new(decision, reason, "{}"));
     }
 }

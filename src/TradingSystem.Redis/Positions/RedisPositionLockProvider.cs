@@ -11,10 +11,15 @@ public sealed class RedisPositionLockProvider(
     public async Task<IAsyncDisposable?> TryAcquireAsync(string bot, string id, TimeSpan ttl, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        
         var db = redis.GetDatabase();
+        
         var key = $"trading:position-lock:{bot.Trim().ToUpperInvariant()}:{id}";
+        
         var token = Guid.NewGuid().ToString("N");
-        return await db.StringSetAsync(key, token, ttl, When.NotExists)?new H(db, key, token):null;
+        
+        return await db.StringSetAsync(key, token, ttl, When.NotExists)
+            ? new H(db, key, token) : null;
     }
     
     sealed class H(IDatabase db, RedisKey key, RedisValue token) :IAsyncDisposable

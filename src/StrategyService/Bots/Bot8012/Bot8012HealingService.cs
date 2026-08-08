@@ -25,7 +25,8 @@ public sealed class Bot8012HealingService(
         
         var active = s.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         
-        foreach(var p in (await store.GetAllAsync(BotName, ct)).Where(x => !x.Closed && !string.IsNullOrWhiteSpace(x.TpClientId) && !active.Contains(x.TpClientId!)))
+        foreach(var p in (await store.GetAllAsync(BotName, ct))
+                                   .Where(x => !x.Closed && !string.IsNullOrWhiteSpace(x.TpClientId) && !active.Contains(x.TpClientId!)))
         {
             p.MarkClosed("HEALING_ORDER_ABSENT", clock.UtcNow);
             

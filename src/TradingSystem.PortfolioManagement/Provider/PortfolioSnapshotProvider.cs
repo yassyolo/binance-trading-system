@@ -30,6 +30,7 @@ public sealed class PortfolioSnapshotProvider(
     public async Task<PortfolioSnapshot> GetSnapshotAsync(CancellationToken ct)
     {
         var now = clock.UtcNow;
+        
         var cached = Volatile.Read(ref _cached);
         if (cached is not null && now < _cacheExpiresAtUtc)
             return cached;
@@ -38,17 +39,17 @@ public sealed class PortfolioSnapshotProvider(
         try
         {
             now = clock.UtcNow;
+            
             cached = _cached;
             if (cached is not null && now < _cacheExpiresAtUtc)
                 return cached;
 
-            var snapshot = await ExecuteWithRetryAsync(
-                () => BuildAsync(now, ct),
-                "portfolio snapshot",
-                ct);
+            var snapshot = await ExecuteWithRetryAsync(() => BuildAsync(now, ct), "portfolio snapshot", ct);
 
             Volatile.Write(ref _cached, snapshot);
+            
             _cacheExpiresAtUtc = now.AddMilliseconds(_options.SnapshotCacheMilliseconds);
+            
             return snapshot;
         }
         finally
@@ -64,8 +65,7 @@ public sealed class PortfolioSnapshotProvider(
         if (!_options.Enabled)
             return Empty(now);
 
-        var botNames = _options.Bots
-            .Where(x => !string.IsNullOrWhiteSpace(x))
+        var botNames = _options.Bots.Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -77,8 +77,7 @@ public sealed class PortfolioSnapshotProvider(
         var redisPositions = await redisPositionsTask;
         var paperPositions = await paperPositionsTask;
 
-        var symbols = redisPositions
-            .Select(x => x.Symbol)
+        var symbols = redisPositions.Select(x => x.Symbol)
             .Concat(paperPositions.Select(x => x.Symbol))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -86,8 +85,7 @@ public sealed class PortfolioSnapshotProvider(
 
         var prices = await LoadPricesAsync(symbols, ct);
 
-        var positions = redisPositions
-            .Select(x => MapRedisPosition(x, prices[x.Symbol]))
+        var positions = redisPositions.Select(x => MapRedisPosition(x, prices[x.Symbol]))
             .Concat(paperPositions.Select(x => MapPaperPosition(x, prices[x.Symbol])))
             .GroupBy(x => new { x.BotName, x.PositionId })
             .Select(x => x.First())
@@ -204,10 +202,7 @@ public sealed class PortfolioSnapshotProvider(
         return prices;
     }
 
-    private async Task<T> ExecuteWithRetryAsync<T>(
-        Func<Task<T>> action,
-        string operation,
-        CancellationToken ct)
+    private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> action, string operation, CancellationToken ct)
     {
         Exception? lastError = null;
         var attempts = _options.LoadRetryCount + 1;
@@ -231,25 +226,14 @@ public sealed class PortfolioSnapshotProvider(
                 if (attempt == attempts)
                     break;
 
-                logger.LogWarning(
-                    exception,
-                    "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.",
-                    operation,
-                    attempt,
-                    attempts);
+                logger.LogWarning(exception, "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.", operation, attempt, attempts);
 
                 if (_options.LoadRetryDelayMilliseconds > 0)
-                {
-                    await Task.Delay(
-                        TimeSpan.FromMilliseconds(_options.LoadRetryDelayMilliseconds),
-                        ct);
-                }
+                    await Task.Delay(TimeSpan.FromMilliseconds(_options.LoadRetryDelayMilliseconds), ct);
             }
         }
 
-        throw new InvalidOperationException(
-            $"Could not build {operation} after {attempts} attempt(s). Risk evaluation must fail closed.",
-            lastError);
+        throw new InvalidOperationException($"Could not build {operation} after {attempts} attempt(s). Risk evaluation must fail closed.", lastError);
     }
 
     private PortfolioPositionSnapshot MapRedisPosition(BotPosition position, decimal markPrice)

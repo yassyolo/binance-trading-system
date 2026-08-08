@@ -2,43 +2,24 @@
 
 namespace UserStreamService.Configuration;
 
-public sealed class UserStreamServiceOptionsValidator
-    : IValidateOptions<UserStreamServiceOptions>
+public sealed class UserStreamServiceOptionsValidator : IValidateOptions<UserStreamServiceOptions>
 {
-    public ValidateOptionsResult Validate(
-        string? name,
-        UserStreamServiceOptions options)
+    public ValidateOptionsResult Validate(string? name, UserStreamServiceOptions options)
     {
-        var errors = new List<string>();
+        var e = new List<string>();
 
         if (options.ReconnectDelaySeconds <= 0)
-        {
-            errors.Add(
-                "ReconnectDelaySeconds must be positive.");
-        }
+            e.Add("ReconnectDelaySeconds must be positive.");
 
         if (options.MinDowntimeForHealingSeconds < 0)
-        {
-            errors.Add(
-                "MinDowntimeForHealingSeconds cannot be negative.");
-        }
+            e.Add("MinDowntimeForHealingSeconds cannot be negative.");
 
         if (options.HealingCooldownSeconds < 0)
-        {
-            errors.Add(
-                "HealingCooldownSeconds cannot be negative.");
-        }
+            e.Add("HealingCooldownSeconds cannot be negative.");
 
-        if (options.HealingSymbols is null ||
-            !options.HealingSymbols.Any(x =>
-                !string.IsNullOrWhiteSpace(x)))
-        {
-            errors.Add(
-                "At least one healing symbol is required.");
-        }
+        if (options.HealingSymbols is null || !options.HealingSymbols.Any(x => !string.IsNullOrWhiteSpace(x)))
+            e.Add("At least one healing symbol is required.");
 
-        return errors.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(errors);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }

@@ -17,8 +17,12 @@ public sealed class Stop3Policy
     }
     
     public bool Breakout(PositionSide side, decimal close, decimal? signalHigh, decimal? signalLow) 
-        => side==PositionSide.Long?signalHigh is>0 && close>signalHigh:signalLow is>0 && close<signalLow;
+        => side == PositionSide.Long 
+        ? signalHigh is > 0 && close > signalHigh 
+        : signalLow is > 0 && close < signalLow;
    
     public bool TeethExit(PositionSide side, decimal close, decimal teeth) 
-        => side==PositionSide.Long?close<teeth:close>teeth;
+        => side == PositionSide.Long 
+        ? close < teeth 
+        : close > teeth;
 }

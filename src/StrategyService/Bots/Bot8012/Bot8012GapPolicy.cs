@@ -24,6 +24,7 @@ public sealed class Bot8012GapPolicy(IOptions<Bot8012Options> options,  GridSpac
             runtimeConfiguration?.ProfitDistance ?? _options.ProfitDistance, 
             runtimeConfiguration?.OrderSideLimit ?? _options.OrderSideLimit));
         
-        return decision.Allowed ? StrategyDecision.Open(side,  decision.Reason) : StrategyDecision.Block(side,  decision.Reason);
+        return decision.Allowed 
+            ? StrategyDecision.Open(side,  decision.Reason) : StrategyDecision.Block(side,  decision.Reason);
     }
 }

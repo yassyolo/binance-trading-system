@@ -48,19 +48,22 @@ public sealed class Bot8012SignalGenerator(
     {
         var r = _o.SignalRules;
         
-        if(r.RequireBollingerBreakout && (!x.TryGet(longSide?IndicatorKeys.BollingerUpper:IndicatorKeys.BollingerLower, out var b) 
+        if(r.RequireBollingerBreakout 
+            && (!x.TryGet(longSide?IndicatorKeys.BollingerUpper:IndicatorKeys.BollingerLower, out var b) 
             || (longSide?x.Close<=b:x.Close>=b)))
             return false;
         
-        if(r.RequireSmmaAlignment && (!x.TryGet(IndicatorKeys.SmmaFast, out var f) 
+        if(r.RequireSmmaAlignment 
+            && (!x.TryGet(IndicatorKeys.SmmaFast, out var f) 
             || !x.TryGet(IndicatorKeys.SmmaSlow, out var s) 
             || (longSide?f<=s:f>=s)))
             return false;
         
-        if(r.RequireAlligatorAlignment && (!x.TryGet(IndicatorKeys.AlligatorLips, out var l) 
+        if(r.RequireAlligatorAlignment 
+            && (!x.TryGet(IndicatorKeys.AlligatorLips, out var l) 
             || !x.TryGet(IndicatorKeys.AlligatorTeeth, out var t) 
             || !x.TryGet(IndicatorKeys.AlligatorJaw, out var j) 
-            || (longSide?!(l>t && t>j):!(l<t && t<j))))
+            || (longSide ? !(l > t && t > j) : !(l < t && t < j))))
             return false;
         
         return true;

@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Options;
-
-namespace TradingSystem.Reconciliation.Configuration;
+﻿namespace TradingSystem.Reconciliation.Configuration;
 
 public sealed record ReconciliationOptions
 {

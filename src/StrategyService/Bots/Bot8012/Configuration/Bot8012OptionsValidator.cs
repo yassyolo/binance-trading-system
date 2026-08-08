@@ -31,6 +31,6 @@ public sealed class Bot8012OptionsValidator : IValidateOptions<Bot8012Options>
         if(x.CooldownSeconds<0)
             e.Add("CooldownSeconds cannot be negative.");
         
-        return e.Count==0?ValidateOptionsResult.Success:ValidateOptionsResult.Fail(e);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     } 
 }

@@ -23,47 +23,33 @@ public sealed class GridSpacingPolicy
         if (parameters.PriceDistance < 0 || parameters.ProfitDistance < 0)
             return PolicyDecision.Block("Grid distances cannot be negative.");
 
-        var sameSidePositions = positions
-            .Where(position => position.Side == side)
-            .OrderByDescending(position => position.OpenedAtUtc)
+        var sameSidePositions = positions.Where(p => p.Side == side)
+            .OrderByDescending(p => p.OpenedAtUtc)
             .ToArray();
 
         if (sameSidePositions.Length >= parameters.SideLimit)
-        {
-            return PolicyDecision.Block(
-                $"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{parameters.SideLimit}).");
-        }
+            return PolicyDecision.Block($"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{parameters.SideLimit}).");
 
         if (sameSidePositions.Length == 0)
             return PolicyDecision.Allow("No active TP positions for this side.");
 
         var newestTakeProfit = sameSidePositions[0].TakeProfitPrice;
         if (newestTakeProfit <= 0)
-            return PolicyDecision.Block("Newest position has an invalid take-profit price.");
+            return PolicyDecision.Block("Newest p has an invalid take-profit price.");
 
-        // Do not round to whole currency units here. Exchange tick-size rounding belongs
-        // to the Binance execution boundary; rounding inside the strategy changes the rule.
         if (side == PositionSide.Long)
         {
-            var maximumAllowedMark = newestTakeProfit
-                                     - parameters.ProfitDistance
-                                     - parameters.PriceDistance;
+            var maximumAllowedMark = newestTakeProfit - parameters.ProfitDistance - parameters.PriceDistance;
 
             return markPrice <= maximumAllowedMark
-                ? PolicyDecision.Allow(
-                    $"LONG spacing valid: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.")
-                : PolicyDecision.Block(
-                    $"GAP fail LONG: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.");
+                ? PolicyDecision.Allow($"LONG spacing valid: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.")
+                : PolicyDecision.Block($"GAP fail LONG: mark = {markPrice}, requiredMaximum = {maximumAllowedMark}.");
         }
 
-        var minimumAllowedMark = newestTakeProfit
-                                 + parameters.ProfitDistance
-                                 + parameters.PriceDistance;
+        var minimumAllowedMark = newestTakeProfit + parameters.ProfitDistance + parameters.PriceDistance;
 
         return markPrice >= minimumAllowedMark
-            ? PolicyDecision.Allow(
-                $"SHORT spacing valid: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.")
-            : PolicyDecision.Block(
-                $"GAP fail SHORT: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.");
+            ? PolicyDecision.Allow($"SHORT spacing valid: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.")
+            : PolicyDecision.Block($"GAP fail SHORT: mark = {markPrice}, requiredMinimum = {minimumAllowedMark}.");
     }
 }

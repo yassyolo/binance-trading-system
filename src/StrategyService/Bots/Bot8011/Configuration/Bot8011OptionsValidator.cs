@@ -14,28 +14,28 @@ public sealed class Bot8011OptionsValidator : IValidateOptions<Bot8011Options>
         if(string.IsNullOrWhiteSpace(x.Symbol))
             e.Add("Symbol is required.");
         
-        if(x.Quantity<=0)
+        if(x.Quantity <= 0)
             e.Add("Quantity must be positive.");
         
-        if(x.Leverage is<1 or>125)
+        if(x.Leverage is < 1 or > 125)
             e.Add("Leverage must be between 1 and 125.");
         
-        if(x.InitialStopLossDistance<=0)
+        if(x.InitialStopLossDistance <= 0)
             e.Add("InitialStopLossDistance must be positive.");
         
-        if(x.TakeProfitPercent<=0)
+        if(x.TakeProfitPercent <= 0)
             e.Add("TakeProfitPercent must be positive.");
         
-        if(x.OrderSideLimit<=0)
+        if(x.OrderSideLimit <= 0)
             e.Add("OrderSideLimit must be positive.");
         
-        if(x.Stop3TrailingStep<=0 || x.Stop3TrailingBuffer<=0)
+        if(x.Stop3TrailingStep<=0 || x.Stop3TrailingBuffer <= 0)
             e.Add("STOP3 trailing values must be positive.");
         
-        if(x.TrailingFallbackIntervalSeconds<=0)
+        if(x.TrailingFallbackIntervalSeconds <= 0)
             e.Add("TrailingFallbackIntervalSeconds must be positive.");
         
-        return e.Count==0?ValidateOptionsResult.Success:ValidateOptionsResult.Fail(e);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }
 

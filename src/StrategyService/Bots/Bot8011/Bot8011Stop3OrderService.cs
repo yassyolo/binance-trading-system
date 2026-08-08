@@ -61,7 +61,10 @@ public sealed class Bot8011Stop3OrderService(
         if (price <= 0) 
             throw new InvalidOperationException("STOP3 trigger price is invalid.");
         
-        var result = await retry.ExecuteAsync("BOT8011_STOP3", c => orders.PlaceStopMarketAlgoOrderAsync(position.Symbol, BinanceOrderSide.Close(position.Side), BinanceOrderSide.Position(position.Side), quantity, price, clientId, c), ct);
+        var result = await retry.ExecuteAsync(
+            "BOT8011_STOP3", 
+            c => orders.PlaceStopMarketAlgoOrderAsync(position.Symbol, BinanceOrderSide.Close(position.Side), BinanceOrderSide.Position(position.Side), quantity, price, clientId, c), 
+            ct);
        
         return new(result.AlgoOrderId, clientId, result.Status, price);
     }

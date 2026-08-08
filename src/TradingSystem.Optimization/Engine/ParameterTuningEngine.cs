@@ -19,8 +19,10 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
+            
             var result  =  await run(candidate,  ct);
             var metrics  =  metricsSelector(result);
+            
             trials.Add(new ParameterTrial<TOptions>
             {
                 Sequence  =  ++sequence, 
@@ -30,10 +32,9 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
             });
         }
 
-        return trials
-            .OrderByDescending(x  =>  x.Score)
-            .ThenByDescending(x  =>  x.Metrics.NetProfit)
-            .Take(Math.Max(1,  top))
+        return trials.OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.Metrics.NetProfit)
+            .Take(Math.Max(1, top))
             .ToArray();
     }
 }

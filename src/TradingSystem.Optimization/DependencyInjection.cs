@@ -11,6 +11,7 @@ public static class DependencyInjection
         services.AddSingleton<PerformanceScoreCalculator>();
         services.AddSingleton<ParameterTuningEngine>();
         services.AddSingleton<WalkForwardOptimizationEngine>();
+        
         return services;
     }
 }

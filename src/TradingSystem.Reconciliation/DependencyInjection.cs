@@ -10,9 +10,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddTradingReconciliation(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddOptions<ReconciliationOptions>()
-            .Bind(configuration.GetSection(ReconciliationOptions.SectionName))
-            .ValidateOnStart();
+        services.AddOptions<ReconciliationOptions>().Bind(configuration.GetSection(ReconciliationOptions.SectionName)).ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<ReconciliationOptions>, ReconciliationOptionsValidator>();
         services.AddSingleton<PositionReconciliationService>();

@@ -6,31 +6,34 @@ public sealed class SignalGenerationOptionsValidator : IValidateOptions<SignalGe
 {
     public ValidateOptionsResult Validate(string? name, SignalGenerationOptions options)
     {
-        var errors = new List<string>();
+        var e = new List<string>();
+       
         if (options.Bots is null)
-            errors.Add("SignalGeneration:Bots is required.");
+            e.Add("SignalGeneration:Bots is required.");
         else
         {
             foreach (var (botName, bot) in options.Bots)
             {
                 if (string.IsNullOrWhiteSpace(botName))
-                    errors.Add("SignalGeneration:Bots contains an empty bot name.");
+                    e.Add("SignalGeneration:Bots contains an empty bot name.");
+                
                 if (bot is null)
                 {
-                    errors.Add($"SignalGeneration:Bots:{botName} is required.");
+                    e.Add($"SignalGeneration:Bots:{botName} is required.");
                     continue;
                 }
+               
                 if (bot.Enabled && string.IsNullOrWhiteSpace(bot.Symbol))
-                    errors.Add($"SignalGeneration:Bots:{botName}:Symbol is required when enabled.");
+                    e.Add($"SignalGeneration:Bots:{botName}:Symbol is required when enabled.");
+                
                 if (bot.Enabled && string.IsNullOrWhiteSpace(bot.Interval))
-                    errors.Add($"SignalGeneration:Bots:{botName}:Interval is required when enabled.");
+                    e.Add($"SignalGeneration:Bots:{botName}:Interval is required when enabled.");
+                
                 if (bot.MinimumSecondsBetweenGeneratedSignals is < 0 or > 86_400)
-                    errors.Add($"SignalGeneration:Bots:{botName}:MinimumSecondsBetweenGeneratedSignals must be between 0 and 86400.");
+                    e.Add($"SignalGeneration:Bots:{botName}:MinimumSecondsBetweenGeneratedSignals must be between 0 and 86400.");
             }
         }
 
-        return errors.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(errors);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }

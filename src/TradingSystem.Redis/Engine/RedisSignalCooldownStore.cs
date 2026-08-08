@@ -31,9 +31,8 @@ public sealed class RedisSignalCooldownStore(
             return null;
         }
         
-        var remaining = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime-nowUtc;
-        
-        if (remaining>TimeSpan.Zero) 
+        var remaining = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime-nowUtc;   
+        if (remaining > TimeSpan.Zero) 
             return remaining;
         
         await _db.KeyDeleteAsync(key);
@@ -45,9 +44,8 @@ public sealed class RedisSignalCooldownStore(
     {
         ct.ThrowIfCancellationRequested(); 
         
-        var ttl = expiresAtUtc-clock.UtcNow; 
-        
-        if(ttl<=TimeSpan.Zero) 
+        var ttl = expiresAtUtc - clock.UtcNow;    
+        if(ttl <= TimeSpan.Zero) 
             return Task.CompletedTask;
        
         var value = new DateTimeOffset(expiresAtUtc).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);

@@ -22,10 +22,15 @@ public sealed class ReplayEngine(
     public async Task<ReplaySummary> RunAsync(ReplayJob job, Func<int, string, Task>? progress, CancellationToken ct)
     {
         var request = Validate(job.Request);
+       
         var total = Math.Max(1L, await source.CountAsync(request, ct));
+       
         var state = await store.LoadCheckpointAsync(job.ReplayId, ct) ?? new ReplayAccumulator();
+       
         var clock = new ReplayVirtualClock();
+        
         var cursor = Math.Max(job.LastGlobalPosition, 0);
+        
         var evaluator = ResolveEvaluator(request);
 
         while (true)

@@ -13,18 +13,18 @@ public sealed class EnvironmentAwareActivePositionProvider(
 {
     public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName, string symbol, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, ct)
-            ?? throw new InvalidOperationException($"Runtime configuration for '{botName}' was not found. Position lookup is blocked.");
+        var config = await configurations.GetAsync(botName, ct)
+            ?? throw new InvalidOperationException($"Runtime config for '{botName}' was not found. Position lookup is blocked.");
 
-        if (configuration.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase))
+        if (config.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase))
             return await paperProvider.GetAsync(botName, symbol, ct);
 
-        if (configuration.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-            configuration.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
+        if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
+            config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
         {
             return await liveProvider.GetActivePositionsAsync(botName, symbol, ct);
         }
 
-        throw new InvalidOperationException($"Unsupported execution environment '{configuration.Environment}' for '{botName}'.");
+        throw new InvalidOperationException($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }
 }

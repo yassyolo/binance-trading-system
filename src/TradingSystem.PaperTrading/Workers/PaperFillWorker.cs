@@ -52,8 +52,7 @@ public sealed class PaperFillWorker(
             
             foreach (var position in group)
             {
-                var reason  =  ResolveCloseReason(position,  markPrice);
-                
+                var reason  =  ResolveCloseReason(position,  markPrice);           
                 if (reason is null) 
                     continue;
                 
@@ -66,13 +65,19 @@ public sealed class PaperFillWorker(
     {
         if (position.Side == PositionSide.Long)
         {
-            if (price >= position.TakeProfitPrice) return "PAPER_TAKE_PROFIT";
-            if (price <= position.StopLossPrice) return "PAPER_STOP_LOSS";
+            if (price >= position.TakeProfitPrice) 
+                return "PAPER_TAKE_PROFIT";
+            
+            if (price <= position.StopLossPrice) 
+                return "PAPER_STOP_LOSS";
         }
         else
         {
-            if (price <= position.TakeProfitPrice) return "PAPER_TAKE_PROFIT";
-            if (price >= position.StopLossPrice) return "PAPER_STOP_LOSS";
+            if (price <= position.TakeProfitPrice) 
+                return "PAPER_TAKE_PROFIT";
+            
+            if (price >= position.StopLossPrice) 
+                return "PAPER_STOP_LOSS";
         }
         return null;
     }

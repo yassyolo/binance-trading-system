@@ -6,19 +6,19 @@ namespace IndicatorServices.Mapping;
 
 internal static class KlineMessageMapper
 {
-    public static bool TryMap(ClosedKlineMessage message, out MarketCandle candle)
+    public static bool TryMap(ClosedKlineMessage m, out MarketCandle candle)
     {
         candle = default!;
 
-        if (string.IsNullOrWhiteSpace(message.Symbol) ||
-            string.IsNullOrWhiteSpace(message.Interval) ||
-            message.Time <= 0 ||
-            message.CloseTime < message.Time ||
-            !TryParseDecimal(message.Open, out var open) ||
-            !TryParseDecimal(message.High, out var high) ||
-            !TryParseDecimal(message.Low, out var low) ||
-            !TryParseDecimal(message.Close, out var close) ||
-            !TryParseDecimal(message.Volume, out var volume))
+        if (string.IsNullOrWhiteSpace(m.Symbol) ||
+            string.IsNullOrWhiteSpace(m.Interval) ||
+            m.Time <= 0 ||
+            m.CloseTime < m.Time ||
+            !TryParseDecimal(m.Open, out var open) ||
+            !TryParseDecimal(m.High, out var high) ||
+            !TryParseDecimal(m.Low, out var low) ||
+            !TryParseDecimal(m.Close, out var close) ||
+            !TryParseDecimal(m.Volume, out var volume))
         {
             return false;
         }
@@ -32,10 +32,10 @@ internal static class KlineMessageMapper
         }
 
         candle = new MarketCandle(
-            message.Symbol.Trim().ToUpperInvariant(),
-            message.Interval.Trim().ToLowerInvariant(),
-            DateTimeOffset.FromUnixTimeMilliseconds(message.Time).UtcDateTime,
-            DateTimeOffset.FromUnixTimeMilliseconds(message.CloseTime).UtcDateTime,
+            m.Symbol.Trim().ToUpperInvariant(),
+            m.Interval.Trim().ToLowerInvariant(),
+            DateTimeOffset.FromUnixTimeMilliseconds(m.Time).UtcDateTime,
+            DateTimeOffset.FromUnixTimeMilliseconds(m.CloseTime).UtcDateTime,
             open,
             high,
             low,
@@ -46,10 +46,6 @@ internal static class KlineMessageMapper
         return true;
     }
 
-    private static bool TryParseDecimal(string? value, out decimal result) =>
-        decimal.TryParse(
-            value,
-            NumberStyles.Number | NumberStyles.AllowExponent,
-            CultureInfo.InvariantCulture,
-            out result);
+    private static bool TryParseDecimal(string? value, out decimal result) 
+        => decimal.TryParse(value, NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out result);
 }

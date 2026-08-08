@@ -22,10 +22,7 @@ namespace TradingSystem.Redis;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingRedis(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        bool subscribeToSignals = false)
+    public static IServiceCollection AddTradingRedis(this IServiceCollection services,  IConfiguration configuration, bool subscribeToSignals = false)
     {
         services.AddOptions<RedisOptions>()
             .Bind(configuration.GetSection(RedisOptions.SectionName))
@@ -38,7 +35,6 @@ public static class DependencyInjection
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("TradingSystem.Redis.Connection");
             var configurationOptions = ConfigurationOptions.Parse(options.ConnectionString);
 
-            // A temporary disconnect (Docker restart, laptop sleep, network change) must be recoverable.
             configurationOptions.AbortOnConnectFail = options.AbortOnConnectFail;
             configurationOptions.ConnectRetry = Math.Max(1, options.ConnectRetry);
             configurationOptions.ConnectTimeout = Math.Max(1_000, options.ConnectTimeoutMilliseconds);
@@ -67,9 +63,7 @@ public static class DependencyInjection
 
             return connection;
         });
-
-        services.AddSingleton(sp => new RedisKeyFactory(
-            sp.GetRequiredService<IOptions<RedisOptions>>().Value.KeyPrefix));
+        services.AddSingleton(sp => new RedisKeyFactory(sp.GetRequiredService<IOptions<RedisOptions>>().Value.KeyPrefix));
 
         services.AddSingleton<IPositionStore, RedisPositionStore>();
         services.AddSingleton<IPositionLockProvider, RedisPositionLockProvider>();

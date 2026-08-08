@@ -12,16 +12,12 @@ namespace TradingSystem.StrategyPlugins.Loading;
 
 public static class StrategyPluginLoader
 {
-    public static IServiceCollection AddStrategyPluginSystem(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddStrategyPluginSystem(this IServiceCollection services, IConfiguration configuration)
     {
         var section = configuration.GetSection(StrategyPluginOptions.SectionName);
         var options = section.Get<StrategyPluginOptions>() ?? new StrategyPluginOptions();
 
-        services.AddOptions<StrategyPluginOptions>()
-            .Bind(section)
-            .ValidateOnStart();
+        services.AddOptions<StrategyPluginOptions>().Bind(section).ValidateOnStart();
         services.AddSingleton<IValidateOptions<StrategyPluginOptions>, StrategyPluginOptionsValidator>();
 
         if (options.Enabled && options.LoadExternalAssemblies)
@@ -32,54 +28,37 @@ public static class StrategyPluginLoader
         return services;
     }
 
-    private static void LoadExternalModules(
-        IServiceCollection services,
-        IConfiguration configuration,
-        StrategyPluginOptions options)
+    private static void LoadExternalModules(IServiceCollection services, IConfiguration configuration, StrategyPluginOptions options)
     {
-        var directory = Path.GetFullPath(
-            options.PluginDirectory,
-            AppContext.BaseDirectory);
+        var directory = Path.GetFullPath(options.PluginDirectory, AppContext.BaseDirectory);
 
         if (!Directory.Exists(directory))
         {
             if (options.FailOnPluginLoadError)
-            {
-                throw new DirectoryNotFoundException(
-                    $"Strategy plugin directory '{directory}' does not exist.");
-            }
+                throw new DirectoryNotFoundException($"Strategy plugin directory '{directory}' does not exist.");
 
             return;
         }
 
-        foreach (var path in Directory.EnumerateFiles(
-                     directory,
-                     "*.dll",
-                     SearchOption.TopDirectoryOnly))
+        foreach (var path in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
         {
             try
             {
                 var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+                
                 foreach (var type in GetLoadableTypes(assembly)
-                             .Where(type =>
-                                 !type.IsAbstract &&
-                                 typeof(IStrategyPluginModule).IsAssignableFrom(type)))
+                             .Where(t => !t.IsAbstract && typeof(IStrategyPluginModule).IsAssignableFrom(t)))
                 {
                     if (Activator.CreateInstance(type) is not IStrategyPluginModule module)
-                    {
-                        throw new InvalidOperationException(
-                            $"Could not create strategy plugin module '{type.FullName}'. " +
-                            "A public parameterless constructor is required.");
-                    }
+                        throw new InvalidOperationException($"Could not create strategy plugin module '{type.FullName}'. A public parameterless constructor is required.");
 
                     module.ConfigureServices(services, configuration);
+                    
                     services.AddSingleton(typeof(IStrategyPluginModule), module);
                 }
             }
             catch when (!options.FailOnPluginLoadError)
-            {
-                // The host is explicitly configured to continue without optional plugins.
-            }
+            {}
         }
     }
 

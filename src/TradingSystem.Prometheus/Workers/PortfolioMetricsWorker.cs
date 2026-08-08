@@ -30,6 +30,7 @@ public sealed class PortfolioMetricsWorker(
             try
             {
                 var snapshot = await portfolio.GetSnapshotAsync(stoppingToken);
+                
                 metrics.PortfolioEquity.Set((double)snapshot.Equity);
                 metrics.PortfolioUnrealizedPnl.Set((double)snapshot.UnrealizedPnl);
                 metrics.PortfolioDailyRealizedPnl.Set((double)snapshot.RealizedPnlToday);
@@ -37,12 +38,7 @@ public sealed class PortfolioMetricsWorker(
                 metrics.GrossNotional.Set((double)snapshot.GrossNotional);
 
                 var currentLabels = snapshot.Positions
-                    .GroupBy(x => new
-                    {
-                        x.BotName,
-                        x.Symbol,
-                        Side = x.Side.ToString()
-                    })
+                    .GroupBy(x => new { x.BotName, x.Symbol, Side = x.Side.ToString() })
                     .ToDictionary(
                         x => (x.Key.BotName, x.Key.Symbol, x.Key.Side),
                         x => x.Count());
@@ -52,9 +48,8 @@ public sealed class PortfolioMetricsWorker(
 
                 foreach (var item in currentLabels)
                 {
-                    metrics.OpenPositions
-                        .WithLabels(item.Key.BotName, item.Key.Symbol, item.Key.Side)
-                        .Set(item.Value);
+                    metrics.OpenPositions.WithLabels(item.Key.BotName, item.Key.Symbol, item.Key.Side).Set(item.Value);
+                    
                     _knownPositionLabels.Add(item.Key);
                 }
 
@@ -74,9 +69,8 @@ public sealed class PortfolioMetricsWorker(
             }
             catch (Exception ex)
             {
-                metrics.ProcessingFailures
-                    .WithLabels("portfolio_metrics", "-", ex.GetType().Name)
-                    .Inc();
+                metrics.ProcessingFailures.WithLabels("portfolio_metrics", "-", ex.GetType().Name).Inc();
+                
                 logger.LogError(ex, "Prometheus portfolio refresh failed.");
             }
         }

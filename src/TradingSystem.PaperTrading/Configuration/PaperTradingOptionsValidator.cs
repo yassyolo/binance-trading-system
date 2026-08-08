@@ -2,59 +2,33 @@
 
 namespace TradingSystem.PaperTrading.Configuration;
 
-public sealed class PaperTradingOptionsValidator
-    : IValidateOptions<PaperTradingOptions>
+public sealed class PaperTradingOptionsValidator : IValidateOptions<PaperTradingOptions>
 {
-    public ValidateOptionsResult Validate(
-        string? name,
-        PaperTradingOptions options)
+    public ValidateOptionsResult Validate(string? name, PaperTradingOptions options)
     {
-        var errors = new List<string>();
+        var e = new List<string>();
 
         if (options.InitialBalance <= 0)
-        {
-            errors.Add(
-                "InitialBalance must be positive.");
-        }
+            e.Add("InitialBalance must be positive.");
 
         if (options.CommissionPercent < 0)
-        {
-            errors.Add(
-                "CommissionPercent cannot be negative.");
-        }
+            e.Add("CommissionPercent cannot be negative.");
 
         if (options.SlippagePercent < 0)
-        {
-            errors.Add(
-                "SlippagePercent cannot be negative.");
-        }
+            e.Add("SlippagePercent cannot be negative.");
 
         if (options.DefaultTakeProfitPercent <= 0)
-        {
-            errors.Add(
-                "DefaultTakeProfitPercent must be positive.");
-        }
+            e.Add("DefaultTakeProfitPercent must be positive.");
 
         if (options.DefaultStopLossPercent <= 0)
-        {
-            errors.Add(
-                "DefaultStopLossPercent must be positive.");
-        }
+            e.Add("DefaultStopLossPercent must be positive.");
 
         if (options.PricePollMilliseconds <= 0)
-        {
-            errors.Add(
-                "PricePollMilliseconds must be positive.");
-        }
+            e.Add("PricePollMilliseconds must be positive.");
 
         if (options.MaximumOpenPositions <= 0)
-        {
-            errors.Add(
-                "MaximumOpenPositions must be positive.");
-        }
+            e.Add("MaximumOpenPositions must be positive.");
 
-        return errors.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(errors);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }

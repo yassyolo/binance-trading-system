@@ -14,11 +14,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddBot8012(this IServiceCollection services, IConfiguration config)
     {
-        services.AddOptions<Bot8012Options>()
-            .Bind(config.GetSection(Bot8012Options.SectionName))
-            .ValidateOnStart();
-        
+        services.AddOptions<Bot8012Options>().Bind(config.GetSection(Bot8012Options.SectionName)).ValidateOnStart();   
         services.AddSingleton<IValidateOptions<Bot8012Options>, Bot8012OptionsValidator>();
+       
         services.AddSingleton<IBinanceTradingConfiguration>(sp => sp.GetRequiredService<IOptions<Bot8012Options>>().Value);
         services.AddSingleton<Bot8012GapPolicy>();
         services.AddSingleton<ITradingStrategy, Bot8012Strategy>();

@@ -1,6 +1,7 @@
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Optimization.Models;
 using TradingSystem.Optimization.Scoring;
+using Xunit;
 
 namespace TradingSystem.Optimization.Tests;
 

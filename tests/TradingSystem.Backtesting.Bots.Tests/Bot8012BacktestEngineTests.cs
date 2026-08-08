@@ -1,7 +1,9 @@
 using TradingSystem.Backtesting.Bots.Bot8012;
-using TradingSystem.Backtesting.Bots.Common;
-using TradingSystem.Backtesting.Models;
+using TradingSystem.Backtesting.Bots.Configuration;
+using TradingSystem.Backtesting.Bots.Models;
+using TradingSystem.Backtesting.Models.Enums;
 using TradingSystem.Domain.MarketData;
+using Xunit;
 
 namespace TradingSystem.Backtesting.Bots.Tests;
 

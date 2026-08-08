@@ -20,7 +20,13 @@ public interface IReplayJobStore
     
     Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId, CancellationToken ct);
     
-    Task SaveCheckpointAsync(Guid replayId, long globalPosition, ReplayAccumulator accumulator, int progressPercent, string progressStage, CancellationToken ct);
+    Task SaveCheckpointAsync(
+        Guid replayId, 
+        long globalPosition, 
+        ReplayAccumulator accumulator, 
+        int progressPercent, 
+        string progressStage, 
+        CancellationToken ct);
     
     Task SaveStepsAsync(IReadOnlyCollection<ReplayStepResult> steps, CancellationToken ct);
     

@@ -2,7 +2,7 @@ using TradingSystem.Binance.Startup;
 
 namespace StrategyService.Bots.Bot8012.Configuration;
 
-public sealed class Bot8012Options:IBinanceTradingConfiguration
+public sealed class Bot8012Options : IBinanceTradingConfiguration
 { 
     public const string SectionName = "Bots:Bot8012"; 
     

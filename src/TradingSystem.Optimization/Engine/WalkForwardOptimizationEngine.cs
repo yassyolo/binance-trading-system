@@ -1,4 +1,3 @@
-using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Optimization.Configuration;
@@ -36,9 +35,11 @@ public sealed class WalkForwardOptimizationEngine(
         for (var testStart = options.TrainingBars; testStart + options.TestingBars <= candles.Count; testStart += options.StepBars)
         {
             ct.ThrowIfCancellationRequested();
+           
             var trainStart = options.AnchoredTraining ? 0 : testStart - options.TrainingBars;
             var training = candles.Skip(trainStart).Take(testStart - trainStart).ToArray();
             var testing = candles.Skip(testStart).Take(options.TestingBars).ToArray();
+           
             var trainSignals = SliceSignals(signals, training);
             var testSignals = SliceSignals(signals, testing);
 
@@ -52,6 +53,7 @@ public sealed class WalkForwardOptimizationEngine(
 
             var outOfSample = await run(best.Options, testing, testSignals, ct);
             var outMetrics = metricsSelector(outOfSample);
+           
             windows.Add(new WalkForwardWindowResult<TOptions>
             {
                 WindowNumber = ++windowNumber,
@@ -78,8 +80,7 @@ public sealed class WalkForwardOptimizationEngine(
 
     private static IReadOnlyList<HistoricalBotSignal> SliceSignals(IReadOnlyList<HistoricalBotSignal> signals, IReadOnlyList<MarketCandle> candles)
     {
-        var from = candles.First().OpenTimeUtc;
-       
+        var from = candles.First().OpenTimeUtc;    
         var to = candles.Last().CloseTimeUtc;
         
         return signals.Where(x => x.TimeUtc >= from && x.TimeUtc <= to).ToArray();

@@ -32,12 +32,7 @@ public sealed class PaperTradeExecutor(
 
     private readonly PaperTradingOptions _options = options.Value;
 
-    public async Task<TradeExecutionResult> OpenAsync(
-        string botName,
-        string symbol,
-        PositionSide side,
-        string? source,
-        CancellationToken ct)
+    public async Task<TradeExecutionResult> OpenAsync(string botName, string symbol, PositionSide side, string? source, CancellationToken ct)
     {
         if (!_options.Enabled)
             return TradeExecutionResult.Failure("Paper trading is disabled.");
@@ -46,11 +41,11 @@ public sealed class PaperTradeExecutor(
         if (openPositions.Count >= _options.MaximumOpenPositions)
             return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
 
-        var configuration = await configurations.GetAsync(botName, ct);
-        if (configuration is null)
-            return TradeExecutionResult.Failure($"Runtime configuration for {botName} was not found.");
+        var config = await configurations.GetAsync(botName, ct);
+        if (config is null)
+            return TradeExecutionResult.Failure($"Runtime config for {botName} was not found.");
 
-        if (configuration.Quantity <= 0)
+        if (config.Quantity <= 0)
             return TradeExecutionResult.Failure($"Invalid paper trading quantity configured for {botName}.");
 
         var normalizedSymbol = symbol.ToUpperInvariant();
@@ -60,8 +55,8 @@ public sealed class PaperTradeExecutor(
             return TradeExecutionResult.Failure($"Invalid mark price for {normalizedSymbol}.");
 
         var entryPrice = ApplySlippage(markPrice, side, opening: true);
-        var quantity = configuration.Quantity;
-        var takeProfitPrice = ResolveTakeProfitPrice(entryPrice, side, configuration.ProfitDistance);
+        var quantity = config.Quantity;
+        var takeProfitPrice = ResolveTakeProfitPrice(entryPrice, side, config.ProfitDistance);
         var stopLossPrice = ApplyPercent(entryPrice, side, _options.DefaultStopLossPercent, favorable: false);
         var entryFee = CalculateFee(entryPrice, quantity);
         var openedAtUtc = DateTime.UtcNow;
@@ -94,7 +89,9 @@ public sealed class PaperTradeExecutor(
         };
 
         await store.CreateAsync(position, ct);
+        
         await TryRecordPositionOpenedAsync(position, ct);
+        
         await TryRecordDomainPositionEventAsync(
             position,
             TradingEventTypes.PositionOpened,
@@ -113,20 +110,14 @@ public sealed class PaperTradeExecutor(
             position.OpenedAtUtc,
             ct);
 
-        return TradeExecutionResult.Success(
-            position.ShortId,
-            $"Paper position opened at {entryPrice}.");
+        return TradeExecutionResult.Success(position.ShortId, $"Paper position opened at {entryPrice}.");
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(
-        string botName,
-        string shortId,
-        string reason,
-        CancellationToken ct)
+    public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
     {
         var position = await store.GetAsync(botName, shortId, ct);
+        
         var validationResult = ValidatePositionForClose(position, shortId);
-
         if (validationResult is not null)
             return validationResult;
 
@@ -137,12 +128,7 @@ public sealed class PaperTradeExecutor(
         return await ClosePositionAtPriceAsync(position, markPrice, reason, ct);
     }
 
-    public async Task<TradeExecutionResult> CloseAtPriceAsync(
-        string botName,
-        string shortId,
-        decimal triggerPrice,
-        string reason,
-        CancellationToken ct)
+    public async Task<TradeExecutionResult> CloseAtPriceAsync(string botName, string shortId, decimal triggerPrice, string reason, CancellationToken ct)
     {
         if (triggerPrice <= 0)
             return TradeExecutionResult.Failure("Paper position trigger price must be positive.");

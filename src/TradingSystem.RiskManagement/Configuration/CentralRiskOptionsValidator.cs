@@ -6,43 +6,53 @@ public sealed class CentralRiskOptionsValidator : IValidateOptions<CentralRiskOp
 {
     public ValidateOptionsResult Validate(string? name, CentralRiskOptions options)
     {
-        var errors = new List<string>();
+        var e = new List<string>();
 
         if (options.MaximumOpenPositions <= 0)
-            errors.Add("MaximumOpenPositions must be positive.");
+            e.Add("MaximumOpenPositions must be positive.");
+        
         if (options.MaximumOpenPositionsPerBot <= 0)
-            errors.Add("MaximumOpenPositionsPerBot must be positive.");
+            e.Add("MaximumOpenPositionsPerBot must be positive.");
+        
         if (options.MaximumOpenPositionsPerSymbol <= 0)
-            errors.Add("MaximumOpenPositionsPerSymbol must be positive.");
+            e.Add("MaximumOpenPositionsPerSymbol must be positive.");
+        
         if (options.MaximumEstimatedNotional <= 0)
-            errors.Add("MaximumEstimatedNotional must be positive.");
+            e.Add("MaximumEstimatedNotional must be positive.");
+        
         if (options.MaximumGrossNotionalPerSymbol < 0)
-            errors.Add("MaximumGrossNotionalPerSymbol cannot be negative.");
+            e.Add("MaximumGrossNotionalPerSymbol cannot be negative.");
+        
         if (options.MaximumAbsoluteNetNotionalPerSymbol < 0)
-            errors.Add("MaximumAbsoluteNetNotionalPerSymbol cannot be negative.");
+            e.Add("MaximumAbsoluteNetNotionalPerSymbol cannot be negative.");
+        
         if (options.MaximumDailyLoss < 0)
-            errors.Add("MaximumDailyLoss cannot be negative.");
+            e.Add("MaximumDailyLoss cannot be negative.");
+        
         if (options.MaximumDailyDrawdownPercent is < 0 or > 100)
-            errors.Add("MaximumDailyDrawdownPercent must be between 0 and 100.");
+            e.Add("MaximumDailyDrawdownPercent must be between 0 and 100.");
+        
         if (options.MaximumConsecutiveLosses < 0)
-            errors.Add("MaximumConsecutiveLosses cannot be negative.");
+            e.Add("MaximumConsecutiveLosses cannot be negative.");
+       
         if (options.AdmissionReservationSeconds <= 0)
-            errors.Add("AdmissionReservationSeconds must be positive.");
+            e.Add("AdmissionReservationSeconds must be positive.");
 
         foreach (var (botName, profile) in options.BotProfiles)
         {
             if (string.IsNullOrWhiteSpace(botName))
-                errors.Add("Risk bot profile name cannot be empty.");
+                e.Add("Risk bot profile name cannot be empty.");
+            
             if (profile.Quantity <= 0)
-                errors.Add($"Risk profile '{botName}' Quantity must be positive.");
+                e.Add($"Risk profile '{botName}' Quantity must be positive.");
+            
             if (profile.Leverage is < 1 or > 125)
-                errors.Add($"Risk profile '{botName}' Leverage must be between 1 and 125.");
+                e.Add($"Risk profile '{botName}' Leverage must be between 1 and 125.");
+            
             if (profile.MaximumNotional is <= 0)
-                errors.Add($"Risk profile '{botName}' MaximumNotional must be positive when configured.");
+                e.Add($"Risk profile '{botName}' MaximumNotional must be positive when configured.");
         }
 
-        return errors.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(errors);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }

@@ -49,17 +49,11 @@ public sealed class RedisTradingSignalSubscriber(
             }
             catch (RedisException exception)
             {
-                logger.LogWarning(
-                    exception,
-                    "Could not subscribe to trading signals because Redis is unavailable. Channel = {Channel}. Retrying.",
-                    channel);
+                logger.LogWarning(exception, "Could not subscribe to trading signals because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
             catch (Exception exception)
             {
-                logger.LogError(
-                    exception,
-                    "Trading signal subscription failed. Channel = {Channel}. Retrying.",
-                    channel);
+                logger.LogError(exception, "Trading signal subscription failed. Channel = {Channel}. Retrying.", channel);
             }
             finally
             {
@@ -71,10 +65,7 @@ public sealed class RedisTradingSignalSubscriber(
                     }
                     catch (Exception exception)
                     {
-                        logger.LogWarning(
-                            exception,
-                            "Could not unsubscribe cleanly from trading signal channel {Channel}",
-                            channel);
+                        logger.LogWarning(exception, "Could not unsubscribe cleanly from trading signal channel {Channel}", channel);
                     }
                 }
             }
@@ -101,11 +92,7 @@ public sealed class RedisTradingSignalSubscriber(
             var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
             await handler.HandleAsync(signal, cancellationToken);
 
-            logger.LogInformation(
-                "Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}",
-                signal.BotName,
-                signal.Symbol,
-                signal.Side);
+            logger.LogInformation("Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -127,7 +114,6 @@ public sealed class RedisTradingSignalSubscriber(
             await Task.Delay(RetryDelay, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
+        {}
     }
 }

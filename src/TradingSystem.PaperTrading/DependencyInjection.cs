@@ -13,19 +13,10 @@ namespace TradingSystem.PaperTrading.Configuration;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddPaperTrading(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        bool addFillWorker = true)
+    public static IServiceCollection AddPaperTrading(this IServiceCollection services, IConfiguration configuration, bool addFillWorker = true)
     {
-        services
-    .AddOptions<PaperTradingOptions>()
-    .Bind(configuration.GetSection(PaperTradingOptions.SectionName))
-    .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<PaperTradingOptions>,
-            PaperTradingOptionsValidator>();
+        services.AddOptions<PaperTradingOptions>().Bind(configuration.GetSection(PaperTradingOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<PaperTradingOptions>, PaperTradingOptionsValidator>();
 
         services.TryAddSingleton<ITradingSignalContextAccessor, TradingSignalContextAccessor>();
         services.AddSingleton<PaperTradeExecutor>();

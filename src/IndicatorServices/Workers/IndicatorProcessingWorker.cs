@@ -164,8 +164,8 @@ public sealed class IndicatorProcessingWorker(
 		}
 	}
 
-	private static string Key(string indicator, string symbol, string interval) =>
-		$"{indicator}:{symbol}:{interval}";
+	private static string Key(string indicator, string symbol, string interval)
+		=> $"{indicator}:{symbol}:{interval}";
 
 	private static TimeSpan ResolveStateTtl(string interval)
 	{

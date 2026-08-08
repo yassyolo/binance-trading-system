@@ -150,16 +150,9 @@ public sealed class Bot8011TrailingWorker(
         return current;
     }
 
-    private async Task MoveAsync(
-        string shortId,
-        decimal candidate,
-        CancellationToken ct)
+    private async Task MoveAsync(string shortId, decimal candidate, CancellationToken ct)
     {
-        await using var positionLock = await locks.TryAcquireAsync(
-            _options.BotName,
-            shortId,
-            TimeSpan.FromSeconds(30),
-            ct);
+        await using var positionLock = await locks.TryAcquireAsync(_options.BotName, shortId, TimeSpan.FromSeconds(30), ct);
 
         if (positionLock is null)
             return;
@@ -176,11 +169,7 @@ public sealed class Bot8011TrailingWorker(
         position.Stop3NewPending = candidate;
         await store.SaveAsync(position, ct);
 
-        if (!await safe.SafeCancelAlgoAsync(
-                position.Symbol,
-                position.Stop3OrderId,
-                position.Stop3ClientId,
-                ct))
+        if (!await safe.SafeCancelAlgoAsync(position.Symbol, position.Stop3OrderId, position.Stop3ClientId, ct))
         {
             position.TrailingInProgress = false;
             position.Stop3NewPending = null;
@@ -191,11 +180,7 @@ public sealed class Bot8011TrailingWorker(
         try
         {
             var sequence = position.TrailCount + 1;
-            var newOrder = await stop3.CreateTrailingAsync(
-                position,
-                candidate,
-                sequence,
-                ct);
+            var newOrder = await stop3.CreateTrailingAsync(position, candidate, sequence, ct);
 
             position.Stop3ClientId = newOrder.ClientAlgoId;
             position.Stop3OrderId = newOrder.AlgoOrderId;
@@ -221,10 +206,7 @@ public sealed class Bot8011TrailingWorker(
             }
             catch (Exception rollbackException)
             {
-                logger.LogCritical(
-                    rollbackException,
-                    "BOT8011 could not persist trailing rollback state. Position = {ShortId}",
-                    position.ShortId);
+                logger.LogCritical(rollbackException, "BOT8011 could not persist trailing rollback state. Position = {ShortId}", position.ShortId);
             }
 
             throw;

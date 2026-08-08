@@ -4,7 +4,6 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Positions;
 using TradingSystem.Reconciliation.Configuration;
 using TradingSystem.Reconciliation.Contracts;
-using TradingSystem.Reconciliation.Executor;
 using TradingSystem.Reconciliation.Models;
 using TradingSystem.Reconciliation.Models.Enums;
 
@@ -24,15 +23,11 @@ public sealed class PositionReconciliationService(
 	{
 		var startedAtUtc = DateTime.UtcNow;
 		var findings = new List<ReconciliationFinding>();
+		
 		var liveBots = await ResolveLiveBotsAsync(ct);
-
 		if (liveBots.Count == 0)
 		{
-			var emptyResult = new ReconciliationRunResult(
-				startedAtUtc,
-				DateTime.UtcNow,
-				findings,
-				0);
+			var emptyResult = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, 0);
 
 			await findingStore.SaveRunAsync(emptyResult, ct);
 			return emptyResult;
@@ -51,13 +46,10 @@ public sealed class PositionReconciliationService(
 		}
 
 		var healedCount = await ExecuteAllowedHealingActionsAsync(findings, ct);
-		var result = new ReconciliationRunResult(
-			startedAtUtc,
-			DateTime.UtcNow,
-			findings,
-			healedCount);
-
+		
+		var result = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, healedCount);
 		await findingStore.SaveRunAsync(result, ct);
+		
 		return result;
 	}
 
@@ -69,12 +61,12 @@ public sealed class PositionReconciliationService(
 		{
 			ct.ThrowIfCancellationRequested();
 
-			var configuration = await runtimeConfigurations.GetAsync(bot, ct);
-			if (configuration is null)
+			var config = await runtimeConfigurations.GetAsync(bot, ct);
+			if (config is null)
 				continue;
 
-			if (configuration.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-				configuration.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
+			if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
+				config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
 			{
 				result.Add(bot);
 			}
@@ -83,21 +75,17 @@ public sealed class PositionReconciliationService(
 		return result;
 	}
 
-	private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(
-		string symbol,
-		IReadOnlyCollection<string> liveBots,
-		CancellationToken ct)
+	private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(string symbol, IReadOnlyCollection<string> liveBots, CancellationToken ct)
 	{
 		var result = new List<BotPosition>();
 
 		foreach (var bot in liveBots)
 		{
 			ct.ThrowIfCancellationRequested();
+			
 			var positions = await localStore.GetAllAsync(bot, ct);
 
-			result.AddRange(positions.Where(position =>
-				!position.Closed &&
-				position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
+			result.AddRange(positions.Where(p => !p.Closed && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
 		}
 
 		return result;
@@ -117,9 +105,9 @@ public sealed class PositionReconciliationService(
 
 			var localQuantity = localForSide.Sum(position => Math.Abs(position.RemainingQuantity));
 			var remoteQuantity = remotePositions
-				.Where(position =>
-					position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) &&
-					position.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
+				.Where(p =>
+					p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) &&
+					p.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
 				.Sum(position => Math.Abs(position.Quantity));
 
 			if (localQuantity == 0 && remoteQuantity > _options.QuantityTolerance)
@@ -179,7 +167,7 @@ public sealed class PositionReconciliationService(
 					position,
 					ReconciliationFindingType.StaleLocalPosition,
 					ReconciliationSeverity.Warning,
-					"Local position has no exchange position or open orders.",
+					"Local p has no exchange p or open orders.",
 					HealingActionType.DeleteStaleLocalPosition,
 					_options.AutoHealStaleLocalPositions));
 			}

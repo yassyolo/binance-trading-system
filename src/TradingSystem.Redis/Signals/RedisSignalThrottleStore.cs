@@ -13,6 +13,7 @@ public sealed class RedisSignalThrottleStore(
 		
 		if(interval<=TimeSpan.Zero)
 			return Task.FromResult(true);	
+		
 		var key = $"trading:signal-throttle:{N(bot)}:{N(symbol)}:{N(side)}";
 		
 		return redis.GetDatabase().StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);

@@ -54,8 +54,7 @@ public sealed class MarketDataWorker(
                 await webSocket.ConnectAsync(streamUrl, ct);
                 failureCount = 0;
 
-                while (webSocket.State == WebSocketState.Open &&
-                       !ct.IsCancellationRequested)
+                while (webSocket.State == WebSocketState.Open && !ct.IsCancellationRequested)
                 {
                     var json = await WebSocketMessageReader.ReadTextMessageAsync(webSocket, _options.ReceiveBufferSizeBytes, ct);
 

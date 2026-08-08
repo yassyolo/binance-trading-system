@@ -9,13 +9,9 @@ namespace TradingSystem.Prometheus;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingPrometheus(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddTradingPrometheus(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddOptions<PrometheusOptions>()
-            .Bind(configuration.GetSection(PrometheusOptions.SectionName))
-            .ValidateOnStart();
+        services.AddOptions<PrometheusOptions>().Bind(configuration.GetSection(PrometheusOptions.SectionName)).ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<PrometheusOptions>, PrometheusOptionsValidator>();
         services.AddSingleton<TradingMetrics>();

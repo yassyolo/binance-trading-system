@@ -10,4 +10,3 @@ public enum ReconciliationFindingType
     OrphanExchangePosition, 
     OrphanExchangeOrder 
 }
-

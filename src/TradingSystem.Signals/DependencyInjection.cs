@@ -9,13 +9,9 @@ namespace TradingSystem.Signals;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingSignals(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddTradingSignals(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddOptions<SignalGenerationOptions>()
-            .Bind(configuration.GetSection(SignalGenerationOptions.SectionName))
-            .ValidateOnStart();
+        services.AddOptions<SignalGenerationOptions>().Bind(configuration.GetSection(SignalGenerationOptions.SectionName)).ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<SignalGenerationOptions>, SignalGenerationOptionsValidator>();
         services.AddSingleton<ISignalGenerationCoordinator, SignalGenerationCoordinator>();

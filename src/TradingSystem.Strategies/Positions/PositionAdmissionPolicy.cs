@@ -5,10 +5,7 @@ namespace TradingSystem.Strategies.Positions;
 
 public sealed class PositionAdmissionPolicy
 {
-    public PositionAdmissionDecision Evaluate(
-        PositionSide side,
-        IReadOnlyCollection<(string Id, PositionSide Side)> activePositions,
-        PositionAdmissionParameters parameters)
+    public PositionAdmissionDecision Evaluate(PositionSide side, IReadOnlyCollection<(string Id, PositionSide Side)> activePositions, PositionAdmissionParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(activePositions);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -22,22 +19,16 @@ public sealed class PositionAdmissionPolicy
         if (side == PositionSide.Short && !parameters.EnableShort)
             return new(false, [], "SHORT is disabled.");
 
-        var oppositePositionIds = activePositions
-            .Where(position => position.Side != side)
-            .Select(position => position.Id)
+        var oppositePositionIds = activePositions.Where(p => p.Side != side)
+            .Select(p => p.Id)
             .Where(static id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         if (parameters.CloseOppositeFirst && oppositePositionIds.Length > 0)
-        {
-            return new(
-                true,
-                oppositePositionIds,
-                $"Close {oppositePositionIds.Length} opposite position(s) first.");
-        }
+            return new(true, oppositePositionIds, $"Close {oppositePositionIds.Length} opposite p(s) first.");
 
-        var sameSideCount = activePositions.Count(position => position.Side == side);
+        var sameSideCount = activePositions.Count(p => p.Side == side);
         return sameSideCount >= parameters.SideLimit
             ? new(false, [], $"ORDER_SIDE_LIMIT reached ({sameSideCount}/{parameters.SideLimit}).")
             : new(true, [], $"Admission valid. Active same side = {sameSideCount}.");

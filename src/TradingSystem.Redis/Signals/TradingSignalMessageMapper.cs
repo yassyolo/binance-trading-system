@@ -18,7 +18,7 @@ internal static class TradingSignalMessageMapper
             Symbol = message.Symbol.Trim().ToUpperInvariant(), 
             Side = side, 
             Source = message.Source!, 
-            GeneratedAtUtc = message.GeneratedAtUtc?.ToUniversalTime()??nowUtc
+            GeneratedAtUtc = message.GeneratedAtUtc?.ToUniversalTime() ?? nowUtc
         };
     }
 }

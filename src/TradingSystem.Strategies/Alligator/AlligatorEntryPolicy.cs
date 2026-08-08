@@ -17,9 +17,7 @@ public sealed class AlligatorEntryPolicy
             throw new ArgumentException("Strategy interval is required.", nameof(parameters));
 
         if (parameters.MinimumCandleRange < 0)
-            throw new ArgumentOutOfRangeException(
-                nameof(parameters),
-                "Minimum candle range cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(parameters), "Minimum candle range cannot be negative.");
 
         if (!input.IsClosed ||
             !input.Symbol.Equals(parameters.Symbol, StringComparison.OrdinalIgnoreCase) ||
@@ -40,9 +38,7 @@ public sealed class AlligatorEntryPolicy
             parameters.EnableLong &&
             (!parameters.UseMa200Filter || input.Close >= input.Sma200))
         {
-            return new AlligatorEntryDecision(
-                PositionSide.Long,
-                $"Bullish candle crossed Teeth. Close = {input.Close}, Teeth = {input.Teeth}, SMA200 = {input.Sma200}.");
+            return new AlligatorEntryDecision(PositionSide.Long, $"Bullish candle crossed Teeth. Close = {input.Close}, Teeth = {input.Teeth}, SMA200 = {input.Sma200}.");
         }
 
         var bearishCross = input.Close < input.Open &&
@@ -53,9 +49,7 @@ public sealed class AlligatorEntryPolicy
             parameters.EnableShort &&
             (!parameters.UseMa200Filter || input.Close <= input.Sma200))
         {
-            return new AlligatorEntryDecision(
-                PositionSide.Short,
-                $"Bearish candle crossed Teeth. Close = {input.Close}, Teeth = {input.Teeth}, SMA200 = {input.Sma200}.");
+            return new AlligatorEntryDecision(PositionSide.Short, $"Bearish candle crossed Teeth. Close = {input.Close}, Teeth = {input.Teeth}, SMA200 = {input.Sma200}.");
         }
 
         return null;

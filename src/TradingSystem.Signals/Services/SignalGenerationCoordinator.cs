@@ -20,15 +20,15 @@ public sealed class SignalGenerationCoordinator(
 	ILogger<SignalGenerationCoordinator> logger) 
     : ISignalGenerationCoordinator
 {
-    private readonly IReadOnlyDictionary<string, ITradingSignalGenerator[]> _generatorsBySymbol = generators
-			.SelectMany(generator => generator.SupportedSymbols
-				.Where(symbol => !string.IsNullOrWhiteSpace(symbol))
+    private readonly IReadOnlyDictionary<string, ITradingSignalGenerator[]> _generatorsBySymbol = 
+        generators.SelectMany(g => g.SupportedSymbols
+				.Where(s => !string.IsNullOrWhiteSpace(s))
 				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.Select(symbol => new { Symbol = symbol, Generator = generator }))
-			.GroupBy(item => item.Symbol, StringComparer.OrdinalIgnoreCase)
+				.Select(s => new { Symbol = s, Generator = g }))
+			.GroupBy(i => i.Symbol, StringComparer.OrdinalIgnoreCase)
 			.ToDictionary(
-				group => group.Key,
-				group => group.Select(item => item.Generator).Distinct().ToArray(),
+				g => g.Key,
+				g => g.Select(i => i.Generator).Distinct().ToArray(),
 				StringComparer.OrdinalIgnoreCase);
 	
     private readonly SignalGenerationOptions _options = options.Value;
@@ -102,12 +102,16 @@ public sealed class SignalGenerationCoordinator(
     {
         if (!signal.BotName.Equals(generator.BotName, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Generator '{generator.BotName}' produced signal for bot '{signal.BotName}'.");
+        
         if (!signal.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Generator '{generator.BotName}' produced signal for symbol '{signal.Symbol}' while processing '{snapshot.Symbol}'.");
+            throw new InvalidOperationException($"Generator '{generator.BotName}' produced signal for s '{signal.Symbol}' while processing '{snapshot.Symbol}'.");
+        
         if (!signal.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Generator '{generator.BotName}' produced interval '{signal.Interval}' while processing '{snapshot.Interval}'.");
+       
         if (string.IsNullOrWhiteSpace(signal.SignalId))
             throw new InvalidOperationException($"Generator '{generator.BotName}' produced an empty signal id.");
+       
         if (signal.Price <= 0)
             throw new InvalidOperationException($"Generator '{generator.BotName}' produced a non-positive signal price.");
     }

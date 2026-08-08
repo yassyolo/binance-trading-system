@@ -37,6 +37,7 @@ public sealed class KlinePublisher(
             volume < 0)
         {
             logger.LogWarning("Rejected malformed closed Binance kline payload.");
+           
             return;
         }
 
@@ -55,7 +56,9 @@ public sealed class KlinePublisher(
             interval);
 
         var json = JsonSerializer.Serialize(message, JsonDefaults.Messaging);
+       
         var key = $"kline:{symbol.ToLowerInvariant()}:{interval}";
+        
         var channel = RedisChannels.Kline(interval, symbol);
 
         await _database.StringSetAsync(key, json, _latestKlineTtl);
@@ -84,13 +87,9 @@ public sealed class KlinePublisher(
         if (!element.TryGetProperty(name, out var property))
             return false;
 
-        return decimal.TryParse(
-            property.ToString(),
-            NumberStyles.Number | NumberStyles.AllowExponent,
-            CultureInfo.InvariantCulture,
-            out value);
+        return decimal.TryParse(property.ToString(), NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out value);
     }
 
-    private static string Format(decimal value) =>
-        value.ToString(CultureInfo.InvariantCulture);
+    private static string Format(decimal value) 
+        => value.ToString(CultureInfo.InvariantCulture);
 }
