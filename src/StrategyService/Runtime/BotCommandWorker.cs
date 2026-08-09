@@ -197,11 +197,7 @@ public sealed class BotCommandWorker(
 
         var reason = string.IsNullOrWhiteSpace(command.Reason) ? "MANUAL_POSITION_CLOSE" : command.Reason.Trim();
 
-        var result = await tradeExecutor.CloseAsync(
-            command.BotName,
-            positionIdentifier,
-            reason,
-            ct);
+        var result = await tradeExecutor.CloseAsync(command.BotName, positionIdentifier, reason, ct);
 
         if (!result.Succeeded)
         {
@@ -215,80 +211,42 @@ public sealed class BotCommandWorker(
             throw new InvalidOperationException(message, result.Exception);
         }
 
-        logger.LogInformation(
-            "Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}",
-            command.CommandId,
-            command.BotName,
-            positionIdentifier,
-            result.Reason);
+        logger.LogInformation("Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}", command.CommandId, command.BotName, positionIdentifier, result.Reason);
     }
 
-    private static string ReadRequiredPositionIdentifier(
-        BotCommand command)
+    private static string ReadRequiredPositionIdentifier(BotCommand command)
     {
         var root = command.Payload.RootElement;
 
-        if (TryReadString(
-                root,
-                "PositionId",
-                out var positionId))
-        {
+        if (TryReadString(root, "PositionId", out var positionId))
             return positionId;
-        }
 
-        if (TryReadString(
-                root,
-                "positionId",
-                out positionId))
-        {
+        if (TryReadString(root, "positionId", out positionId))
             return positionId;
-        }
 
-        if (TryReadString(
-                root,
-                "ShortId",
-                out positionId))
-        {
+        if (TryReadString(root, "ShortId", out positionId))
             return positionId;
-        }
 
-        if (TryReadString(
-                root,
-                "shortId",
-                out positionId))
-        {
+        if (TryReadString(root, "shortId", out positionId))
             return positionId;
-        }
 
-        throw new UnsupportedBotCommandException(
-            $"Command '{command.Command}' requires PositionId in its payload.");
+        throw new UnsupportedBotCommandException($"Command '{command.Command}' requires PositionId in its payload.");
     }
 
-    private static bool TryReadString(
-        JsonElement root,
-        string propertyName,
-        out string value)
+    private static bool TryReadString(JsonElement root, string propertyName, out string value)
     {
         value = string.Empty;
 
-        if (!root.TryGetProperty(
-                propertyName,
-                out var property))
-        {
+        if (!root.TryGetProperty(propertyName, out var property))
             return false;
-        }
 
         if (property.ValueKind != JsonValueKind.String)
-        {
             return false;
-        }
 
         var parsedValue = property.GetString();
 
         if (string.IsNullOrWhiteSpace(parsedValue))
-        {
             return false;
-        }
 
         value = parsedValue.Trim();
 

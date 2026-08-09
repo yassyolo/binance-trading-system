@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8011;
 using StrategyService.Bots.Bot8012;
@@ -11,6 +11,7 @@ using StrategyService.Runtime;
 using StrategyService.Services.Configuration;
 using StrategyService.Subscribers;
 using TradingSystem.Application;
+using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Binance;
 using TradingSystem.HistoricalDatabase;
@@ -38,42 +39,29 @@ builder.Services.AddTradingObservability(builder.Configuration);
 builder.Services.AddTradingApplication(builder.Configuration);
 builder.Services.AddSingleton<ITradingSignalHandler, TradingSignalHandler>();
 builder.Services.AddStrategyPluginSystem(builder.Configuration);
-
-builder.Services.AddPaperTrading(
-    builder.Configuration,
-    addFillWorker: false);
-
-builder.Services.AddTradingRedis(
-    builder.Configuration,
-    subscribeToSignals: true);
+builder.Services.AddPaperTrading(builder.Configuration, addFillWorker: false);
+builder.Services.AddTradingRedis(builder.Configuration, subscribeToSignals: true);
 builder.Services.AddBinanceFutures(builder.Configuration);
 builder.Services.AddTradingSignals(builder.Configuration);
 builder.Services.AddPostgresTradingHistory(builder.Configuration);
-builder.Services.AddServiceHeartbeat(
-    builder.Configuration,
-    "StrategyService");
+builder.Services.AddServiceHeartbeat(builder.Configuration, "StrategyService");
 builder.Services.AddBotRuntimeOrchestration(builder.Configuration);
 builder.Services.AddCentralRiskManagement(builder.Configuration);
 builder.Services.AddTradingReconciliation(builder.Configuration);
 
-builder.Services
-    .AddOptions<TelegramOptions>()
+builder.Services.AddOptions<TelegramOptions>()
     .Bind(builder.Configuration.GetSection(TelegramOptions.SectionName))
     .ValidateOnStart();
-
-builder.Services.AddSingleton<
-    IValidateOptions<TelegramOptions>,
-    TelegramOptionsValidator>();
-builder.Services.AddSingleton<
-    IExchangeStateProvider,
-    BinanceExchangeStateProvider>();
-builder.Services.AddSingleton<
-    IHealingActionExecutor,
-    SafeHealingActionExecutor>();
+builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
 builder.Services.AddHostedService<ReconciliationWorker>();
-
 builder.Services.AddHttpClient<TelegramNotificationService>();
 builder.Services.AddSingleton<TelegramTradingEngineNotifier>();
+builder.Services.RemoveAll<ITradingEngineNotifier>();
+builder.Services.AddSingleton<ITradingEngineNotifier, TradingEngineHistoryNotifier>();
+
+builder.Services.AddSingleton<IExchangeStateProvider, BinanceExchangeStateProvider>();
+builder.Services.AddSingleton<IHealingActionExecutor, SafeHealingActionExecutor>();
+builder.Services.AddHostedService<ReconciliationWorker>();
 
 builder.Services.AddSingleton<GridSpacingPolicy>();
 builder.Services.AddSingleton<PositionAdmissionPolicy>();

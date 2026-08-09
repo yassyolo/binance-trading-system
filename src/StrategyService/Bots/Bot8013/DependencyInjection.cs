@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8013.Configuration;
 using StrategyService.Bots.Common.TpOnlyGrid;
 using TradingSystem.Application.Execution.Contracts;

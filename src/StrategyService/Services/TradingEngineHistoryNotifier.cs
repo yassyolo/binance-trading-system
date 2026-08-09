@@ -29,13 +29,8 @@ public sealed class TradingEngineHistoryNotifier(
         var strategy = strategies.GetRequired(signal.BotName);
         var decisionName = decision.ShouldOpen ? "Open" : "Block";
 
-        metrics.SignalsReceived
-            .WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown")
-            .Inc();
-
-        metrics.Decisions
-            .WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName)
-            .Inc();
+        metrics.SignalsReceived.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown").Inc();
+        metrics.Decisions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName).Inc();
 
         await historicalEvents.WriteAsync(
             new HistoricalEvent(
@@ -67,13 +62,7 @@ public sealed class TradingEngineHistoryNotifier(
 
     public async Task ExecutionCompletedAsync(TradeSignal signal, TradeExecutionResult result, CancellationToken ct)
     {
-        metrics.Executions
-            .WithLabels(
-                signal.BotName,
-                signal.Symbol,
-                signal.Side.ToString(),
-                result.Succeeded ? "success" : "failure")
-            .Inc();
+        metrics.Executions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), result.Succeeded ? "success" : "failure").Inc();
 
         string? strategyVersion = null;
 
@@ -138,9 +127,7 @@ public sealed class TradingEngineHistoryNotifier(
 
     public async Task ProcessingFailedAsync(TradeSignal signal, Exception exception, CancellationToken ct)
     {
-        metrics.ProcessingFailures
-            .WithLabels("trading_engine", signal.BotName, exception.GetType().Name)
-            .Inc();
+        metrics.ProcessingFailures.WithLabels("trading_engine", signal.BotName, exception.GetType().Name).Inc();
 
         await historicalEvents.WriteAsync(
             new HistoricalEvent(

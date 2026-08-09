@@ -1,5 +1,3 @@
-﻿using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using TradingSystem.Application.Engine.Contracts;
 using TradingSystem.Domain.Enums;
 using TradingSystem.PaperTrading.Contracts;
@@ -45,7 +43,7 @@ public sealed class PaperPositionCloseWorker(
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {}
+        { }
         finally
         {
             logger.LogInformation("{Worker} stopped.", nameof(PaperPositionCloseWorker));
@@ -55,59 +53,38 @@ public sealed class PaperPositionCloseWorker(
     private async Task ProcessOpenPositionsAsync(CancellationToken ct)
     {
         var openPositions = await store.GetOpenAsync(ct);
-
         if (openPositions.Count == 0)
             return;
 
-        var positionsBySymbol = openPositions.GroupBy(
-            position => position.Symbol,
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var symbolGroup in positionsBySymbol)
+        foreach (var symbolGroup in openPositions.GroupBy(p => p.Symbol, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
 
-            await ProcessSymbolPositionsAsync(
-                symbolGroup.Key,
-                symbolGroup,
-                ct);
+            await ProcessSymbolPositionsAsync(symbolGroup.Key, symbolGroup, ct);
         }
     }
 
-    private async Task ProcessSymbolPositionsAsync(
-        string symbol,
-        IEnumerable<PaperTradingPosition> positions,
-        CancellationToken ct)
+    private async Task ProcessSymbolPositionsAsync(string symbol, IEnumerable<PaperTradingPosition> positions, CancellationToken ct)
     {
         decimal markPrice;
-
         try
         {
-            markPrice = await prices.GetMarkPriceAsync(
-                symbol,
-                ct);
+            markPrice = await prices.GetMarkPriceAsync(symbol, ct);
         }
-        catch (OperationCanceledException)
-            when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception exception)
         {
-            logger.LogError(
-                exception,
-                "Failed to obtain mark price while evaluating paper positions. Symbol = {Symbol}",
-                symbol);
+            logger.LogError(exception, "Failed to obtain mark price while evaluating paper positions. Symbol = {Symbol}", symbol);
 
             return;
         }
 
         if (markPrice <= 0)
         {
-            logger.LogWarning(
-                "Paper position evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}",
-                symbol,
-                markPrice);
+            logger.LogWarning("Paper p evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}", symbol, markPrice);
 
             return;
         }
@@ -124,7 +101,17 @@ public sealed class PaperPositionCloseWorker(
     {
         if (!HasValidExitLevels(position))
         {
-            LogInvalidExitLevels(position);
+            logger.LogError(
+            "Paper p has invalid exit levels. " +
+            "Bot = {Bot}, Position = {Position}, Side = {Side}, " +
+            "Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
+            position.BotName,
+            position.ShortId,
+            position.Side,
+            position.EntryPrice,
+            position.TakeProfitPrice,
+            position.StopLossPrice);
+
             return;
         }
 
@@ -147,17 +134,11 @@ public sealed class PaperPositionCloseWorker(
             position.StopLossPrice,
             closeReason);
 
-        var result = await executor.CloseAtPriceAsync(
-            position.BotName,
-            position.ShortId,
-            markPrice,
-            closeReason,
-            ct);
-
+        var result = await executor.CloseAtPriceAsync(position.BotName, position.ShortId, markPrice, closeReason, ct);
         if (result.Succeeded)
         {
             logger.LogInformation(
-                "Paper position closed successfully. " +
+                "Paper p closed successfully. " +
                 "Bot = {Bot}, Position = {Position}, " +
                 "TriggerPrice = {TriggerPrice}, Reason = {Reason}",
                 position.BotName,
@@ -169,7 +150,7 @@ public sealed class PaperPositionCloseWorker(
         }
 
         logger.LogWarning(
-            "Paper position close failed. " +
+            "Paper p close failed. " +
             "Bot = {Bot}, Position = {Position}, " +
             "TriggerPrice = {TriggerPrice}, Reason = {Reason}, " +
             "Result = {Result}",
@@ -178,21 +159,6 @@ public sealed class PaperPositionCloseWorker(
             markPrice,
             closeReason,
             result.Reason);
-    }
-
-    private void LogInvalidExitLevels(
-        PaperTradingPosition position)
-    {
-        logger.LogError(
-            "Paper position has invalid exit levels. " +
-            "Bot = {Bot}, Position = {Position}, Side = {Side}, " +
-            "Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
-            position.BotName,
-            position.ShortId,
-            position.Side,
-            position.EntryPrice,
-            position.TakeProfitPrice,
-            position.StopLossPrice);
     }
 
     private static bool HasValidExitLevels(
@@ -218,37 +184,19 @@ public sealed class PaperPositionCloseWorker(
         };
     }
 
-    private static bool IsValidLongTakeProfit(
-        PaperTradingPosition position)
-    {
-        return position.TakeProfitPrice == default ||
-               position.TakeProfitPrice > position.EntryPrice;
-    }
+    private static bool IsValidLongTakeProfit(PaperTradingPosition position)
+        => position.TakeProfitPrice == default || position.TakeProfitPrice > position.EntryPrice;
 
-    private static bool IsValidLongStopLoss(
-        PaperTradingPosition position)
-    {
-        return position.StopLossPrice == default ||
-               position.StopLossPrice < position.EntryPrice;
-    }
+    private static bool IsValidLongStopLoss(PaperTradingPosition position)
+        => position.StopLossPrice == default || position.StopLossPrice < position.EntryPrice;
 
-    private static bool IsValidShortTakeProfit(
-        PaperTradingPosition position)
-    {
-        return position.TakeProfitPrice == default ||
-               position.TakeProfitPrice < position.EntryPrice;
-    }
+    private static bool IsValidShortTakeProfit(PaperTradingPosition position)
+        => position.TakeProfitPrice == default || position.TakeProfitPrice < position.EntryPrice;
 
-    private static bool IsValidShortStopLoss(
-        PaperTradingPosition position)
-    {
-        return position.StopLossPrice == default ||
-               position.StopLossPrice > position.EntryPrice;
-    }
+    private static bool IsValidShortStopLoss(PaperTradingPosition position)
+        => position.StopLossPrice == default || position.StopLossPrice > position.EntryPrice;
 
-    private static string? ResolveCloseReason(
-        PaperTradingPosition position,
-        decimal markPrice)
+    private static string? ResolveCloseReason(PaperTradingPosition position, decimal markPrice)
     {
         return position.Side switch
         {
