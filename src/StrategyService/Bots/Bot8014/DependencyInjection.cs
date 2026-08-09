@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8014.Configuration;
 using StrategyService.Bots.Common.TpOnlyGrid;
 using TradingSystem.Application.Execution.Contracts;
@@ -9,32 +7,35 @@ using TradingSystem.Application.Orders;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Strategies.Contracts;
 using TradingSystem.Binance.Startup;
+using TradingSystem.Signals.Abstractions;
 using TradingSystem.Strategies.Grid;
 
 namespace StrategyService.Bots.Bot8014;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddBot8014(this IServiceCollection s, IConfiguration c)
+    public static IServiceCollection AddBot8014(this IServiceCollection services, IConfiguration configuration)
     {
-        s.AddOptions<Bot8014Options>()
-            .Bind(c.GetSection(Bot8014Options.SectionName))
+        services.AddOptions<Bot8014Options>()
+            .Bind(configuration.GetSection(Bot8014Options.SectionName))
             .ValidateOnStart();
-        s.AddSingleton<IValidateOptions<Bot8014Options>, Bot8014OptionsValidator>();
-        s.AddSingleton<IBinanceTradingConfiguration>(sp => sp.GetRequiredService<IOptions<Bot8014Options>>().Value);
 
-        s.AddSingleton(sp =>
-        {
-            var options = sp.GetRequiredService<IOptions<Bot8014Options>>().Value;
-            var gridSpacingPolicy = sp.GetRequiredService<GridSpacingPolicy>();
-            return new TpOnlyGridGapPolicy<Bot8014Options>(options, gridSpacingPolicy);
-        });
+        services.AddSingleton<IValidateOptions<Bot8014Options>, Bot8014OptionsValidator>();
+        services.AddSingleton<IBinanceTradingConfiguration>(
+            serviceProvider => serviceProvider.GetRequiredService<IOptions<Bot8014Options>>().Value);
 
-        s.AddSingleton<ITradingStrategy, Bot8014Strategy>();
-        s.AddSingleton<IBotTradeExecutor, Bot8014TradeExecutor>();
-        s.AddSingleton<IBotActivePositionProvider, Bot8014ActivePositionProvider>();
-        s.AddSingleton<IBotOrderEventHandler, Bot8014OrderEventHandler>();
-        s.AddSingleton<IBotHealingService, Bot8014HealingService>();
-        return s;
+        services.AddSingleton(serviceProvider =>
+            new TpOnlyGridGapPolicy<Bot8014Options>(
+                serviceProvider.GetRequiredService<IOptions<Bot8014Options>>().Value,
+                serviceProvider.GetRequiredService<GridSpacingPolicy>()));
+
+        services.AddSingleton<ITradingStrategy, Bot8014Strategy>();
+        services.AddSingleton<IBotTradeExecutor, Bot8014TradeExecutor>();
+        services.AddSingleton<IBotActivePositionProvider, Bot8014ActivePositionProvider>();
+        services.AddSingleton<IBotOrderEventHandler, Bot8014OrderEventHandler>();
+        services.AddSingleton<IBotHealingService, Bot8014HealingService>();
+        services.AddSingleton<ITradingSignalGenerator, Bot8014SignalGenerator>();
+
+        return services;
     }
 }

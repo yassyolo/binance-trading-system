@@ -7,6 +7,7 @@ using TradingSystem.Application.Orders;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Strategies.Contracts;
 using TradingSystem.Binance.Startup;
+using TradingSystem.Signals.Abstractions;
 using TradingSystem.Strategies.Grid;
 
 namespace StrategyService.Bots.Bot8013;
@@ -20,15 +21,20 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<Bot8013Options>, Bot8013OptionsValidator>();
-        services.AddSingleton<IBinanceTradingConfiguration>(serviceProvider => serviceProvider.GetRequiredService<IOptions<Bot8013Options>>().Value);
+        services.AddSingleton<IBinanceTradingConfiguration>(
+            serviceProvider => serviceProvider.GetRequiredService<IOptions<Bot8013Options>>().Value);
 
-        services.AddSingleton(serviceProvider => new TpOnlyGridGapPolicy<Bot8013Options>(serviceProvider.GetRequiredService<IOptions<Bot8013Options>>().Value, serviceProvider.GetRequiredService<GridSpacingPolicy>()));
+        services.AddSingleton(serviceProvider =>
+            new TpOnlyGridGapPolicy<Bot8013Options>(
+                serviceProvider.GetRequiredService<IOptions<Bot8013Options>>().Value,
+                serviceProvider.GetRequiredService<GridSpacingPolicy>()));
 
         services.AddSingleton<ITradingStrategy, Bot8013Strategy>();
         services.AddSingleton<IBotTradeExecutor, Bot8013TradeExecutor>();
         services.AddSingleton<IBotActivePositionProvider, Bot8013ActivePositionProvider>();
         services.AddSingleton<IBotOrderEventHandler, Bot8013OrderEventHandler>();
         services.AddSingleton<IBotHealingService, Bot8013HealingService>();
+        services.AddSingleton<ITradingSignalGenerator, Bot8013SignalGenerator>();
 
         return services;
     }

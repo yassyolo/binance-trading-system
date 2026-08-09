@@ -9,6 +9,7 @@ using StrategyService.Bots.Bot8016;
 using StrategyService.Reliability;
 using StrategyService.Runtime;
 using StrategyService.Services.Configuration;
+using StrategyService.Signals;
 using StrategyService.Subscribers;
 using TradingSystem.Application;
 using TradingSystem.Application.Engine.Contracts;
@@ -48,12 +49,12 @@ builder.Services.AddServiceHeartbeat(builder.Configuration, "StrategyService");
 builder.Services.AddBotRuntimeOrchestration(builder.Configuration);
 builder.Services.AddCentralRiskManagement(builder.Configuration);
 builder.Services.AddTradingReconciliation(builder.Configuration);
+builder.Services.AddHostedService<ReconciliationWorker>();
 
 builder.Services.AddOptions<TelegramOptions>()
     .Bind(builder.Configuration.GetSection(TelegramOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
-builder.Services.AddHostedService<ReconciliationWorker>();
 builder.Services.AddHttpClient<TelegramNotificationService>();
 builder.Services.AddSingleton<TelegramTradingEngineNotifier>();
 builder.Services.RemoveAll<ITradingEngineNotifier>();
@@ -61,7 +62,6 @@ builder.Services.AddSingleton<ITradingEngineNotifier, TradingEngineHistoryNotifi
 
 builder.Services.AddSingleton<IExchangeStateProvider, BinanceExchangeStateProvider>();
 builder.Services.AddSingleton<IHealingActionExecutor, SafeHealingActionExecutor>();
-builder.Services.AddHostedService<ReconciliationWorker>();
 
 builder.Services.AddSingleton<GridSpacingPolicy>();
 builder.Services.AddSingleton<PositionAdmissionPolicy>();
@@ -78,6 +78,7 @@ builder.Services.AddBot8016(builder.Configuration);
 builder.Services.AddHostedService<UserStreamOrderSubscriber>();
 builder.Services.AddHostedService<HealingSnapshotSubscriber>();
 builder.Services.AddHostedService<PaperPositionCloseWorker>();
+builder.Services.AddHostedService<InternalSignalMarketSubscriber>();
 
 builder.Services.AddHistoricalDatabase(builder.Configuration);
 builder.Services.AddTradingPrometheus(builder.Configuration);
