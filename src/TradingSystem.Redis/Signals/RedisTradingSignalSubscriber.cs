@@ -90,7 +90,7 @@ public sealed class RedisTradingSignalSubscriber(
             }
 
             var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
-            await handler.HandleAsync(signal, cancellationToken);
+            await HandleWithTransientRetryAsync(signal, cancellationToken);
 
             logger.LogInformation("Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
         }
@@ -107,6 +107,47 @@ public sealed class RedisTradingSignalSubscriber(
         }
     }
 
+    private async Task HandleWithTransientRetryAsync(TradingSystem.Domain.Signals.TradeSignal signal, CancellationToken ct)
+    {
+        var deadline = clock.UtcNow.AddSeconds(60);
+        var attempt = 0;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            attempt++;
+
+            try
+            {
+                _ = await handler.HandleAsync(signal, ct);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                var remaining = deadline - clock.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                    throw;
+
+                var delay = TimeSpan.FromSeconds(Math.Min(attempt, 5));
+                if (delay > remaining)
+                    delay = remaining;
+
+                logger.LogWarning(
+                    exception,
+                    "Trading signal hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.",
+                    signal.SignalId,
+                    attempt,
+                    delay);
+
+                await Task.Delay(delay, ct);
+            }
+        }
+    }
+
     private static async Task DelayBeforeRetryAsync(CancellationToken ct)
     {
         try
@@ -114,6 +155,6 @@ public sealed class RedisTradingSignalSubscriber(
             await Task.Delay(RetryDelay, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {}
+        { }
     }
 }

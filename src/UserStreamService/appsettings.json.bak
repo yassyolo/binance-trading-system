@@ -1,0 +1,43 @@
+{
+  "Redis": {
+    "ConnectionString": "localhost:6379",
+    "AbortOnConnectFail": false,
+    "KeyPrefix": ""
+  },
+  "BinanceFutures": {
+    "BaseUrl": "https://fapi.binance.com",
+    "ApiKey": "",
+    "SecretKey": "",
+    "ReceiveWindow": 5000
+  },
+  "BinanceUserStream": {
+    "RestBaseUrl": "https://fapi.binance.com",
+    "WebSocketBaseUrl": "wss://fstream.binance.com",
+    "ApiKey": "",
+    "ListenKeyKeepAliveSeconds": 1800,
+    "KeepAliveIntervalSeconds": 30,
+    "ReceiveBufferSizeBytes": 32768
+  },
+  "UserStreamService": {
+    "PublishRaw": true,
+    "ReconnectDelaySeconds": 5,
+    "MinDowntimeForHealingSeconds": 30,
+    "HealingCooldownSeconds": 60,
+    "HealingSymbols": [
+      "BTCUSDC"
+    ]
+  },
+  "ServiceHeartbeat": {
+    "Enabled": true,
+    "Environment": "Demo",
+    "IntervalSeconds": 10,
+    "StaleAfterSeconds": 30
+  },
+  "ConnectionStrings": {
+    "TradingDatabase": "Host=localhost;Port=55432;Database=trading;Username=postgres;Password=postgres"
+  },
+  "TradingHistory": {
+    "ConnectionStringName": "TradingDatabase",
+    "CommandTimeoutSeconds": 30
+  }
+}

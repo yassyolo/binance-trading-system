@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\TradingSystem.Signals\TradingSystem.Signals.csproj" />
+    <ProjectReference Include="..\..\src\TradingSystem.Signals\TradingSystem.Signals.csproj" />
   </ItemGroup>
 
   <ItemGroup>

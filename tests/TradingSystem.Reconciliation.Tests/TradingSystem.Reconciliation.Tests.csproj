@@ -15,6 +15,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\src\MarketDataService\MarketDataService.csproj" />
+	  <ProjectReference Include="..\..\src\TradingSystem.Reconciliation\TradingSystem.Reconciliation.csproj" />
 	</ItemGroup>
+
 </Project>

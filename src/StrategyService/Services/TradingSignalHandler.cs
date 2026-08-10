@@ -34,6 +34,10 @@ public sealed class TradingSignalHandler(
             await TryRecordDecisionAsync(signal, strategyVersion, "Failed", exception.Message,
                 new Dictionary<string, object?> { ["exceptionType"] = exception.GetType().FullName }, ct);
             logger.LogError(exception, "Signal handler failed. Id = {Id} Bot = {Bot}", signal.SignalId, signal.BotName);
+
+            if (IsTransientInfrastructureFailure(exception))
+                throw;
+
             return false;
         }
 
@@ -119,6 +123,25 @@ public sealed class TradingSignalHandler(
         {
             logger.LogError(exception, "Final signal decision could not be recorded. SignalId = {SignalId}", signal.SignalId);
         }
+    }
+
+    private static bool IsTransientInfrastructureFailure(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is TimeoutException)
+                return true;
+
+            var typeName = current.GetType().FullName ?? current.GetType().Name;
+            if (typeName.StartsWith("Npgsql.", StringComparison.Ordinal) ||
+                typeName.StartsWith("StackExchange.Redis.", StringComparison.Ordinal))
+                return true;
+
+            if (current.Message.Contains("EventStore remained unavailable", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private string ResolveStrategyVersion(string botName)

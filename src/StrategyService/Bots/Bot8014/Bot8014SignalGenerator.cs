@@ -6,10 +6,6 @@ using TradingSystem.Signals.Models;
 
 namespace StrategyService.Bots.Bot8014;
 
-/// <summary>
-/// Internal volatility-breakout entry candidate for BOT8014.
-/// Uses Bollinger BB20 close breakout; grid spacing/risk remain in the existing strategy/engine.
-/// </summary>
 public sealed class Bot8014SignalGenerator(IOptions<Bot8014Options> options) : ITradingSignalGenerator
 {
     private readonly Bot8014Options _options = options.Value;

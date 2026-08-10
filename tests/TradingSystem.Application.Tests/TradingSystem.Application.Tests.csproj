@@ -15,6 +15,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\src\TradingSystem.Dashboard.Application\TradingSystem.Dashboard.Application.csproj" />
+	  <ProjectReference Include="..\..\src\TradingSystem.Application\TradingSystem.Application.csproj" />
 	</ItemGroup>
+
 </Project>

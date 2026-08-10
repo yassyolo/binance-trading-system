@@ -16,10 +16,6 @@ using TradingSystem.Signals.Models.Enums;
 
 namespace StrategyService.Signals;
 
-/// <summary>
-/// Bridges MarketDataService + IndicatorServices into the generic signal-generation coordinator.
-/// It joins a closed kline with indicator snapshots having the exact same symbol/timeframe/candle-close timestamp.
-/// </summary>
 public sealed class InternalSignalMarketSubscriber(
     IConnectionMultiplexer redis,
     IOptions<SignalGenerationOptions> options,
@@ -36,6 +32,21 @@ public sealed class InternalSignalMarketSubscriber(
         public Dictionary<string, decimal> Indicators { get; } = new(StringComparer.OrdinalIgnoreCase);
         public SemaphoreSlim Gate { get; } = new(1, 1);
     }
+
+    private static readonly string[] AlligatorIndicatorKeys =
+    [
+        "alligator_jaw",
+        "alligator_teeth",
+        "alligator_lips",
+        "sma200"
+    ];
+
+    private static readonly string[] BollingerIndicatorKeys =
+    [
+        "BB20_CLOSE.upper",
+        "BB20_CLOSE.middle",
+        "BB20_CLOSE.lower"
+    ];
 
     private readonly SignalGenerationOptions _options = options.Value;
     private readonly ConcurrentDictionary<MarketKey, JoinedState> _states = new();
@@ -119,10 +130,14 @@ public sealed class InternalSignalMarketSubscriber(
                     state.CandleCloseTime = candle.CloseTime;
                     state.Indicators.Clear();
                 }
+
                 state.Candle = candle;
                 await TryDispatchAsync(key, state, ct);
             }
-            finally { state.Gate.Release(); }
+            finally
+            {
+                state.Gate.Release();
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.LogError(ex, "Internal signal candle processing failed."); }
@@ -143,20 +158,22 @@ public sealed class InternalSignalMarketSubscriber(
             try
             {
                 if (state.CandleCloseTime != 0 && state.CandleCloseTime != snapshot.CandleCloseTime)
-                {
-                    // Do not mix indicators from another candle with the currently cached candle.
                     return;
-                }
 
                 if (state.CandleCloseTime == 0)
                     state.CandleCloseTime = snapshot.CandleCloseTime;
+
+                ReplaceIndicatorFamily(state.Indicators, snapshot.Indicators.Keys);
 
                 foreach (var (name, value) in snapshot.Indicators)
                     state.Indicators[name] = value.Value;
 
                 await TryDispatchAsync(key, state, ct);
             }
-            finally { state.Gate.Release(); }
+            finally
+            {
+                state.Gate.Release();
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.LogError(ex, "Internal signal indicator processing failed."); }
@@ -183,6 +200,25 @@ public sealed class InternalSignalMarketSubscriber(
         await coordinator.ProcessAsync(snapshot, ct);
     }
 
+    private static void ReplaceIndicatorFamily(
+        IDictionary<string, decimal> cachedIndicators,
+        IEnumerable<string> incomingKeys)
+    {
+        var keys = incomingKeys.ToArray();
+
+        if (keys.Any(k => AlligatorIndicatorKeys.Contains(k, StringComparer.OrdinalIgnoreCase)))
+        {
+            foreach (var key in AlligatorIndicatorKeys)
+                cachedIndicators.Remove(key);
+        }
+
+        if (keys.Any(k => BollingerIndicatorKeys.Contains(k, StringComparer.OrdinalIgnoreCase)))
+        {
+            foreach (var key in BollingerIndicatorKeys)
+                cachedIndicators.Remove(key);
+        }
+    }
+
     private static bool TryParseCandle(
         ClosedKlineMessage candle,
         out decimal open,
@@ -197,20 +233,11 @@ public sealed class InternalSignalMarketSubscriber(
         close = 0;
         volume = 0;
 
-        if (!decimal.TryParse(candle.Open, NumberStyles.Any, CultureInfo.InvariantCulture, out open) || open <= 0)
-            return false;
-
-        if (!decimal.TryParse(candle.High, NumberStyles.Any, CultureInfo.InvariantCulture, out high) || high <= 0)
-            return false;
-
-        if (!decimal.TryParse(candle.Low, NumberStyles.Any, CultureInfo.InvariantCulture, out low) || low <= 0)
-            return false;
-
-        if (!decimal.TryParse(candle.Close, NumberStyles.Any, CultureInfo.InvariantCulture, out close) || close <= 0)
-            return false;
-
-        if (!decimal.TryParse(candle.Volume, NumberStyles.Any, CultureInfo.InvariantCulture, out volume) || volume < 0)
-            return false;
+        if (!decimal.TryParse(candle.Open, NumberStyles.Any, CultureInfo.InvariantCulture, out open) || open <= 0) return false;
+        if (!decimal.TryParse(candle.High, NumberStyles.Any, CultureInfo.InvariantCulture, out high) || high <= 0) return false;
+        if (!decimal.TryParse(candle.Low, NumberStyles.Any, CultureInfo.InvariantCulture, out low) || low <= 0) return false;
+        if (!decimal.TryParse(candle.Close, NumberStyles.Any, CultureInfo.InvariantCulture, out close) || close <= 0) return false;
+        if (!decimal.TryParse(candle.Volume, NumberStyles.Any, CultureInfo.InvariantCulture, out volume) || volume < 0) return false;
 
         return candle.Time > 0 && candle.CloseTime >= candle.Time;
     }

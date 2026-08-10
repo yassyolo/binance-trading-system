@@ -15,6 +15,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\src\TradingSystem.Indicators\TradingSystem.Indicators.csproj" />
+	  <ProjectReference Include="..\..\src\TradingSystem.Indicators\TradingSystem.Indicators.csproj" />
 	</ItemGroup>
+
 </Project>

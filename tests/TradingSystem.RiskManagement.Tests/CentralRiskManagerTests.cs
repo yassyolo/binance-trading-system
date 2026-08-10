@@ -19,15 +19,7 @@ namespace TradingSystem.RiskManagement.Tests;
 
 public sealed class CentralRiskManagerTests
 {
-    private static readonly DateTime Now =
-        new(
-            2026,
-            8,
-            8,
-            10,
-            0,
-            0,
-            DateTimeKind.Utc);
+    private static readonly DateTime Now = new(2026, 8, 8, 10, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public async Task EvaluateOpenAsync_WhenDailyLossLimitReached_ShouldBlock()
@@ -44,14 +36,10 @@ public sealed class CentralRiskManagerTests
                 ConsecutiveLosses: 0,
                 HasCriticalReconciliationFindings: false));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "DAILY_LOSS_LIMIT",
-            result.Code);
+        Assert.Equal("DAILY_LOSS_LIMIT", result.Code);
     }
 
     [Fact]
@@ -69,9 +57,7 @@ public sealed class CentralRiskManagerTests
                 ConsecutiveLosses: 0,
                 HasCriticalReconciliationFindings: false));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(), default);
 
         Assert.True(result.Allowed);
     }
@@ -79,15 +65,9 @@ public sealed class CentralRiskManagerTests
     [Fact]
     public async Task EvaluateOpenAsync_WhenRiskManagementDisabled_ShouldAllow()
     {
-        var sut = CreateSut(
-            options: new CentralRiskOptions
-            {
-                Enabled = false
-            });
+        var sut = CreateSut(options: new CentralRiskOptions {  Enabled = false });
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(),  default);
 
         Assert.True(result.Allowed);
     }
@@ -95,20 +75,12 @@ public sealed class CentralRiskManagerTests
     [Fact]
     public async Task EvaluateOpenAsync_WhenOrderQuantityIsZero_ShouldBlock()
     {
-        var sut = CreateSut(
-            orderSize: new RiskOrderSize(
-                Quantity: 0m,
-                Leverage: 1,
-                MaximumNotional: null));
+        var sut = CreateSut(orderSize: new RiskOrderSize(Quantity: 0m, Leverage: 1, MaximumNotional: null));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "ORDER_SIZE_UNKNOWN",
-            result.Code);
+        Assert.Equal("ORDER_SIZE_UNKNOWN", result.Code);
     }
 
     [Fact]
@@ -121,54 +93,37 @@ public sealed class CentralRiskManagerTests
             MarkPrice = 0m
         };
 
-        var result = await sut.EvaluateOpenAsync(
-            context,
-            default);
+        var result = await sut.EvaluateOpenAsync(context, default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "INVALID_NOTIONAL",
-            result.Code);
+        Assert.Equal("INVALID_NOTIONAL", result.Code);
     }
 
     [Fact]
     public async Task EvaluateOpenAsync_WhenBotMaximumNotionalExceeded_ShouldBlock()
     {
-        var sut = CreateSut(
-            orderSize: new RiskOrderSize(
-                Quantity: 2m,
-                Leverage: 1,
-                MaximumNotional: 150m));
+        var sut = CreateSut(orderSize: new RiskOrderSize(Quantity: 2m, Leverage: 1, MaximumNotional: 150m));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(markPrice: 100m),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(markPrice: 100m), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "BOT_NOTIONAL_LIMIT",
-            result.Code);
+        Assert.Equal("BOT_NOTIONAL_LIMIT", result.Code);
     }
 
     [Fact]
     public async Task EvaluateOpenAsync_WhenCriticalReconciliationFindingExists_ShouldBlock()
     {
-        var sut = CreateSut(
-            riskState: new RiskStateSnapshot(
-                DailyRealizedPnl: 0m,
-                DailyPeakEquity: 1_000m,
-                CurrentEquity: 1_000m,
-                ConsecutiveLosses: 0,
-                HasCriticalReconciliationFindings: true));
+        var sut = CreateSut(riskState: new RiskStateSnapshot(
+            DailyRealizedPnl: 0m,
+            DailyPeakEquity: 1_000m,
+            CurrentEquity: 1_000m,
+            ConsecutiveLosses: 0,
+            HasCriticalReconciliationFindings: true));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "CRITICAL_RECONCILIATION",
-            result.Code);
+        Assert.Equal("CRITICAL_RECONCILIATION", result.Code);
     }
 
     [Fact]
@@ -187,14 +142,10 @@ public sealed class CentralRiskManagerTests
                 ConsecutiveLosses: 0,
                 HasCriticalReconciliationFindings: false));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
-
+        var result = await sut.EvaluateOpenAsync(Context(), default);
+        
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "DAILY_DRAWDOWN_LIMIT",
-            result.Code);
+        Assert.Equal("DAILY_DRAWDOWN_LIMIT", result.Code);
     }
 
     [Fact]
@@ -212,14 +163,10 @@ public sealed class CentralRiskManagerTests
                 ConsecutiveLosses: 5,
                 HasCriticalReconciliationFindings: false));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
-
+        var result = await sut.EvaluateOpenAsync(Context(), default);
+        
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "CONSECUTIVE_LOSSES_LIMIT",
-            result.Code);
+        Assert.Equal("CONSECUTIVE_LOSSES_LIMIT", result.Code);
     }
 
     [Fact]
@@ -230,17 +177,12 @@ public sealed class CentralRiskManagerTests
             {
                 MaximumOpenPositions = 1
             },
-            portfolio: EmptyPortfolio(
-                openPositions: 1));
+            portfolio: EmptyPortfolio(openPositions: 1));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
-
+        var result = await sut.EvaluateOpenAsync(Context(), default);
+        
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "MAX_OPEN_POSITIONS",
-            result.Code);
+        Assert.Equal("MAX_OPEN_POSITIONS", result.Code);
     }
 
     [Fact]
@@ -251,100 +193,60 @@ public sealed class CentralRiskManagerTests
             {
                 MaximumEstimatedNotional = 1_050m
             },
-            portfolio: EmptyPortfolio(
-                grossNotional: 1_000m),
-            orderSize: new RiskOrderSize(
-                Quantity: 1m,
-                Leverage: 1,
-                MaximumNotional: null));
+            portfolio: EmptyPortfolio(grossNotional: 1_000m),
+            orderSize: new RiskOrderSize(Quantity: 1m, Leverage: 1, MaximumNotional: null));
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(markPrice: 100m),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(markPrice: 100m), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "MAX_ESTIMATED_NOTIONAL",
-            result.Code);
+        Assert.Equal("MAX_ESTIMATED_NOTIONAL", result.Code);
     }
 
     [Fact]
     public async Task EvaluateOpenAsync_WhenAllChecksPass_ShouldAllow()
     {
-        var reservations =
-            new InMemoryRiskAdmissionReservationStore();
+        var reservations = new InMemoryRiskAdmissionReservationStore();
 
-        var sut = CreateSut(
-            reservations: reservations);
+        var sut = CreateSut(reservations: reservations);
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
-
+        var result = await sut.EvaluateOpenAsync(Context(), default);
+        
         Assert.True(result.Allowed);
 
         var active = reservations.GetActive(Now);
-
         Assert.Single(active);
 
         var reservation = active.Single();
-
-        Assert.Equal(
-            "BOT8012",
-            reservation.BotName);
-
-        Assert.Equal(
-            "BTCUSDC",
-            reservation.Symbol);
-
-        Assert.Equal(
-            PositionSide.Long,
-            reservation.Side);
-
-        Assert.Equal(
-            1m,
-            reservation.Quantity);
-
-        Assert.Equal(
-            100m,
-            reservation.Notional);
+        Assert.Equal("BOT8012", reservation.BotName);
+        Assert.Equal("BTCUSDC", reservation.Symbol);
+        Assert.Equal(PositionSide.Long, reservation.Side);
+        Assert.Equal(1m, reservation.Quantity);
+        Assert.Equal(100m, reservation.Notional);
     }
 
     [Fact]
     public async Task EvaluateOpenAsync_WhenOrderSizeIsMissing_ShouldBlock()
     {
-        var sut = CreateSut(
-            sizingProvider:
-                new NullOrderSizingProvider());
+        var sut = CreateSut(sizingProvider: new NullOrderSizingProvider());
 
-        var result = await sut.EvaluateOpenAsync(
-            Context(),
-            default);
+        var result = await sut.EvaluateOpenAsync(Context(), default);
 
         Assert.False(result.Allowed);
-        Assert.Equal(
-            "ORDER_SIZE_UNKNOWN",
-            result.Code);
+        Assert.Equal("ORDER_SIZE_UNKNOWN", result.Code);
     }
 
     private static CentralRiskManager CreateSut(
-    CentralRiskOptions? options = null,
-    PortfolioSnapshot? portfolio = null,
-    RiskOrderSize? orderSize = null,
-    RiskStateSnapshot? riskState = null,
-    IRiskAdmissionReservationStore? reservations = null,
-    IRiskOrderSizingProvider? sizingProvider = null)
+        CentralRiskOptions? options = null,
+        PortfolioSnapshot? portfolio = null,
+        RiskOrderSize? orderSize = null,
+        RiskStateSnapshot? riskState = null,
+        IRiskAdmissionReservationStore? reservations = null,
+        IRiskOrderSizingProvider? sizingProvider = null)
     {
         options ??= DefaultOptions();
         portfolio ??= EmptyPortfolio();
 
-        sizingProvider ??=
-            new OrderSizingProvider(
-                orderSize ??
-                new RiskOrderSize(
-                    Quantity: 1m,
-                    Leverage: 1,
-                    MaximumNotional: null));
+        sizingProvider ??= new OrderSizingProvider(orderSize ?? new RiskOrderSize(Quantity: 1m, Leverage: 1, MaximumNotional: null));
 
         return new CentralRiskManager(
             Options.Create(options),
@@ -429,9 +331,7 @@ public sealed class CentralRiskManagerTests
             Task.FromResult(snapshot);
 
         public void Invalidate()
-        {
-            throw new NotImplementedException();
-        }
+        {}
     }
 
     private sealed class OrderSizingProvider(

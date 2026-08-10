@@ -1,4 +1,5 @@
 namespace TradingSystem.Binance.Execution.Models;
+
 public static class BinanceClientOrderId
 {
     public static string NewShortId() => Guid.NewGuid().ToString("N")[..8];

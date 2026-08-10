@@ -1,205 +1,109 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8016.Configuration;
 using StrategyService.Bots.Bot8016.Models;
-using TradingSystem.Application.Engine.Contracts;
-using TradingSystem.Application.Positions.Contracts;
-using TradingSystem.BotRuntime.Configuration;
-using TradingSystem.BotRuntime.Configuration.Contracts;
-using TradingSystem.BotRuntime.Runtime.Contracts;
-using TradingSystem.PaperTrading.Contracts;
-using TradingSystem.PaperTrading.Executor;
-using TradingSystem.PaperTrading.Models.Enums;
+using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Domain.Signals;
 
 namespace StrategyService.Bots.Bot8016;
 
 public sealed class Bot8016EntryCoordinator(
     IOptions<Bot8016Options> options,
     Bot8016EntrySignalEvaluator evaluator,
-    Bot8016OrderExecutionService liveExecution,
-    IPositionStore livePositionStore,
-    IPaperTradingStore paperTradingStore,
-    PaperTradeExecutor paperExecutor,
-    IBotRuntimeConfigurationProvider runtimeConfigurations,
-    IBotRuntimeStateProvider runtimeStates,
-    ITradingOperationLockProvider operationLocks,
-    TelegramNotificationService telegram,
+    Bot8016SignalContextStore signalContexts,
+    ITradingSignalHandler handler,
     ILogger<Bot8016EntryCoordinator> logger)
 {
     private readonly Bot8016Options _options = options.Value;
 
-    public async Task ProcessAsync(
-        Bot8016Candle candle,
-        Bot8016IndicatorSnapshot indicator,
-        CancellationToken cancellationToken)
+    public async Task ProcessAsync(Bot8016Candle candle, Bot8016IndicatorSnapshot indicator, CancellationToken cancellationToken)
     {
-        var runtimeState = await runtimeStates.GetRequiredAsync(_options.BotName, cancellationToken);
-        if (!runtimeState.AcceptsNewSignals)
-        {
-            logger.LogInformation(
-                "BOT8016 entry blocked by runtime state. Status = {Status}, ExecutionEnabled = {ExecutionEnabled}, Reason = {Reason}",
-                runtimeState.Status, runtimeState.ExecutionEnabled, runtimeState.Reason);
+        var entrySignal = evaluator.Evaluate(candle, indicator);
+        if (entrySignal is null)
             return;
-        }
 
-        var runtimeConfiguration = await runtimeConfigurations.GetAsync(_options.BotName, cancellationToken);
-        if (runtimeConfiguration is null)
+        var signalId = BuildDeterministicSignalId(entrySignal);
+        var generatedAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(candle.CloseTime).UtcDateTime;
+        var signal = new TradeSignal
         {
-            logger.LogWarning("BOT8016 entry blocked because runtime configuration was not found.");
-            return;
-        }
+            SignalId = signalId,
+            BotName = _options.BotName,
+            Symbol = candle.Symbol,
+            Side = entrySignal.Side,
+            Source = "alligator",
+            GeneratedAtUtc = generatedAtUtc,
+            SuggestedPrice = candle.Close,
+            Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["reason"] = entrySignal.Reason,
+                ["interval"] = candle.Interval,
+                ["candleOpenTimeUtc"] = DateTimeOffset.FromUnixTimeMilliseconds(candle.OpenTime).UtcDateTime.ToString("O"),
+                ["candleCloseTimeUtc"] = generatedAtUtc.ToString("O"),
+                ["candleHigh"] = candle.High.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["candleLow"] = candle.Low.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["jaw"] = indicator.Jaw.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["teeth"] = indicator.Teeth.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["lips"] = indicator.Lips.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["sma200"] = indicator.Sma200.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }
+        };
 
-        if (!runtimeConfiguration.Symbol.Equals(candle.Symbol, StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogWarning(
-                "BOT8016 entry blocked because the candle symbol does not match runtime configuration. CandleSymbol = {CandleSymbol}, ConfiguredSymbol = {ConfiguredSymbol}",
-                candle.Symbol, runtimeConfiguration.Symbol);
-            return;
-        }
-
-        logger.LogInformation(
-            "BOT8016 evaluating entry. Environment = {Environment}, Symbol = {Symbol}, Interval = {Interval}, Open = {Open}, High = {High}, Low = {Low}, Close = {Close}, Jaw = {Jaw}, Teeth = {Teeth}, Lips = {Lips}, SMA200 = {Sma200}",
-            runtimeConfiguration.Environment, candle.Symbol, candle.Interval, candle.Open, candle.High, candle.Low, candle.Close,
-            indicator.Jaw, indicator.Teeth, indicator.Lips, indicator.Sma200);
-
-        var signal = evaluator.Evaluate(candle, indicator);
-        if (signal is null)
-        {
-            logger.LogInformation(
-                "BOT8016 produced no entry signal. CandleRange = {CandleRange}, MinimumRange = {MinimumRange}, UseMa200Filter = {UseMa200Filter}, EnableLong = {EnableLong}, EnableShort = {EnableShort}",
-                candle.High - candle.Low, _options.MinimumSignalCandleRange, _options.UseMa200Filter,
-                _options.EnableLong, _options.EnableShort);
-            return;
-        }
-
-        logger.LogInformation(
-            "BOT8016 entry signal generated. Side = {Side}, Reason = {Reason}, CandleCloseTime = {CandleCloseTime}, Environment = {Environment}",
-            signal.Side, signal.Reason, candle.CloseTime, runtimeConfiguration.Environment);
-
-        await using var operationLock = await operationLocks.TryAcquireAsync(
-            _options.BotName,
-            runtimeConfiguration.Symbol,
-            signal.Side,
-            TimeSpan.FromSeconds(30),
-            cancellationToken);
-
-        if (operationLock is null)
-        {
-            logger.LogInformation("BOT8016 entry skipped because another entry is in progress. Side = {Side}", signal.Side);
-            return;
-        }
-
-        if (IsPaper(runtimeConfiguration))
-        {
-            await ProcessPaperEntryAsync(signal, runtimeConfiguration, cancellationToken);
-            return;
-        }
-
-        await ProcessLiveEntryAsync(signal, runtimeConfiguration, cancellationToken);
-    }
-
-    private async Task ProcessPaperEntryAsync(Bot8016EntrySignal signal, BotRuntimeConfiguration runtimeConfiguration, CancellationToken cancellationToken)
-    {
-        var openPaperPositions = await paperTradingStore.QueryAsync(
-            _options.BotName,
-            runtimeConfiguration.Symbol,
-            PaperPositionStatus.Open,
-            0,
-            500,
-            cancellationToken);
-
-        var sameSideCount = openPaperPositions.Count(position => position.Side == signal.Side);
-        var sideLimit = runtimeConfiguration.OrderSideLimit ?? _options.PositionSideLimit;
-
-        if (sameSideCount >= sideLimit)
-        {
-            logger.LogInformation("BOT8016 paper signal blocked by side limit. Side = {Side}, Count = {Count}, Limit = {Limit}", signal.Side, sameSideCount, sideLimit);
-            
-            return;
-        }
-
-        var result = await paperExecutor.OpenAsync(
-            _options.BotName,
-            runtimeConfiguration.Symbol,
-            signal.Side,
-            "alligator",
-            cancellationToken);
-
-        if (!result.Succeeded)
-        {
-            logger.LogWarning(
-                result.Exception,
-                "BOT8016 paper execution failed. Side = {Side}, Reason = {Reason}",
-                signal.Side, result.Reason);
-            return;
-        }
-
-        logger.LogInformation(
-            "BOT8016 paper position opened. ShortId = {ShortId}, Side = {Side}, Reason = {Reason}",
-            result.ShortId, signal.Side, result.Reason);
-
+        signalContexts.Set(signalId, entrySignal);
         try
         {
-            await telegram.SendAsync(
-                $"🧪 {_options.BotName} PAPER opened {signal.Side}" +
-                $"ID: {result.ShortId}" +
-                $"Symbol: {runtimeConfiguration.Symbol}" +
-                $"Signal reason: {signal.Reason}",
-                cancellationToken);
+            await HandleWithTransientRetryAsync(signal, cancellationToken);
         }
-        catch (Exception exception)
+        finally
         {
-            logger.LogWarning(
-                exception,
-                "BOT8016 paper position was opened, but Telegram notification failed. ShortId = {ShortId}",
-                result.ShortId);
+            signalContexts.Remove(signalId);
         }
     }
 
-    private async Task ProcessLiveEntryAsync(
-        Bot8016EntrySignal signal,
-        BotRuntimeConfiguration runtimeConfiguration,
-        CancellationToken cancellationToken)
+    private async Task HandleWithTransientRetryAsync(TradeSignal signal, CancellationToken ct)
     {
-        var positions = await livePositionStore.GetAllAsync(_options.BotName, cancellationToken);
-        var sameSideCount = positions.Count(position => !position.Closed && position.Side == signal.Side);
-        var sideLimit = runtimeConfiguration.OrderSideLimit ?? _options.PositionSideLimit;
-
-        if (sameSideCount >= sideLimit)
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        var attempt = 0;
+        while (true)
         {
-            logger.LogInformation(
-                "BOT8016 live signal blocked by side limit. Side = {Side}, Count = {Count}, Limit = {Limit}",
-                signal.Side, sameSideCount, sideLimit);
-            return;
-        }
-
-        logger.LogWarning(
-            "BOT8016 is invoking Binance execution. Environment = {Environment}, Bot = {BotName}, Symbol = {Symbol}, Side = {Side}",
-            runtimeConfiguration.Environment, _options.BotName, runtimeConfiguration.Symbol, signal.Side);
-
-        var position = await liveExecution.OpenAsync(signal, cancellationToken);
-        await livePositionStore.SaveAsync(position, cancellationToken);
-
-        logger.LogInformation(
-            "BOT8016 live position opened and saved. ShortId = {ShortId}, Side = {Side}, EntryPrice = {EntryPrice}, StopLoss = {StopLoss}, TakeProfit = {TakeProfit}",
-            position.ShortId, position.Side, position.EntryPrice, position.SlPrice, position.TpPrice);
-
-        try
-        {
-            await telegram.SendAsync(
-                $"🚀 {_options.BotName} opened {position.Side}" +
-                $"ID: {position.ShortId} Entry: { position.EntryPrice} SL: { position.SlPrice} TP: { position.TpPrice}" +
-                $"Signal H/L: {position.SignalCandleHigh}/{position.SignalCandleLow}",
-                cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "BOT8016 live position was opened and saved, but Telegram notification failed. ShortId = {ShortId}",
-                position.ShortId);
+            ct.ThrowIfCancellationRequested();
+            attempt++;
+            try
+            {
+                _ = await handler.HandleAsync(signal, ct);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                    throw;
+                var delay = TimeSpan.FromSeconds(Math.Min(attempt, 5));
+                if (delay > remaining)
+                    delay = remaining;
+                logger.LogWarning(exception,
+                    "BOT8016 common trading pipeline hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.",
+                    signal.SignalId, attempt, delay);
+                await Task.Delay(delay, ct);
+            }
         }
     }
 
-    private static bool IsPaper(BotRuntimeConfiguration configuration) =>
-        configuration.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase);
+    private string BuildDeterministicSignalId(Bot8016EntrySignal signal)
+    {
+        var identity = string.Join('|',
+            _options.BotName.Trim().ToUpperInvariant(),
+            _options.StrategyVersion.Trim(),
+            signal.Candle.Symbol.Trim().ToUpperInvariant(),
+            signal.Candle.Interval.Trim().ToUpperInvariant(),
+            signal.Candle.OpenTime,
+            signal.Candle.CloseTime,
+            signal.Side.ToString().ToUpperInvariant());
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
+        return Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant();
+    }
 }

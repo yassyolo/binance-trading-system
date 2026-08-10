@@ -1,6 +1,3 @@
-using TradingSystem.Application.Positions.Models;
-using TradingSystem.Domain.Signals;
-
 namespace TradingSystem.Application.Risk.Models;
 
 public sealed record RiskStateSnapshot(
