@@ -57,9 +57,9 @@ public sealed class SafeBinanceOrderService(
             return false;
 
         var openOrders = await orders.GetOpenOrdersAsync(symbol, ct);
-        return !openOrders.Any(order =>
-            (!string.IsNullOrWhiteSpace(orderId) && order.OrderId == orderId) ||
-            (!string.IsNullOrWhiteSpace(clientOrderId) && order.ClientOrderId == clientOrderId));
+        return !openOrders.Any(o =>
+            (!string.IsNullOrWhiteSpace(orderId) && o.OrderId == orderId) ||
+            (!string.IsNullOrWhiteSpace(clientOrderId) && o.ClientOrderId == clientOrderId));
     }
 
     public async Task<bool> VerifyAlgoOrderAbsentAsync(string symbol, string? algoOrderId, string? clientAlgoId, CancellationToken ct)
@@ -68,8 +68,8 @@ public sealed class SafeBinanceOrderService(
             return false;
 
         var openOrders = await orders.GetOpenAlgoOrdersAsync(symbol, ct);
-        return !openOrders.Any(order =>
-            (!string.IsNullOrWhiteSpace(algoOrderId) && order.AlgoOrderId == algoOrderId) ||
-            (!string.IsNullOrWhiteSpace(clientAlgoId) && order.ClientAlgoId == clientAlgoId));
+        return !openOrders.Any(o =>
+            (!string.IsNullOrWhiteSpace(algoOrderId) && o.AlgoOrderId == algoOrderId) ||
+            (!string.IsNullOrWhiteSpace(clientAlgoId) && o.ClientAlgoId == clientAlgoId));
     }
 }

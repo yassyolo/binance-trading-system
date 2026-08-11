@@ -185,6 +185,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
             throw new BinanceApiException(response.StatusCode, body, operation);
+       
         return body;
     }
 
@@ -195,7 +196,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     private static string BuildQueryString(IEnumerable<KeyValuePair<string, string>> parameters)
-        => string.Join("&", parameters.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+        => string.Join("&", parameters.OrderBy(p => p.Key, StringComparer.Ordinal)
             .Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
 
     private static string NormalizeSymbol(string symbol)
@@ -214,17 +215,80 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         => !element.TryGetProperty(name, out var value) ? string.Empty : value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
     
     private static decimal NumberValue(JsonElement element, string name) 
-    { if (!element.TryGetProperty(name, out var value)) return 0; if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number; return decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number) ? number : 0; }
+    { 
+        if (!element.TryGetProperty(name, out var value)) 
+            return 0; 
+        
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) 
+            return number; 
+        
+        return decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number) 
+            ? number : 0; 
+    }
     
     private static long? LongValue(JsonElement element, string name) 
-    { if (!element.TryGetProperty(name, out var value)) return null; if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number; return long.TryParse(value.GetString(), out number) ? number : null; }
+    { 
+        if (!element.TryGetProperty(name, out var value)) 
+            return null; 
+        
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) 
+            return number; 
+        
+        return long.TryParse(value.GetString(), out number) 
+            ? number : null; 
+    }
     
     private static DateTime UnixTime(long? milliseconds) 
         => milliseconds is > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds.Value).UtcDateTime : DateTime.UnixEpoch;
     
     private static BinanceOrderResult ParseOrder(string json) 
-    { using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientOrderId"), OrderId = FlexibleString(root, "orderId"), Status = StringValue(root, "status"), AveragePrice = NumberValue(root, "avgPrice"), ExecutedQuantity = NumberValue(root, "executedQty"), CumulativeQuoteQuantity = NumberValue(root, "cumQuote") }; }
+    { 
+        using var document = JsonDocument.Parse(json); 
+        var root = document.RootElement; 
+        
+        return new BinanceOrderResult 
+        { 
+            Symbol = StringValue(root, "symbol"), 
+            ClientOrderId = StringValue(root, "clientOrderId"), 
+            OrderId = FlexibleString(root, "orderId"), 
+            Status = StringValue(root, "status"), 
+            AveragePrice = NumberValue(root, "avgPrice"), 
+            ExecutedQuantity = NumberValue(root, "executedQty"),
+            CumulativeQuoteQuantity = NumberValue(root, "cumQuote")
+        }; 
+    }
     
-    private static BinanceAlgoOrderResult ParseAlgo(string json) {
-        using var document = JsonDocument.Parse(json); var root = document.RootElement; return new BinanceAlgoOrderResult { Symbol = StringValue(root, "symbol"), ClientOrderId = StringValue(root, "clientAlgoId"), AlgoOrderId = FlexibleString(root, "algoId"), Status = StringValue(root, "status") }; }
+    private static BinanceAlgoOrderResult ParseAlgo(string json) 
+    {
+        using var document = JsonDocument.Parse(json); 
+        var root = document.RootElement; 
+        
+        return new BinanceAlgoOrderResult 
+        { 
+            Symbol = StringValue(root, "symbol"), 
+            ClientOrderId = StringValue(root, "clientAlgoId"), 
+            AlgoOrderId = FlexibleString(root, "algoId"), 
+            Status = StringValue(root, "status") 
+        };
+    }
+
+    public async Task<decimal> GetMarkPriceAsync(
+    string symbol,
+    CancellationToken ct)
+    {
+        var normalizedSymbol = NormalizeSymbol(symbol);
+
+        using var document = JsonDocument.Parse(
+            await SendUnsignedAsync(
+                "fapi/v1/premiumIndex",
+                new()
+                {
+                    ["symbol"] = normalizedSymbol
+                },
+                ct));
+
+        return NumberValue(
+            document.RootElement,
+            "markPrice");
+    }
 }

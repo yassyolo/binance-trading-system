@@ -30,4 +30,8 @@ public interface IBinanceFuturesOrderClient
     Task SetLeverageAsync(string symbol,  int leverage,  CancellationToken ct);
     
     Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(string symbol,  CancellationToken ct);
+
+    Task<decimal> GetMarkPriceAsync(
+    string symbol,
+    CancellationToken ct);
 }
