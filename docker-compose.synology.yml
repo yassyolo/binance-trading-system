@@ -1,0 +1,214 @@
+name: ${COMPOSE_PROJECT_NAME:-binance-trading}
+
+x-worker-common: &worker-common
+  restart: unless-stopped
+  init: true
+  networks:
+    - trading-net
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+x-trading-env: &trading-env
+  DOTNET_ENVIRONMENT: Production
+  Redis__ConnectionString: redis:6379
+  Redis__AbortOnConnectFail: "false"
+  ConnectionStrings__TradingDatabase: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+  TradingHistory__ConnectionStringName: TradingDatabase
+  ServiceHeartbeat__Environment: ${SERVICE_ENVIRONMENT:-SynologyDemo}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trading-net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trading-net
+
+
+  market-data:
+    <<: *worker-common
+    build:
+      context: .
+      dockerfile: src/MarketDataService/Dockerfile
+    environment:
+      <<: *trading-env
+      MarketData__BinanceWebSocketBaseUrl: wss://fstream.binance.com/market/stream
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  indicators:
+    <<: *worker-common
+    build:
+      context: .
+      dockerfile: src/IndicatorServices/Dockerfile
+    environment:
+      <<: *trading-env
+      BinanceFutures__BaseUrl: ${BINANCE_FUTURES_BASE_URL}
+      BinanceFutures__ApiKey: ""
+      BinanceFutures__SecretKey: ""
+      BinanceFutures__RequireSignedOperations: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  strategy:
+    <<: *worker-common
+    build:
+      context: .
+      dockerfile: src/StrategyService/Dockerfile
+    environment:
+      <<: *trading-env
+      TradingEnvironment__EnvironmentName: ${TRADING_ENVIRONMENT:-Paper}
+      BinanceFutures__BaseUrl: ${BINANCE_FUTURES_BASE_URL}
+      BinanceFutures__ApiKey: ${BINANCE_API_KEY}
+      BinanceFutures__SecretKey: ${BINANCE_SECRET_KEY}
+      BinanceFutures__RequireSignedOperations: "true"
+      Telegram__Enabled: ${TELEGRAM_ENABLED:-false}
+      Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}
+      Prometheus__Enabled: "true"
+      Prometheus__Port: 9464
+    ports:
+      - "${PROMETHEUS_PORT:-19464}:9464"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  user-stream:
+    <<: *worker-common
+    build:
+      context: .
+      dockerfile: src/UserStreamService/Dockerfile
+    environment:
+      <<: *trading-env
+      BinanceFutures__BaseUrl: ${BINANCE_FUTURES_BASE_URL}
+      BinanceFutures__ApiKey: ${BINANCE_API_KEY}
+      BinanceFutures__SecretKey: ${BINANCE_SECRET_KEY}
+      BinanceFutures__RequireSignedOperations: "true"
+      BinanceUserStream__RestBaseUrl: ${BINANCE_USER_STREAM_REST_URL}
+      BinanceUserStream__WebSocketBaseUrl: ${BINANCE_USER_STREAM_WS_URL}
+      BinanceUserStream__ApiKey: ${BINANCE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  jobs-worker:
+    <<: *worker-common
+    build:
+      context: .
+      dockerfile: src/TradingSystem.Jobs.Worker/Dockerfile
+    environment:
+      <<: *trading-env
+      ConnectionStrings__TradingHistory: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      TradingHistory__ConnectionStringName: TradingHistory
+      HistoricalDataIngestion__Environment: Demo
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard-api:
+    restart: unless-stopped
+    init: true
+    build:
+      context: .
+      dockerfile: src/TradingSystem.Dashboard.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__TradingHistory: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      TradingHistory__ConnectionStringName: TradingHistory
+      Authentication__SigningKey: ${DASHBOARD_SIGNING_KEY}
+      Cors__Origins__0: ${DASHBOARD_ORIGIN}
+      ServiceHeartbeat__Environment: ${SERVICE_ENVIRONMENT:-SynologyDemo}
+      Deployment__UseHttpsRedirection: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - trading-net
+
+  dashboard-web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: web/TradingSystem.Dashboard.Web/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    ports:
+      - "${DASHBOARD_WEB_PORT:-18080}:8080"
+    depends_on:
+      dashboard-api:
+        condition: service_healthy
+    networks:
+      - trading-net
+
+  tradingview-webhook:
+    restart: unless-stopped
+    init: true
+    build:
+      context: .
+      dockerfile: src/TradingViewWebhookService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Redis__ConnectionString: redis:6379
+      Redis__AbortOnConnectFail: "false"
+      TradingView__Enabled: "true"
+      TradingView__Secret: ${TRADINGVIEW_SECRET}
+    ports:
+      - "${TRADINGVIEW_WEBHOOK_PORT:-18081}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-net
+
+networks:
+  trading-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

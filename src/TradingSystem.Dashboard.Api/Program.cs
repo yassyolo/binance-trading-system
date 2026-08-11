@@ -19,7 +19,9 @@ app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
-    app.UseHttpsRedirection();
+
+    if (builder.Configuration.GetValue("Deployment:UseHttpsRedirection", true))
+        app.UseHttpsRedirection();
 }
 
 app.UseExceptionHandler();
