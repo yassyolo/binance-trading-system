@@ -74,6 +74,13 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
   const mutation = useSendBotCommand(botName)
   const error = mutation.error instanceof ApiError ? mutation.error : null
 
+  function resetDialog() {
+    setPending(null)
+    setReason('')
+    setCancelOpenOrders(false)
+    setCloseOpenPositions(false)
+  }
+
   function execute() {
     if (!pending || !reason.trim()) return
 
@@ -87,12 +94,7 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
         positionId: null,
       },
       {
-        onSuccess: () => {
-          setPending(null)
-          setReason('')
-          setCancelOpenOrders(false)
-          setCloseOpenPositions(false)
-        },
+        onSuccess: resetDialog,
       },
     )
   }
@@ -111,7 +113,7 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
           <ShieldAlert size={18} className="text-[var(--color-text-muted)]" />
         </div>
 
-        {error && (
+        {error && !pending && (
           <div className="mt-5">
             <ErrorState title="Command failed" description={error.message} />
           </div>
@@ -125,6 +127,9 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
               leftIcon={action.icon}
               onClick={() => {
                 mutation.reset()
+                setReason('')
+                setCancelOpenOrders(false)
+                setCloseOpenPositions(false)
                 setPending(action)
               }}
             >
@@ -141,15 +146,18 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
         confirmLabel={pending?.label ?? 'Confirm'}
         dangerous={pending?.dangerous}
         busy={mutation.isPending}
+        confirmDisabled={!reason.trim()}
         onClose={() => {
-          if (!mutation.isPending) setPending(null)
+          if (!mutation.isPending) resetDialog()
         }}
         onConfirm={execute}
-      />
+      >
+        <div>
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium text-[var(--color-text-secondary)]">
+              Reason
+            </span>
 
-      {pending && (
-        <div className="fixed inset-0 z-[49] pointer-events-none">
-          <div className="pointer-events-auto fixed left-1/2 top-[calc(50%+105px)] z-[51] w-[432px] -translate-x-1/2">
             <input
               autoFocus
               value={reason}
@@ -157,34 +165,40 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
               placeholder="Required command reason"
               className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 text-sm outline-none focus:border-[#454954]"
             />
+          </label>
 
-            {(pending.command === botCommandValues.Stop ||
-              pending.command === botCommandValues.EmergencyStop) && (
-              <div className="mt-3 flex gap-5 text-xs text-[var(--color-text-secondary)]">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={cancelOpenOrders}
-                    onChange={(event) => setCancelOpenOrders(event.target.checked)}
-                    className="accent-white"
-                  />
-                  Cancel open orders
-                </label>
+          {(pending?.command === botCommandValues.Stop ||
+            pending?.command === botCommandValues.EmergencyStop) && (
+            <div className="mt-4 flex flex-wrap gap-5 text-xs text-[var(--color-text-secondary)]">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={cancelOpenOrders}
+                  onChange={(event) => setCancelOpenOrders(event.target.checked)}
+                  className="accent-white"
+                />
+                Cancel open orders
+              </label>
 
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={closeOpenPositions}
-                    onChange={(event) => setCloseOpenPositions(event.target.checked)}
-                    className="accent-white"
-                  />
-                  Close open positions
-                </label>
-              </div>
-            )}
-          </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={closeOpenPositions}
+                  onChange={(event) => setCloseOpenPositions(event.target.checked)}
+                  className="accent-white"
+                />
+                Close open positions
+              </label>
+            </div>
+          )}
+
+          {error && (
+            <p className="mt-4 text-xs leading-5 text-[var(--color-danger)]">
+              {error.message}
+            </p>
+          )}
         </div>
-      )}
+      </ConfirmActionDialog>
     </>
   )
 }

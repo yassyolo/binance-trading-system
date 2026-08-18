@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
-using TradingSystem.Observability.Environment.Configuration;
+using TradingSystem.Observability.Configuration;
 
 namespace TradingSystem.Observability.Environment;
 
@@ -18,9 +18,7 @@ public sealed class TradingEnvironmentProvider(
             if (!string.IsNullOrWhiteSpace(environmentOverride))
                 return environmentOverride;
 
-            return string.IsNullOrWhiteSpace(_options.EnvironmentName)
-                ? "Paper"
-                : _options.EnvironmentName.Trim();
+            return string.IsNullOrWhiteSpace(_options.EnvironmentName) ? "Paper" : _options.EnvironmentName.Trim();
         }
     }
 }

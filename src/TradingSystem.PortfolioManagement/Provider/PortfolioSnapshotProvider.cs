@@ -116,8 +116,7 @@ public sealed class PortfolioSnapshotProvider(
             .OrderBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var botSnapshots = positions
-            .GroupBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
+        var botSnapshots = positions.GroupBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
             .Select(group => new BotExposureSnapshot(
                 group.Key,
                 group.Count(),
@@ -128,8 +127,7 @@ public sealed class PortfolioSnapshotProvider(
             .OrderBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        logger.LogInformation(
-            "Portfolio snapshot built. RedisPositions = {RedisPositions}, PaperPositions = {PaperPositions}, TotalPositions = {TotalPositions}, GrossNotional = {GrossNotional}, NetNotional = {NetNotional}, Equity = {Equity}",
+        logger.LogInformation("Portfolio snapshot built. RedisPositions = {RedisPositions}, PaperPositions = {PaperPositions}, TotalPositions = {TotalPositions}, GrossNotional = {GrossNotional}, NetNotional = {NetNotional}, Equity = {Equity}",
             redisPositions.Count,
             paperPositions.Count,
             positions.Length,
@@ -156,32 +154,26 @@ public sealed class PortfolioSnapshotProvider(
             botSnapshots);
     }
 
-    private async Task<IReadOnlyCollection<BotPosition>> LoadRedisPositionsAsync(
-        IReadOnlyCollection<string> botNames,
-        CancellationToken ct)
+    private async Task<IReadOnlyCollection<BotPosition>> LoadRedisPositionsAsync(IReadOnlyCollection<string> botNames, CancellationToken ct)
     {
         var tasks = botNames.Select(async botName =>
         {
             var positions = await positionStore.GetAllAsync(botName, ct);
-            return positions
-                .Where(x => !x.Closed && x.RemainingQuantity > 0)
-                .ToArray();
+            return positions.Where(x => !x.Closed && x.RemainingQuantity > 0).ToArray();
         });
 
         var positionsByBot = await Task.WhenAll(tasks);
         return positionsByBot.SelectMany(x => x).ToArray();
     }
 
-    private async Task<IReadOnlyDictionary<string, decimal>> LoadPricesAsync(
-        IReadOnlyCollection<string> symbols,
-        CancellationToken ct)
+    private async Task<IReadOnlyDictionary<string, decimal>> LoadPricesAsync(IReadOnlyCollection<string> symbols, CancellationToken ct)
     {
         if (symbols.Count == 0)
             return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
 
         var tasks = symbols.ToDictionary(
-            symbol => symbol,
-            symbol => marketPriceProvider.GetMarkPriceAsync(symbol, ct),
+            s => s,
+            s => marketPriceProvider.GetMarkPriceAsync(s, ct),
             StringComparer.OrdinalIgnoreCase);
 
         await Task.WhenAll(tasks.Values);
@@ -191,10 +183,7 @@ public sealed class PortfolioSnapshotProvider(
         {
             var price = await task;
             if (price <= 0)
-            {
-                throw new InvalidOperationException(
-                    $"Invalid mark price '{price}' for portfolio symbol '{symbol}'.");
-            }
+                throw new InvalidOperationException($"Invalid mark price '{price}' for portfolio s '{symbol}'.");
 
             prices[symbol] = price;
         }

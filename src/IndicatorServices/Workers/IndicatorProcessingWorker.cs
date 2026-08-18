@@ -55,12 +55,7 @@ public sealed class IndicatorProcessingWorker(
 					var expiryApplied = await redis.GetDatabase().KeyExpireAsync(stateKey, stateTtl);
 
 					if (expiryApplied)
-					{
-						logger.LogInformation(
-							"Indicator state TTL refreshed during startup. Key = {Key}, TTL = {Ttl}",
-							stateKey,
-							stateTtl);
-					}
+						logger.LogInformation("Indicator state TTL refreshed during startup. Key = {Key}, TTL = {Ttl}", stateKey, stateTtl);
 
 					logger.LogInformation("Indicator initialized. Indicator = {Indicator}, Symbol = {Symbol}, Interval = {Interval}, Count = {Count}", processor.Name, normalizedSymbol, normalizedInterval, closedCandles.Length);
 				}
@@ -68,10 +63,10 @@ public sealed class IndicatorProcessingWorker(
 		}
 
 		var subscriptions = _processors
-			.SelectMany(processor => processor.Symbols.SelectMany(symbol =>
-				processor.Intervals.Select(interval => (
-					Symbol: symbol.Trim().ToUpperInvariant(),
-					Interval: interval.Trim().ToLowerInvariant()))))
+			.SelectMany(processor => processor.Symbols.SelectMany(s =>
+				processor.Intervals.Select(i => (
+					Symbol: s.Trim().ToUpperInvariant(),
+					Interval: i.Trim().ToLowerInvariant()))))
 			.Distinct()
 			.ToArray();
 

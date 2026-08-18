@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MarketDataService.Configuration;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TradingSystem.Contracts.Klines;
@@ -10,7 +11,7 @@ namespace MarketDataService.Services;
 
 public sealed class KlinePublisher(
     IConnectionMultiplexer redis,
-    IOptions<Configuration.MarketDataOptions> options,
+    IOptions<MarketDataOptions> options,
     ILogger<KlinePublisher> logger)
 {
     private readonly IDatabase _database = redis.GetDatabase();

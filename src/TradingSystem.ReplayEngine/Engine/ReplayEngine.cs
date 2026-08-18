@@ -146,17 +146,22 @@ public sealed class ReplayEngine(
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Replay name is required.", nameof(request));
+        
         if (request.BatchSize is < 1 or > 1000)
             throw new ArgumentOutOfRangeException(nameof(request), "Replay batch size must be between 1 and 1000.");
+       
         if (request.FromGlobalPosition.HasValue && request.ToGlobalPosition.HasValue &&
             request.ToGlobalPosition < request.FromGlobalPosition)
             throw new ArgumentException("ToGlobalPosition cannot be before FromGlobalPosition.", nameof(request));
+       
         if (request.FromUtc.HasValue && request.ToUtc.HasValue && request.ToUtc <= request.FromUtc)
             throw new ArgumentException("ToUtc must be after FromUtc.", nameof(request));
+       
         if (request.Mode == ReplayMode.StrategyComparison &&
             (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId) ||
              string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
             throw new ArgumentException("Candidate strategy plugin id and version are required for strategy comparison.", nameof(request));
+       
         return request;
     }
 

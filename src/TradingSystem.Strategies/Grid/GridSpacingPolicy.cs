@@ -5,11 +5,7 @@ namespace TradingSystem.Strategies.Grid;
 
 public sealed class GridSpacingPolicy
 {
-    public PolicyDecision Evaluate(
-        PositionSide side,
-        decimal markPrice,
-        IReadOnlyCollection<GridPositionReference> positions,
-        GridSpacingParameters parameters)
+    public PolicyDecision Evaluate(PositionSide side, decimal markPrice, IReadOnlyCollection<GridPositionReference> positions, GridSpacingParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(positions);
         ArgumentNullException.ThrowIfNull(parameters);

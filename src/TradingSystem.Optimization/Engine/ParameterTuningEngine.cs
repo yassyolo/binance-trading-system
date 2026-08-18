@@ -16,6 +16,7 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
     {
         var trials  =  new List<ParameterTrial<TOptions>>();
         var sequence  =  0;
+        
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();

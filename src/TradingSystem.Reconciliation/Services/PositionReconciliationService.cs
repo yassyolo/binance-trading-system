@@ -163,7 +163,7 @@ public sealed class PositionReconciliationService(
 
 			if (!hasRemoteSidePosition && !hasRelatedOrder)
 			{
-				findings.Add(New(
+				findings.Add(ReconciliationFinding.New(
 					position,
 					ReconciliationFindingType.StaleLocalPosition,
 					ReconciliationSeverity.Warning,
@@ -176,7 +176,7 @@ public sealed class PositionReconciliationService(
 				!string.IsNullOrWhiteSpace(position.TpClientId) &&
 				!ordersByClientId.ContainsKey(position.TpClientId))
 			{
-				findings.Add(New(
+				findings.Add(ReconciliationFinding.New(
 					position,
 					ReconciliationFindingType.MissingTakeProfit,
 					ReconciliationSeverity.Critical,
@@ -190,7 +190,7 @@ public sealed class PositionReconciliationService(
 				!string.IsNullOrWhiteSpace(position.SlClientId) &&
 				!ordersByClientId.ContainsKey(position.SlClientId))
 			{
-				findings.Add(New(
+				findings.Add(ReconciliationFinding.New(
 					position,
 					ReconciliationFindingType.MissingStopLoss,
 					ReconciliationSeverity.Critical,
@@ -225,13 +225,11 @@ public sealed class PositionReconciliationService(
 		}
 	}
 
-	private async Task<int> ExecuteAllowedHealingActionsAsync(
-		IEnumerable<ReconciliationFinding> findings,
-		CancellationToken ct)
+	private async Task<int> ExecuteAllowedHealingActionsAsync(IEnumerable<ReconciliationFinding> findings, CancellationToken ct)
 	{
 		var healedCount = 0;
 
-		foreach (var finding in findings.Where(finding => finding.AutoHealAllowed))
+		foreach (var finding in findings.Where(f => f.AutoHealAllowed))
 		{
 			ct.ThrowIfCancellationRequested();
 
@@ -265,23 +263,4 @@ public sealed class PositionReconciliationService(
 				? clientOrderId[..7]
 				: "UNKNOWN";
 	}
-
-	private static ReconciliationFinding New(
-		BotPosition position,
-		ReconciliationFindingType type,
-		ReconciliationSeverity severity,
-		string details,
-		HealingActionType action,
-		bool autoHealAllowed)
-		=> new(
-			Guid.NewGuid(),
-			DateTime.UtcNow,
-			position.BotName,
-			position.Symbol,
-			position.ShortId,
-			type,
-			severity,
-			details,
-			action,
-			autoHealAllowed);
 }

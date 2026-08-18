@@ -4,9 +4,5 @@ namespace TradingSystem.PortfolioManagement.Performance;
 
 public interface IPortfolioPerformanceSource
 {
-    Task<PortfolioPerformanceSnapshot> GetAsync(
-        decimal currentUnrealizedPnl,
-        decimal startingEquity,
-        DateTime asOfUtc,
-        CancellationToken ct);
+    Task<PortfolioPerformanceSnapshot> GetAsync(decimal currentUnrealizedPnl, decimal startingEquity, DateTime asOfUtc, CancellationToken ct);
 }

@@ -46,8 +46,7 @@ public static class StrategyPluginLoader
             {
                 var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
                 
-                foreach (var type in GetLoadableTypes(assembly)
-                             .Where(t => !t.IsAbstract && typeof(IStrategyPluginModule).IsAssignableFrom(t)))
+                foreach (var type in GetLoadableTypes(assembly).Where(t => !t.IsAbstract && typeof(IStrategyPluginModule).IsAssignableFrom(t)))
                 {
                     if (Activator.CreateInstance(type) is not IStrategyPluginModule module)
                         throw new InvalidOperationException($"Could not create strategy plugin module '{type.FullName}'. A public parameterless constructor is required.");

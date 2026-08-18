@@ -8,8 +8,7 @@ public sealed class MarketDataOptions
 
     public string[] Intervals { get; set; } = ["1m"];
 
-    public string BinanceWebSocketBaseUrl { get; set; } =
-        "wss://fstream.binance.com/market/stream";
+    public string BinanceWebSocketBaseUrl { get; set; } = "wss://fstream.binance.com/market/stream";
 
     public int ReconnectDelaySeconds { get; set; } = 5;
 

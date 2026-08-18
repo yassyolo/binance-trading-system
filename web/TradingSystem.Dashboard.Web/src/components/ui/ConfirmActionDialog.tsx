@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { TriangleAlert, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
@@ -11,6 +12,8 @@ interface ConfirmActionDialogProps {
   confirmLabel: string
   dangerous?: boolean
   busy?: boolean
+  confirmDisabled?: boolean
+  children?: ReactNode
   onConfirm: () => void
   onClose: () => void
 }
@@ -22,6 +25,8 @@ export function ConfirmActionDialog({
   confirmLabel,
   dangerous = false,
   busy = false,
+  confirmDisabled = false,
+  children,
   onConfirm,
   onClose,
 }: ConfirmActionDialogProps) {
@@ -50,15 +55,39 @@ export function ConfirmActionDialog({
           <div className="grid size-10 place-items-center rounded-xl bg-[rgba(251,191,36,0.08)] text-[var(--color-warning)]">
             <TriangleAlert size={19} />
           </div>
-          <IconButton icon={<X size={17} />} label="Close dialog" onClick={onClose} disabled={busy} />
+
+          <IconButton
+            icon={<X size={17} />}
+            label="Close dialog"
+            onClick={onClose}
+            disabled={busy}
+          />
         </div>
 
-        <h2 id="confirmation-dialog-title" className="mt-6 text-lg font-semibold">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{description}</p>
+        <h2 id="confirmation-dialog-title" className="mt-6 text-lg font-semibold">
+          {title}
+        </h2>
+
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+          {description}
+        </p>
+
+        {children && (
+          <div className="mt-5">
+            {children}
+          </div>
+        )}
 
         <div className="mt-7 flex justify-end gap-2">
-          <Button onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant={dangerous ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy}>
+          <Button onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+
+          <Button
+            variant={dangerous ? 'danger' : 'primary'}
+            onClick={onConfirm}
+            disabled={busy || confirmDisabled}
+          >
             {busy ? 'Working…' : confirmLabel}
           </Button>
         </div>

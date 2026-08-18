@@ -16,10 +16,7 @@ public sealed class TradingViewSignalPublisher(
 {
     private readonly TradingViewWebhookOptions _options = options.Value;
 
-    public async Task<PublishResult> PublishAsync(
-        string botName,
-        TradingViewSignalRequest request,
-        CancellationToken ct)
+    public async Task<PublishResult> PublishAsync(string botName, TradingViewSignalRequest request, CancellationToken ct)
     {
         if (!_options.Enabled)
             return PublishResult.Rejected(503, "TradingView webhook ingress is disabled.");
@@ -42,9 +39,7 @@ public sealed class TradingViewSignalPublisher(
             : request.Symbol.Trim().ToUpperInvariant();
 
         if (!symbol.Equals(configuredSymbol, StringComparison.OrdinalIgnoreCase))
-            return PublishResult.Rejected(
-                400,
-                $"Symbol '{symbol}' is not allowed for {botName}. Expected '{configuredSymbol}'.");
+            return PublishResult.Rejected(400, $"Symbol '{symbol}' is not allowed for {botName}. Expected '{configuredSymbol}'.");
 
         var signalId = string.IsNullOrWhiteSpace(request.SignalId)
             ? Guid.NewGuid().ToString()
@@ -63,17 +58,9 @@ public sealed class TradingViewSignalPublisher(
             "TRADINGVIEW",
             generatedAtUtc);
 
-        await publisher.PublishAsync(
-            RedisChannels.StrategySignals,
-            message,
-            ct);
+        await publisher.PublishAsync(RedisChannels.StrategySignals, message, ct);
 
-        logger.LogInformation(
-            "TradingView signal published. SignalId = {SignalId}, Bot = {Bot}, Symbol = {Symbol}, Action = {Action}",
-            signalId,
-            botName,
-            symbol,
-            action);
+        logger.LogInformation("TradingView signal published. SignalId = {SignalId}, Bot = {Bot}, Symbol = {Symbol}, Action = {Action}", signalId, botName, symbol, action);
 
         return PublishResult.Accepted(
             new TradingViewSignalResponse(
@@ -113,17 +100,4 @@ public sealed class TradingViewSignalPublisher(
         return left.Length == right.Length &&
                CryptographicOperations.FixedTimeEquals(left, right);
     }
-}
-
-public sealed record PublishResult(
-    bool Succeeded,
-    int StatusCode,
-    string? Error,
-    TradingViewSignalResponse? Response)
-{
-    public static PublishResult Rejected(int statusCode, string error)
-        => new(false, statusCode, error, null);
-
-    public static PublishResult Accepted(TradingViewSignalResponse response)
-        => new(true, StatusCodes.Status202Accepted, null, response);
 }

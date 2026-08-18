@@ -10,4 +10,3 @@ public sealed record PaperPortfolioPosition(
     decimal Quantity,
     decimal EntryPrice,
     DateTime OpenedAtUtc);
-

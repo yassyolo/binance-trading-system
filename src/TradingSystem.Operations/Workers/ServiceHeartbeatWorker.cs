@@ -36,6 +36,7 @@ public sealed class ServiceHeartbeatWorker(
                         ["processId"] = Environment.ProcessId.ToString(),
                         ["machine"] = Environment.MachineName
                     };
+                    
                     await store.UpsertAsync(new ServiceHeartbeat(
                         settings.ServiceName,
                         _instanceId,

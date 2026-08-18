@@ -142,11 +142,7 @@ public sealed class PaperTradeExecutor(
         return await ClosePositionAtPriceAsync(position!, triggerPrice, reason, ct);
     }
 
-    private async Task<TradeExecutionResult> ClosePositionAtPriceAsync(
-        PaperTradingPosition position,
-        decimal marketPrice,
-        string reason,
-        CancellationToken ct)
+    private async Task<TradeExecutionResult> ClosePositionAtPriceAsync(PaperTradingPosition position, decimal marketPrice, string reason, CancellationToken ct)
     {
         var exitPrice = ApplySlippage(marketPrice, position.Side, opening: false);
         var exitFee = CalculateFee(exitPrice, position.Quantity);
@@ -240,9 +236,7 @@ public sealed class PaperTradeExecutor(
         }
     }
 
-    private async Task TryRecordPositionOpenedAsync(
-        PaperTradingPosition position,
-        CancellationToken ct)
+    private async Task TryRecordPositionOpenedAsync(PaperTradingPosition position, CancellationToken ct)
     {
         try
         {
@@ -336,16 +330,11 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception exception)
         {
-            logger.LogError(
-                exception,
-                "Paper position was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}",
-                position.BotName,
-                position.ShortId);
+            logger.LogError(exception, "Paper position was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
         }
     }
 
-    private static PositionHistoryRecord CreateOpenHistoryRecord(
-        PaperTradingPosition position)
+    private static PositionHistoryRecord CreateOpenHistoryRecord(PaperTradingPosition position)
     {
         return new PositionHistoryRecord(
             PositionId: ToHistoryPositionId(position.PositionId),
@@ -411,9 +400,7 @@ public sealed class PaperTradeExecutor(
             });
     }
 
-    private static TradeExecutionResult? ValidatePositionForClose(
-        PaperTradingPosition? position,
-        string shortId)
+    private static TradeExecutionResult? ValidatePositionForClose(PaperTradingPosition? position, string shortId)
     {
         if (position is null)
             return TradeExecutionResult.Failure($"Paper position {shortId} was not found.");
@@ -430,10 +417,7 @@ public sealed class PaperTradeExecutor(
         return null;
     }
 
-    private decimal ResolveTakeProfitPrice(
-        decimal entryPrice,
-        PositionSide side,
-        decimal? takeProfitDistance)
+    private decimal ResolveTakeProfitPrice(decimal entryPrice, PositionSide side, decimal? takeProfitDistance)
     {
         if (takeProfitDistance is > 0)
         {
@@ -445,31 +429,20 @@ public sealed class PaperTradeExecutor(
         return ApplyPercent(entryPrice, side, _options.DefaultTakeProfitPercent, favorable: true);
     }
 
-    internal decimal ApplySlippage(
-        decimal price,
-        PositionSide side,
-        bool opening)
+    internal decimal ApplySlippage(decimal price, PositionSide side, bool opening)
     {
         var slippageRate = _options.SlippagePercent / 100m;
-        var isBuyOperation = opening
-            ? side == PositionSide.Long
-            : side == PositionSide.Short;
+        var isBuyOperation = opening ? side == PositionSide.Long : side == PositionSide.Short;
 
         return isBuyOperation
             ? price * (1m + slippageRate)
             : price * (1m - slippageRate);
     }
 
-    internal decimal CalculateFee(
-        decimal price,
-        decimal quantity)
-    {
-        return price * quantity * (_options.CommissionPercent / 100m);
-    }
+    internal decimal CalculateFee(decimal price, decimal quantity)
+        => price * quantity * (_options.CommissionPercent / 100m);
 
-    internal static decimal CalculateGrossPnl(
-        PaperTradingPosition position,
-        decimal exitPrice)
+    internal static decimal CalculateGrossPnl(PaperTradingPosition position, decimal exitPrice)
     {
         return position.Side == PositionSide.Long
             ? (exitPrice - position.EntryPrice) * position.Quantity
@@ -493,19 +466,11 @@ public sealed class PaperTradeExecutor(
     }
 
     private static string NormalizeSource(string? source)
-    {
-        return string.IsNullOrWhiteSpace(source)
-            ? "internal"
-            : source;
-    }
+        => string.IsNullOrWhiteSpace(source) ? "internal" : source;
 
     private static string CreateShortId(DateTime openedAtUtc)
-    {
-        return $"P{openedAtUtc:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
-    }
+        => $"P{openedAtUtc:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
 
     private static string ToHistoryPositionId(Guid positionId)
-    {
-        return positionId.ToString("N");
-    }
+        => positionId.ToString("N");
 }

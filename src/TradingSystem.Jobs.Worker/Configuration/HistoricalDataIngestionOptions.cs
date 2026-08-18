@@ -18,4 +18,3 @@ public sealed record HistoricalDataIngestionOptions
     
     public int OverlapCandles { get; init; } = 3;
 }
-

@@ -30,7 +30,6 @@ builder.Services
     .Validate(x => x.ReceiveBufferSizeBytes >= 4096, "Receive buffer size must be at least 4096 bytes.")
     .ValidateOnStart();
 builder.Services.AddOptions<UserStreamServiceOptions>().Bind(builder.Configuration.GetSection(UserStreamServiceOptions.SectionName)).ValidateOnStart();
-
 builder.Services.AddSingleton<IValidateOptions<UserStreamServiceOptions>, UserStreamServiceOptionsValidator>();
 
 builder.Services.AddHttpClient<IBinanceListenKeyClient, BinanceListenKeyClient>();

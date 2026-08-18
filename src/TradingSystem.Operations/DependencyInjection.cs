@@ -10,15 +10,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddServiceHeartbeat(this IServiceCollection services, IConfiguration c, string serviceName)
     {
-        services
-       .AddOptions<ServiceHeartbeatOptions>()
-       .Bind(c.GetSection(ServiceHeartbeatOptions.SectionName))
-       .Configure(options => options.ServiceName = serviceName)
-       .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<ServiceHeartbeatOptions>,
-            ServiceHeartbeatOptionsValidator>();
+        services.AddOptions<ServiceHeartbeatOptions>().Bind(c.GetSection(ServiceHeartbeatOptions.SectionName)).Configure(opts => opts.ServiceName = serviceName).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ServiceHeartbeatOptions>, ServiceHeartbeatOptionsValidator>();
 
 
         services.AddHostedService<ServiceHeartbeatWorker>();
@@ -28,14 +21,9 @@ public static class DependencyInjection
     
     public static IServiceCollection AddAlertEngine(this IServiceCollection services, IConfiguration c)
     {
-        services
-        .AddOptions<AlertEngineOptions>()
-        .Bind(c.GetSection(AlertEngineOptions.SectionName))
-        .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<AlertEngineOptions>,
-            AlertEngineOptionsValidator>();
+        services.AddOptions<AlertEngineOptions>().Bind(c.GetSection(AlertEngineOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AlertEngineOptions>, AlertEngineOptionsValidator>();
+        
         services.AddHostedService<AlertEngineWorker>();
         
         return services;

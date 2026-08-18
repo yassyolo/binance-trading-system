@@ -14,10 +14,13 @@ export function getBots(signal?: AbortSignal) {
 }
 
 export function getBot(botName: string, signal?: AbortSignal) {
-  return apiRequest<BotConfigurationDto | null>(`/bots/${encodeURIComponent(botName)}`, {
-    method: 'GET',
-    signal,
-  })
+  return apiRequest<BotConfigurationDto | null>(
+    `/bots/${encodeURIComponent(botName)}`,
+    {
+      method: 'GET',
+      signal,
+    },
+  )
 }
 
 export function updateBotConfiguration(
@@ -38,6 +41,9 @@ export function sendBotCommand(botName: string, request: BotCommandRequest) {
     `/bots/${encodeURIComponent(botName)}/commands`,
     {
       method: 'POST',
+      headers: {
+        'X-Idempotency-Key': crypto.randomUUID(),
+      },
       body: JSON.stringify(request),
     },
   )

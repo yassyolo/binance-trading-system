@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using TradingSystem.Infrastructure;
 using TradingSystem.Redis;
 using TradingViewWebhookService.Configuration;
 using TradingViewWebhookService.Models;
@@ -8,18 +9,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 
-builder.Services
-    .AddOptions<TradingViewWebhookOptions>()
+builder.Services.AddOptions<TradingViewWebhookOptions>()
     .Bind(builder.Configuration.GetSection(TradingViewWebhookOptions.SectionName))
     .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<TradingViewWebhookOptions>, TradingViewWebhookOptionsValidator>();
 
-builder.Services.AddSingleton<
-    IValidateOptions<TradingViewWebhookOptions>,
-    TradingViewWebhookOptionsValidator>();
-
-builder.Services.AddTradingRedis(
-    builder.Configuration,
-    subscribeToSignals: false);
+builder.Services.AddTradingInfrastructure();
+builder.Services.AddTradingRedis(builder.Configuration, subscribeToSignals: false);
 
 builder.Services.AddSingleton<TradingViewSignalPublisher>();
 
@@ -33,26 +29,14 @@ app.MapGet("/health", () =>
         utc = DateTime.UtcNow
     }));
 
-app.MapPost(
-    "/api/v1/tradingview/{botName}",
-    async (
-        string botName,
-        TradingViewSignalRequest request,
-        TradingViewSignalPublisher publisher,
-        CancellationToken ct) =>
+app.MapPost("/api/v1/tradingview/{botName}", async (string botName, TradingViewSignalRequest request, TradingViewSignalPublisher publisher, CancellationToken ct) =>
     {
-        var result = await publisher.PublishAsync(
-            botName,
-            request,
-            ct);
+        var result = await publisher.PublishAsync(botName, request, ct);
 
         if (!result.Succeeded)
-            return Results.Json(
-                new { error = result.Error },
-                statusCode: result.StatusCode);
+            return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
 
-        return Results.Accepted(
-            value: result.Response);
+        return Results.Accepted(value: result.Response);
     });
 
 await app.RunAsync();

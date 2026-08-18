@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingSystem.Binance.UserStream.Contracts;
 using TradingSystem.Contracts.Messaging;

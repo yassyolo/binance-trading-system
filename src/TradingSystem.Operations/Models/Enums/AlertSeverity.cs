@@ -6,4 +6,3 @@ public enum AlertSeverity
     Warning,
     Critical 
 }
-

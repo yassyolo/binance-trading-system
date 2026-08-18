@@ -1,4 +1,4 @@
-﻿namespace TradingSystem.Observability.Environment.Configuration;
+﻿namespace TradingSystem.Observability.Configuration;
 
 public sealed class TradingEnvironmentOptions
 {

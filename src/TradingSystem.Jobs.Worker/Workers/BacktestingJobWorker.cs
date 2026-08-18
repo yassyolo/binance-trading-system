@@ -86,13 +86,9 @@ public sealed class BacktestingJobWorker(
 
             try
             {
-                var maximumAttempts = IsPermanent(exception)
-                    ? job.AttemptCount
-                    : settings.MaximumAttempts;
+                var maximumAttempts = IsPermanent(exception) ? job.AttemptCount : settings.MaximumAttempts;
 
-                var retrySeconds = Math.Min(
-                    300,
-                    Math.Pow(2, Math.Max(1, job.AttemptCount)));
+                var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
                 await queue.FailAsync(
                     job.JobId,

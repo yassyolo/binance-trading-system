@@ -31,10 +31,7 @@ public sealed class BacktestExecutionService(
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
 
-    public async Task<Guid> ExecuteAsync(
-        BacktestRequest request,
-        string interval,
-        CancellationToken ct)
+    public async Task<Guid> ExecuteAsync(BacktestRequest request, string interval, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.BotName);
@@ -47,39 +44,16 @@ public sealed class BacktestExecutionService(
         var fromUtc = NormalizeUtc(request.FromUtc);
         var toUtc = NormalizeUtc(request.ToUtc);
 
-        if (await market.HasGapsAsync(
-                request.Symbol,
-                interval,
-                fromUtc,
-                toUtc,
-                ct))
-        {
-            throw new HistoricalDataUnavailableException(
-                "Historical data contains unresolved candle gaps for the requested period.");
-        }
+        if (await market.HasGapsAsync(request.Symbol, interval, fromUtc, toUtc, ct))
+            throw new HistoricalDataUnavailableException("Historical data contains unresolved candle gaps for the requested period.");
 
-        var candles = await market.LoadCandlesAsync(
-            request.Symbol,
-            interval,
-            fromUtc,
-            toUtc,
-            ct);
-
+        var candles = await market.LoadCandlesAsync(request.Symbol, interval, fromUtc, toUtc, ct);
         if (candles.Count < 2)
-            throw new HistoricalDataUnavailableException(
-                "Historical candles are missing for the requested period.");
+            throw new HistoricalDataUnavailableException("Historical candles are missing for the requested period.");
 
-        var signals = string.Equals(
-            request.SignalSource,
-            "Internal",
-            StringComparison.OrdinalIgnoreCase)
+        var signals = string.Equals(request.SignalSource, "Internal", StringComparison.OrdinalIgnoreCase)
             ? new EmaCrossDemoSignalSource().Generate(candles)
-            : await signalStore.LoadAsync(
-                request.BotName,
-                request.Symbol,
-                fromUtc,
-                toUtc,
-                ct);
+            : await signalStore.LoadAsync(request.BotName, request.Symbol, fromUtc, toUtc, ct);
 
         if (signals.Count == 0)
             throw new HistoricalDataUnavailableException("No historical signals were found for the requested source and period.");
@@ -201,51 +175,32 @@ public sealed class BacktestExecutionService(
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        var mapped = BacktestPerformanceMapper.Map(
-            result,
-            version,
-            interval);
+        var mapped = BacktestPerformanceMapper.Map(result, version, interval);
 
-        await analytics.SaveCompletedBacktestAsync(
-            mapped.Run,
-            mapped.Snapshot,
-            mapped.Trades,
-            ct);
+        await analytics.SaveCompletedBacktestAsync(mapped.Run, mapped.Snapshot, mapped.Trades, ct);
 
         return mapped.Run.RunId;
     }
 
-    private static T ApplyOptions<T>(
-        T seed,
-        IReadOnlyDictionary<string, string> values)
+    private static T ApplyOptions<T>(T seed, IReadOnlyDictionary<string, string> values)
     {
         var json = JsonSerializer.SerializeToNode(seed)?.AsObject()
-            ?? throw new InvalidOperationException(
-                $"Could not serialize options of type {typeof(T).Name}.");
+            ?? throw new InvalidOperationException($"Could not serialize options of type {typeof(T).Name}.");
 
         foreach (var pair in values)
         {
             if (string.IsNullOrWhiteSpace(pair.Key))
                 continue;
 
-            var key = json
-                .Select(x => x.Key)
-                .FirstOrDefault(x =>
-                    x.Equals(
-                        pair.Key,
-                        StringComparison.OrdinalIgnoreCase));
-
+            var key = json.Select(x => x.Key).FirstOrDefault(x => x.Equals(pair.Key, StringComparison.OrdinalIgnoreCase));
             if (key is null)
                 continue;
 
             json[key] = JsonValue.Create(pair.Value);
         }
 
-        return JsonSerializer.Deserialize<T>(
-                   json.ToJsonString(),
-                   OptionJsonOptions)
-               ?? throw new InvalidOperationException(
-                   $"Could not deserialize options of type {typeof(T).Name}.");
+        return JsonSerializer.Deserialize<T>(json.ToJsonString(), OptionJsonOptions)
+               ?? throw new InvalidOperationException($"Could not deserialize options of type {typeof(T).Name}.");
     }
 
     private static DateTime NormalizeUtc(DateTime value) =>

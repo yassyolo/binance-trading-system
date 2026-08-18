@@ -98,11 +98,7 @@ public sealed class SignalGenerationCoordinator(
                 }
                 else
                 {
-                    logger.LogInformation(
-                        "Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}",
-                        signal.BotName,
-                        signal.Action,
-                        signal.Symbol);
+                    logger.LogInformation("Shadow signal recorded. Bot = {Bot} Side = {Side} Symbol = {Symbol}", signal.BotName, signal.Action, signal.Symbol);
                 }
             }
             catch
@@ -179,10 +175,7 @@ public sealed class SignalGenerationCoordinator(
         }
     }
 
-    private static string BuildDeterministicSignalId(
-        ITradingSignalGenerator generator,
-        MarketIndicatorSnapshot snapshot,
-        GeneratedTradingSignal signal)
+    private static string BuildDeterministicSignalId(ITradingSignalGenerator generator, MarketIndicatorSnapshot snapshot, GeneratedTradingSignal signal)
     {
         var identity = string.Join(
             '|',
@@ -198,10 +191,7 @@ public sealed class SignalGenerationCoordinator(
         return Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant();
     }
 
-    private static void ValidateGeneratedSignal(
-        ITradingSignalGenerator generator,
-        MarketIndicatorSnapshot snapshot,
-        GeneratedTradingSignal signal)
+    private static void ValidateGeneratedSignal(ITradingSignalGenerator generator, MarketIndicatorSnapshot snapshot, GeneratedTradingSignal signal)
     {
         if (!signal.BotName.Equals(generator.BotName, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Generator '{generator.BotName}' produced signal for bot '{signal.BotName}'.");

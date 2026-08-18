@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-binance-trading}
+﻿name: ${COMPOSE_PROJECT_NAME:-binance-trading}
 
 x-worker-common: &worker-common
   restart: unless-stopped
@@ -149,7 +149,7 @@ services:
       context: .
       dockerfile: src/TradingSystem.Dashboard.Api/Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__TradingHistory: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       TradingHistory__ConnectionStringName: TradingHistory
@@ -191,7 +191,7 @@ services:
       context: .
       dockerfile: src/TradingViewWebhookService/Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       Redis__ConnectionString: redis:6379
       Redis__AbortOnConnectFail: "false"
@@ -212,3 +212,4 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+
