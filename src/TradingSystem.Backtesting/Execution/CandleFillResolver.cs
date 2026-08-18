@@ -1,20 +1,24 @@
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Backtesting.Models;
-using TradingSystem.Backtesting.Execution.Models;
 using TradingSystem.Backtesting.Models.Enums;
 
 namespace TradingSystem.Backtesting.Execution;
 
 public sealed class CandleFillResolver
 {
-    public ProtectiveFill? Resolve(BacktestPosition position,  MarketCandle candle,  IntrabarConflictPolicy policy)
+    public ProtectiveFill? Resolve(BacktestPosition position, MarketCandle candle, IntrabarConflictPolicy policy)
     {
-        var stopHit  =  position.StopLoss.HasValue  &&  IsPriceTouched(position.StopLoss.Value,  position.Side,  isStop: true,  candle);
-        var takeHit  =  position.TakeProfit.HasValue  &&  IsPriceTouched(position.TakeProfit.Value,  position.Side,  isStop: false,  candle);
+        var stopHit = position.StopLoss.HasValue && IsPriceTouched(position.StopLoss.Value, position.Side, isStop: true,  candle);
+        var takeHit = position.TakeProfit.HasValue && IsPriceTouched(position.TakeProfit.Value, position.Side, isStop: false, candle);
 
-        if (!stopHit  &&  !takeHit) return null;
-        if (stopHit  &&  !takeHit) return new(ExitReason.StopLoss, position.StopLoss!.Value);
-        if (!stopHit  &&  takeHit) return new(ExitReason.TakeProfit, position.TakeProfit!.Value);
+        if (!stopHit && !takeHit) 
+            return null;
+       
+        if (stopHit && !takeHit) 
+            return new(ExitReason.StopLoss, position.StopLoss!.Value);
+        
+        if (!stopHit && takeHit) 
+            return new(ExitReason.TakeProfit, position.TakeProfit!.Value);
 
         return policy switch
         {
@@ -29,7 +33,12 @@ public sealed class CandleFillResolver
     private static bool IsPriceTouched(decimal price,  TradeSide side,  bool isStop,  MarketCandle candle)
     {
         if (side == TradeSide.Long)
-            return isStop ? candle.Low <= price : candle.High >= price;
-        return isStop ? candle.High >= price : candle.Low <= price;
+            return isStop 
+                ? candle.Low <= price 
+                : candle.High >= price;
+       
+        return isStop 
+            ? candle.High >= price 
+            : candle.Low <= price;
     }
 }
