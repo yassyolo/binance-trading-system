@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StrategyService.Runtime.Configuration;
 using System.Text.Json;
 using TradingSystem.Application.Execution.Contracts;
+using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.BotRuntime.Commands;
 using TradingSystem.BotRuntime.Commands.Models;
 using TradingSystem.BotRuntime.Commands.Models.Enums;
@@ -17,6 +18,7 @@ public sealed class BotCommandWorker(
     IBotRuntimeStateStore stateStore,
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
+    IPositionStore positionStore,
     IAuditLog auditLog,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotCommandWorker> logger)
@@ -30,7 +32,6 @@ public sealed class BotCommandWorker(
         if (!_options.Enabled)
         {
             logger.LogInformation("Bot command worker is disabled.");
-
             return;
         }
 
@@ -59,38 +60,38 @@ public sealed class BotCommandWorker(
         var commands = await queue.ClaimPendingAsync(
             _workerId,
             _options.CommandBatchSize,
-            TimeSpan.FromSeconds(Math.Max(10, _options.CommandProcessingTimeoutSeconds)), ct);
+            TimeSpan.FromSeconds(Math.Max(10, _options.CommandProcessingTimeoutSeconds)),
+            ct);
 
         foreach (var command in commands)
         {
             try
             {
                 await ProcessAsync(command, ct);
-
                 await queue.CompleteAsync(command.CommandId, _workerId, ct);
-
                 await TryAuditAsync(command, "Completed", null);
 
-                logger.LogInformation("Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}", command.CommandId, command.BotName, command.Command);
+                logger.LogInformation(
+                    "Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",
+                    command.CommandId,
+                    command.BotName,
+                    command.Command);
             }
             catch (UnsupportedBotCommandException exception)
             {
-                await queue.RejectAsync(
-                    command.CommandId,
-                    _workerId,
-                    exception.Message,
-                    ct);
-
+                await queue.RejectAsync(command.CommandId, _workerId, exception.Message, ct);
                 await TryAuditAsync(command, "Rejected", exception.Message);
 
-                logger.LogWarning("Bot command rejected. CommandId = {CommandId} Reason = {Reason}", command.CommandId, exception.Message);
+                logger.LogWarning(
+                    "Bot command rejected. CommandId = {CommandId} Reason = {Reason}",
+                    command.CommandId,
+                    exception.Message);
             }
             catch (Exception exception)
             {
                 var retryable =
                     !IsPermanentFailure(exception) &&
-                    command.AttemptCount <
-                    _options.MaximumCommandAttempts;
+                    command.AttemptCount < _options.MaximumCommandAttempts;
 
                 await queue.FailAsync(
                     command.CommandId,
@@ -111,17 +112,12 @@ public sealed class BotCommandWorker(
         }
     }
 
-    private async Task ProcessAsync(
-        BotCommand command,
-        CancellationToken ct)
+    private async Task ProcessAsync(BotCommand command, CancellationToken ct)
     {
         switch (command.Command)
         {
             case BotCommandType.ClosePosition:
-                await ProcessClosePositionAsync(
-                    command,
-                    ct);
-
+                await ProcessClosePositionAsync(command, ct);
                 return;
 
             case BotCommandType.CancelTakeProfit:
@@ -130,80 +126,123 @@ public sealed class BotCommandWorker(
                     $"Command '{command.Command}' requires a protected order-command handler which is not implemented yet.");
         }
 
-        await ProcessRuntimeStateCommandAsync(
-            command,
-            ct);
+        await ProcessRuntimeStateCommandAsync(command, ct);
     }
 
-    private async Task ProcessRuntimeStateCommandAsync(
-        BotCommand command,
-        CancellationToken ct)
+    private async Task ProcessRuntimeStateCommandAsync(BotCommand command, CancellationToken ct)
     {
-        var current =
-            await stateProvider.GetRequiredAsync(
-                command.BotName,
-                ct);
+        var current = await stateProvider.GetRequiredAsync(command.BotName, ct);
 
         var target = command.Command switch
         {
-            BotCommandType.Start =>
-                BotRuntimeStatus.Running,
-
-            BotCommandType.Resume =>
-                BotRuntimeStatus.Running,
-
-            BotCommandType.Pause =>
-                BotRuntimeStatus.Paused,
-
-            BotCommandType.Stop =>
-                BotRuntimeStatus.Stopped,
-
-            BotCommandType.EmergencyStop =>
-                BotRuntimeStatus.EmergencyStopped,
-
-            _ => throw new UnsupportedBotCommandException(
-                $"Unsupported command '{command.Command}'.")
+            BotCommandType.Start => BotRuntimeStatus.Running,
+            BotCommandType.Resume => BotRuntimeStatus.Running,
+            BotCommandType.Pause => BotRuntimeStatus.Paused,
+            BotCommandType.Stop => BotRuntimeStatus.Stopped,
+            BotCommandType.EmergencyStop => BotRuntimeStatus.EmergencyStopped,
+            _ => throw new UnsupportedBotCommandException($"Unsupported command '{command.Command}'.")
         };
 
-        if (current.Status == target)
+        if (current.Status != target)
+        {
+            await stateStore.TransitionAsync(
+                command.BotName,
+                target,
+                current.Version,
+                command.RequestedBy,
+                command.Reason,
+                target == BotRuntimeStatus.Running,
+                ct);
+
+            stateProvider.Invalidate(command.BotName);
+        }
+        else
         {
             logger.LogInformation(
-                "Bot runtime command requires no transition. Bot = {Bot} Status = {Status}",
+                "Bot runtime command requires no state transition. Bot = {Bot} Status = {Status}",
                 command.BotName,
                 current.Status);
+        }
+
+        if (command.Command is BotCommandType.Stop or BotCommandType.EmergencyStop)
+            await ProcessStopSideEffectsAsync(command, ct);
+    }
+
+    private async Task ProcessStopSideEffectsAsync(BotCommand command, CancellationToken ct)
+    {
+        var root = command.Payload.RootElement;
+        var cancelOpenOrders = ReadBoolean(root, "CancelOpenOrders", "cancelOpenOrders");
+        var closeOpenPositions = ReadBoolean(root, "CloseOpenPositions", "closeOpenPositions");
+
+        if (!cancelOpenOrders && !closeOpenPositions)
+            return;
+
+        if (cancelOpenOrders && !closeOpenPositions)
+        {
+            throw new UnsupportedBotCommandException(
+                "CancelOpenOrders without CloseOpenPositions is not supported because it could leave an exposed position without protective orders.");
+        }
+
+        var positions = await positionStore.GetAllAsync(command.BotName, ct);
+        var activePositions = positions.Where(position => !position.Closed).ToArray();
+
+        if (activePositions.Length == 0)
+        {
+            logger.LogInformation(
+                "Stop side effects require no position close. Bot = {Bot} Command = {Command}",
+                command.BotName,
+                command.Command);
 
             return;
         }
 
-        var executionEnabled =
-            target == BotRuntimeStatus.Running;
+        foreach (var position in activePositions)
+        {
+            ct.ThrowIfCancellationRequested();
 
-        await stateStore.TransitionAsync(
-            command.BotName,
-            target,
-            current.Version,
-            command.RequestedBy,
-            command.Reason,
-            executionEnabled,
-            ct);
+            var reason = string.IsNullOrWhiteSpace(command.Reason)
+                ? $"{command.Command}_CLOSE_OPEN_POSITION"
+                : command.Reason.Trim();
 
-        stateProvider.Invalidate(
-            command.BotName);
+            var result = await tradeExecutor.CloseAsync(
+                command.BotName,
+                position.ShortId,
+                reason,
+                ct);
+
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"Runtime command '{command.Command}' changed the bot state but failed to close position '{position.ShortId}' for bot '{command.BotName}': {result.Reason}",
+                    result.Exception);
+            }
+
+            logger.LogInformation(
+                "Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}",
+                command.CommandId,
+                command.BotName,
+                position.ShortId,
+                command.Command);
+        }
     }
 
     private async Task ProcessClosePositionAsync(BotCommand command, CancellationToken ct)
     {
         var positionIdentifier = ReadRequiredPositionIdentifier(command);
+        var reason = string.IsNullOrWhiteSpace(command.Reason)
+            ? "MANUAL_POSITION_CLOSE"
+            : command.Reason.Trim();
 
-        var reason = string.IsNullOrWhiteSpace(command.Reason) ? "MANUAL_POSITION_CLOSE" : command.Reason.Trim();
-
-        var result = await tradeExecutor.CloseAsync(command.BotName, positionIdentifier, reason, ct);
+        var result = await tradeExecutor.CloseAsync(
+            command.BotName,
+            positionIdentifier,
+            reason,
+            ct);
 
         if (!result.Succeeded)
         {
             var message =
-                $"Position close failed for bot '{command.BotName}' " +
-                $"and position '{positionIdentifier}': {result.Reason}";
+                $"Position close failed for bot '{command.BotName}' and position '{positionIdentifier}': {result.Reason}";
 
             if (result.Reason.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 throw new PermanentBotCommandException(message, result.Exception);
@@ -211,7 +250,12 @@ public sealed class BotCommandWorker(
             throw new InvalidOperationException(message, result.Exception);
         }
 
-        logger.LogInformation("Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}", command.CommandId, command.BotName, positionIdentifier, result.Reason);
+        logger.LogInformation(
+            "Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}",
+            command.CommandId,
+            command.BotName,
+            positionIdentifier,
+            result.Reason);
     }
 
     private static string ReadRequiredPositionIdentifier(BotCommand command)
@@ -220,36 +264,55 @@ public sealed class BotCommandWorker(
 
         if (TryReadString(root, "PositionId", out var positionId))
             return positionId;
-
         if (TryReadString(root, "positionId", out positionId))
             return positionId;
-
         if (TryReadString(root, "ShortId", out positionId))
             return positionId;
-
         if (TryReadString(root, "shortId", out positionId))
             return positionId;
 
-        throw new UnsupportedBotCommandException($"Command '{command.Command}' requires PositionId in its payload.");
+        throw new UnsupportedBotCommandException(
+            $"Command '{command.Command}' requires PositionId in its payload.");
+    }
+
+    private static bool ReadBoolean(JsonElement root, string pascalCase, string camelCase)
+    {
+        if (TryReadBoolean(root, pascalCase, out var value))
+            return value;
+        if (TryReadBoolean(root, camelCase, out value))
+            return value;
+        return false;
+    }
+
+    private static bool TryReadBoolean(JsonElement root, string propertyName, out bool value)
+    {
+        value = false;
+
+        if (!root.TryGetProperty(propertyName, out var property))
+            return false;
+
+        if (property.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            return false;
+
+        value = property.GetBoolean();
+        return true;
     }
 
     private static bool TryReadString(JsonElement root, string propertyName, out string value)
     {
         value = string.Empty;
 
-        if (!root.TryGetProperty(propertyName, out var property))
+        if (!root.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
             return false;
-
-        if (property.ValueKind != JsonValueKind.String)
-            return false;
+        }
 
         var parsedValue = property.GetString();
-
         if (string.IsNullOrWhiteSpace(parsedValue))
             return false;
 
         value = parsedValue.Trim();
-
         return true;
     }
 
@@ -259,7 +322,9 @@ public sealed class BotCommandWorker(
             return true;
 
         return exception is InvalidOperationException &&
-               exception.Message.StartsWith("Runtime state was not found for bot", StringComparison.OrdinalIgnoreCase);
+               exception.Message.StartsWith(
+                   "Runtime state was not found for bot",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task TryAuditAsync(BotCommand command, string status, string? error)
@@ -304,7 +369,6 @@ public sealed class BotCommandWorker(
         Exception? innerException = null)
         : Exception(message, innerException);
 
-    private sealed class UnsupportedBotCommandException(
-        string message)
+    private sealed class UnsupportedBotCommandException(string message)
         : Exception(message);
 }

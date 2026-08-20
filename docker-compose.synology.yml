@@ -91,6 +91,8 @@ services:
     environment:
       <<: *trading-env
       TradingEnvironment__EnvironmentName: ${TRADING_ENVIRONMENT:-Paper}
+      Reconciliation__AutoHealStaleLocalPositions: "true"
+      Reconciliation__AutoHealProtectiveOrders: "false"
       BinanceFutures__BaseUrl: ${BINANCE_FUTURES_BASE_URL}
       BinanceFutures__ApiKey: ${BINANCE_API_KEY}
       BinanceFutures__SecretKey: ${BINANCE_SECRET_KEY}

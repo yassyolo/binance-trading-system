@@ -57,9 +57,13 @@ public sealed class BotPosition
 
     public void MarkParentFilled(decimal entryPrice, string orderId, DateTime occurredAtUtc)
     {
-        if (entryPrice <= 0) throw new ArgumentOutOfRangeException(nameof(entryPrice));
+        if (entryPrice <= 0)
+            throw new ArgumentOutOfRangeException(nameof(entryPrice));
+
         ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
-        if (Closed) throw new InvalidOperationException("A closed position cannot be opened again.");
+
+        if (Closed)
+            throw new InvalidOperationException("A closed position cannot be opened again.");
 
         EntryPrice = entryPrice;
         ParentOrderId = orderId;
@@ -71,30 +75,36 @@ public sealed class BotPosition
 
     public void MarkTpFilled(decimal executedQuantity, DateTime occurredAtUtc)
     {
-        if (executedQuantity <= 0) throw new ArgumentOutOfRangeException(nameof(executedQuantity));
-        if (Closed) return;
+        if (executedQuantity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(executedQuantity));
+
+        if (Closed)
+            return;
 
         var currentRemaining = RemainingQuantity > 0 ? RemainingQuantity : Quantity;
+
         if (executedQuantity > currentRemaining)
+        {
             throw new InvalidOperationException(
                 $"TP executed quantity {executedQuantity} exceeds remaining quantity {currentRemaining}.");
+        }
 
         RemainingQuantity = currentRemaining - executedQuantity;
+
+        // This method is called only for a FILLED TP order event.
+        // TpExecuted describes the TP order, not whether the entire position is closed.
+        TpExecuted = true;
+        TpStatus = "FILLED";
         TpFilledAtUtc = occurredAtUtc;
         UpdatedAtUtc = occurredAtUtc;
 
         if (RemainingQuantity == 0)
         {
-            TpExecuted = true;
-            TpStatus = "FILLED";
             MarkClosed("TAKE_PROFIT_FILLED", occurredAtUtc);
+            return;
         }
-        else
-        {
-            TpExecuted = false;
-            TpStatus = "PARTIALLY_FILLED";
-            Status = PositionStatus.Open;
-        }
+
+        Status = PositionStatus.Open;
     }
 
     public void MarkTpOrderTerminal(string status, DateTime occurredAtUtc)
@@ -129,7 +139,9 @@ public sealed class BotPosition
 
     public void MarkClosing(DateTime occurredAtUtc)
     {
-        if (Closed) return;
+        if (Closed)
+            return;
+
         Status = PositionStatus.Closing;
         UpdatedAtUtc = occurredAtUtc;
     }

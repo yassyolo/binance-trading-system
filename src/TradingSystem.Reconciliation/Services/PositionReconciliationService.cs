@@ -10,257 +10,293 @@ using TradingSystem.Reconciliation.Models.Enums;
 namespace TradingSystem.Reconciliation.Services;
 
 public sealed class PositionReconciliationService(
-	IOptions<ReconciliationOptions> options,
-	IPositionStore localStore,
-	IExchangeStateProvider exchange,
-	IHealingActionExecutor healer,
-	IReconciliationFindingStore findingStore,
-	IBotRuntimeConfigurationProvider runtimeConfigurations)
+    IOptions<ReconciliationOptions> options,
+    IPositionStore localStore,
+    IExchangeStateProvider exchange,
+    IHealingActionExecutor healer,
+    IReconciliationFindingStore findingStore,
+    IBotRuntimeConfigurationProvider runtimeConfigurations)
 {
-	private readonly ReconciliationOptions _options = options.Value;
+    private readonly ReconciliationOptions _options = options.Value;
 
-	public async Task<ReconciliationRunResult> RunAsync(CancellationToken ct)
-	{
-		var startedAtUtc = DateTime.UtcNow;
-		var findings = new List<ReconciliationFinding>();
-		
-		var liveBots = await ResolveLiveBotsAsync(ct);
-		if (liveBots.Count == 0)
-		{
-			var emptyResult = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, 0);
+    public async Task<ReconciliationRunResult> RunAsync(CancellationToken ct)
+    {
+        var startedAtUtc = DateTime.UtcNow;
+        var findings = new List<ReconciliationFinding>();
+        var evaluatedSymbols = new List<string>();
 
-			await findingStore.SaveRunAsync(emptyResult, ct);
-			return emptyResult;
-		}
+        var liveBots = await ResolveLiveBotsAsync(ct);
+        if (liveBots.Count == 0)
+        {
+            var emptyResult = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, 0)
+            {
+                EvaluatedSymbols = Array.Empty<string>()
+            };
 
-		foreach (var symbol in _options.Symbols.Distinct(StringComparer.OrdinalIgnoreCase))
-		{
-			ct.ThrowIfCancellationRequested();
+            await findingStore.SaveRunAsync(emptyResult, ct);
+            return emptyResult;
+        }
 
-			var remote = await exchange.GetAsync(symbol, ct);
-			var localPositions = await LoadLocalPositionsAsync(symbol, liveBots, ct);
+        foreach (var symbol in _options.Symbols.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
 
-			DetectPositionQuantityFindings(symbol, localPositions, remote.Positions, findings);
-			DetectLocalPositionAndProtectiveOrderFindings(localPositions, remote, findings);
-			DetectOrphanOrders(symbol, localPositions, remote.Orders, findings);
-		}
+            var remote = await exchange.GetAsync(symbol, ct);
+            var localPositions = await LoadLocalPositionsAsync(symbol, liveBots, ct);
 
-		var healedCount = await ExecuteAllowedHealingActionsAsync(findings, ct);
-		
-		var result = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, healedCount);
-		await findingStore.SaveRunAsync(result, ct);
-		
-		return result;
-	}
+            DetectPositionQuantityFindings(symbol, localPositions, remote.Positions, findings);
+            DetectLocalPositionAndProtectiveOrderFindings(localPositions, remote, findings);
+            DetectOrphanOrders(symbol, localPositions, remote.Orders, findings);
 
-	private async Task<IReadOnlyCollection<string>> ResolveLiveBotsAsync(CancellationToken ct)
-	{
-		var result = new List<string>();
+            evaluatedSymbols.Add(symbol);
+        }
 
-		foreach (var bot in _options.Bots.Distinct(StringComparer.OrdinalIgnoreCase))
-		{
-			ct.ThrowIfCancellationRequested();
+        var healedCount = await ExecuteAllowedHealingActionsAsync(findings, ct);
 
-			var config = await runtimeConfigurations.GetAsync(bot, ct);
-			if (config is null)
-				continue;
+        var result = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, healedCount)
+        {
+            EvaluatedSymbols = evaluatedSymbols
+        };
 
-			if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-				config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
-			{
-				result.Add(bot);
-			}
-		}
+        await findingStore.SaveRunAsync(result, ct);
 
-		return result;
-	}
+        return result;
+    }
 
-	private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(string symbol, IReadOnlyCollection<string> liveBots, CancellationToken ct)
-	{
-		var result = new List<BotPosition>();
+    private async Task<IReadOnlyCollection<string>> ResolveLiveBotsAsync(CancellationToken ct)
+    {
+        var result = new List<string>();
 
-		foreach (var bot in liveBots)
-		{
-			ct.ThrowIfCancellationRequested();
-			
-			var positions = await localStore.GetAllAsync(bot, ct);
+        foreach (var bot in _options.Bots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
 
-			result.AddRange(positions.Where(p => !p.Closed && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
-		}
+            var config = await runtimeConfigurations.GetAsync(bot, ct);
+            if (config is null)
+                continue;
 
-		return result;
-	}
+            if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
+                config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(bot);
+            }
+        }
 
-	private void DetectPositionQuantityFindings(
-		string symbol,
-		IReadOnlyCollection<BotPosition> localPositions,
-		IReadOnlyCollection<ExchangePositionSnapshot> remotePositions,
-		ICollection<ReconciliationFinding> findings)
-	{
-		foreach (var side in new[] { "Long", "Short" })
-		{
-			var localForSide = localPositions
-				.Where(position => position.Side.ToString().Equals(side, StringComparison.OrdinalIgnoreCase))
-				.ToArray();
+        return result;
+    }
 
-			var localQuantity = localForSide.Sum(position => Math.Abs(position.RemainingQuantity));
-			var remoteQuantity = remotePositions
-				.Where(p =>
-					p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) &&
-					p.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
-				.Sum(position => Math.Abs(position.Quantity));
+    private async Task<IReadOnlyList<BotPosition>> LoadLocalPositionsAsync(
+        string symbol,
+        IReadOnlyCollection<string> liveBots,
+        CancellationToken ct)
+    {
+        var result = new List<BotPosition>();
 
-			if (localQuantity == 0 && remoteQuantity > _options.QuantityTolerance)
-			{
-				findings.Add(new ReconciliationFinding(
-					Guid.NewGuid(), DateTime.UtcNow, "UNKNOWN", symbol, null,
-					ReconciliationFindingType.OrphanExchangePosition,
-					ReconciliationSeverity.Critical,
-					$"Exchange {side} quantity {remoteQuantity} has no local owner.",
-					HealingActionType.RequestManualReview,
-					false));
-				continue;
-			}
+        foreach (var bot in liveBots)
+        {
+            ct.ThrowIfCancellationRequested();
 
-			if (Math.Abs(remoteQuantity - localQuantity) <= _options.QuantityTolerance)
-				continue;
+            var positions = await localStore.GetAllAsync(bot, ct);
 
-			var botNames = string.Join(
-				", ",
-				localForSide.Select(x => x.BotName).Distinct(StringComparer.OrdinalIgnoreCase));
+            result.AddRange(positions.Where(p =>
+                !p.Closed &&
+                p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
+        }
 
-			findings.Add(new ReconciliationFinding(
-				Guid.NewGuid(),
-				DateTime.UtcNow,
-				string.IsNullOrWhiteSpace(botNames) ? "UNKNOWN" : botNames,
-				symbol,
-				null,
-				ReconciliationFindingType.QuantityMismatch,
-				ReconciliationSeverity.Critical,
-				$"Aggregated {side} quantity mismatch. Local = {localQuantity}, exchange = {remoteQuantity}.",
-				HealingActionType.RequestManualReview,
-				false));
-		}
-	}
+        return result;
+    }
 
-	private void DetectLocalPositionAndProtectiveOrderFindings(
-		IReadOnlyCollection<BotPosition> localPositions,
-		ExchangeStateSnapshot remote,
-		ICollection<ReconciliationFinding> findings)
-	{
-		var ordersByClientId = remote.Orders
-			.Where(order => !string.IsNullOrWhiteSpace(order.ClientOrderId))
-			.GroupBy(order => order.ClientOrderId, StringComparer.OrdinalIgnoreCase)
-			.ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+    private void DetectPositionQuantityFindings(
+        string symbol,
+        IReadOnlyCollection<BotPosition> localPositions,
+        IReadOnlyCollection<ExchangePositionSnapshot> remotePositions,
+        ICollection<ReconciliationFinding> findings)
+    {
+        foreach (var side in new[] { "Long", "Short" })
+        {
+            var localForSide = localPositions
+                .Where(position =>
+                    position.Side.ToString().Equals(side, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
 
-		foreach (var position in localPositions)
-		{
-			var hasRelatedOrder = EnumerateClientOrderIds(position).Any(ordersByClientId.ContainsKey);
-			var hasRemoteSidePosition = remote.Positions.Any(remotePosition =>
-				remotePosition.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase) &&
-				remotePosition.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) &&
-				Math.Abs(remotePosition.Quantity) > _options.QuantityTolerance);
+            var localQuantity = localForSide.Sum(position => Math.Abs(position.RemainingQuantity));
 
-			if (!hasRemoteSidePosition && !hasRelatedOrder)
-			{
-				findings.Add(ReconciliationFinding.New(
-					position,
-					ReconciliationFindingType.StaleLocalPosition,
-					ReconciliationSeverity.Warning,
-					"Local p has no exchange p or open orders.",
-					HealingActionType.DeleteStaleLocalPosition,
-					_options.AutoHealStaleLocalPositions));
-			}
+            var remoteQuantity = remotePositions
+                .Where(position =>
+                    position.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) &&
+                    position.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
+                .Sum(position => Math.Abs(position.Quantity));
 
-			if (!position.TpExecuted &&
-				!string.IsNullOrWhiteSpace(position.TpClientId) &&
-				!ordersByClientId.ContainsKey(position.TpClientId))
-			{
-				findings.Add(ReconciliationFinding.New(
-					position,
-					ReconciliationFindingType.MissingTakeProfit,
-					ReconciliationSeverity.Critical,
-					"Expected take-profit order is missing.",
-					HealingActionType.RecreateTakeProfit,
-					_options.AutoHealProtectiveOrders));
-			}
+            if (localQuantity == 0 && remoteQuantity > _options.QuantityTolerance)
+            {
+                findings.Add(new ReconciliationFinding(
+                    Guid.NewGuid(),
+                    DateTime.UtcNow,
+                    "UNKNOWN",
+                    symbol,
+                    null,
+                    ReconciliationFindingType.OrphanExchangePosition,
+                    ReconciliationSeverity.Critical,
+                    $"Exchange {side} quantity {remoteQuantity} has no local owner.",
+                    HealingActionType.RequestManualReview,
+                    false));
 
-			if (position.ProtectiveActive &&
-				!position.SlExecuted &&
-				!string.IsNullOrWhiteSpace(position.SlClientId) &&
-				!ordersByClientId.ContainsKey(position.SlClientId))
-			{
-				findings.Add(ReconciliationFinding.New(
-					position,
-					ReconciliationFindingType.MissingStopLoss,
-					ReconciliationSeverity.Critical,
-					"Expected stop-loss order is missing.",
-					HealingActionType.RecreateStopLoss,
-					_options.AutoHealProtectiveOrders));
-			}
-		}
-	}
+                continue;
+            }
 
-	private static void DetectOrphanOrders(
-		string symbol,
-		IReadOnlyCollection<BotPosition> localPositions,
-		IReadOnlyCollection<ExchangeOrderSnapshot> remoteOrders,
-		ICollection<ReconciliationFinding> findings)
-	{
-		var knownClientOrderIds = localPositions
-			.SelectMany(EnumerateClientOrderIds)
-			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (Math.Abs(remoteQuantity - localQuantity) <= _options.QuantityTolerance)
+                continue;
 
-		foreach (var order in remoteOrders.Where(order =>
-					 order.ClientOrderId.StartsWith("BOT", StringComparison.OrdinalIgnoreCase) &&
-					 !knownClientOrderIds.Contains(order.ClientOrderId)))
-		{
-			findings.Add(new ReconciliationFinding(
-				Guid.NewGuid(), DateTime.UtcNow, ResolveBot(order.ClientOrderId), symbol, null,
-				ReconciliationFindingType.OrphanExchangeOrder,
-				ReconciliationSeverity.Critical,
-				$"Exchange order '{order.ClientOrderId}' is not represented in local state.",
-				HealingActionType.RequestManualReview,
-				false));
-		}
-	}
+            var botNames = string.Join(
+                ", ",
+                localForSide
+                    .Select(x => x.BotName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
 
-	private async Task<int> ExecuteAllowedHealingActionsAsync(IEnumerable<ReconciliationFinding> findings, CancellationToken ct)
-	{
-		var healedCount = 0;
+            findings.Add(new ReconciliationFinding(
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                string.IsNullOrWhiteSpace(botNames) ? "UNKNOWN" : botNames,
+                symbol,
+                null,
+                ReconciliationFindingType.QuantityMismatch,
+                ReconciliationSeverity.Critical,
+                $"Aggregated {side} quantity mismatch. Local = {localQuantity}, exchange = {remoteQuantity}.",
+                HealingActionType.RequestManualReview,
+                false));
+        }
+    }
 
-		foreach (var finding in findings.Where(f => f.AutoHealAllowed))
-		{
-			ct.ThrowIfCancellationRequested();
+    private void DetectLocalPositionAndProtectiveOrderFindings(
+        IReadOnlyCollection<BotPosition> localPositions,
+        ExchangeStateSnapshot remote,
+        ICollection<ReconciliationFinding> findings)
+    {
+        var ordersByClientId = remote.Orders
+            .Where(order => !string.IsNullOrWhiteSpace(order.ClientOrderId))
+            .GroupBy(order => order.ClientOrderId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-			if (await healer.ExecuteAsync(finding, ct))
-				healedCount++;
-		}
+        foreach (var position in localPositions)
+        {
+            var hasRelatedOrder = EnumerateClientOrderIds(position).Any(ordersByClientId.ContainsKey);
 
-		return healedCount;
-	}
+            var hasRemoteSidePosition = remote.Positions.Any(remotePosition =>
+                remotePosition.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase) &&
+                remotePosition.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) &&
+                Math.Abs(remotePosition.Quantity) > _options.QuantityTolerance);
 
-	private static IEnumerable<string> EnumerateClientOrderIds(BotPosition position)
-	{
-		var values = new[]
-		{
-			position.ParentClientId,
-			position.TpClientId,
-			position.SlClientId,
-			position.Stop3ClientId,
-			position.CloseClientId
-		};
+            if (!hasRemoteSidePosition && !hasRelatedOrder)
+            {
+                findings.Add(ReconciliationFinding.New(
+                    position,
+                    ReconciliationFindingType.StaleLocalPosition,
+                    ReconciliationSeverity.Warning,
+                    "Local position has no exchange position or related open orders.",
+                    HealingActionType.DeleteStaleLocalPosition,
+                    _options.AutoHealStaleLocalPositions));
 
-		return values.Where(value => !string.IsNullOrWhiteSpace(value))!;
-	}
+                // One confirmed stale root cause is enough. Missing TP/SL are only symptoms
+                // of the same already-closed exchange position and should not cascade.
+                continue;
+            }
 
-	private static string ResolveBot(string clientOrderId)
-	{
-		var separator = clientOrderId.IndexOf('_');
-		return separator > 0
-			? clientOrderId[..separator]
-			: clientOrderId.Length >= 7
-				? clientOrderId[..7]
-				: "UNKNOWN";
-	}
+            if (!position.TpExecuted &&
+                !string.IsNullOrWhiteSpace(position.TpClientId) &&
+                !ordersByClientId.ContainsKey(position.TpClientId))
+            {
+                findings.Add(ReconciliationFinding.New(
+                    position,
+                    ReconciliationFindingType.MissingTakeProfit,
+                    ReconciliationSeverity.Critical,
+                    "Expected take-profit order is missing.",
+                    HealingActionType.RecreateTakeProfit,
+                    _options.AutoHealProtectiveOrders));
+            }
+
+            if (position.ProtectiveActive &&
+                !position.SlExecuted &&
+                !string.IsNullOrWhiteSpace(position.SlClientId) &&
+                !ordersByClientId.ContainsKey(position.SlClientId))
+            {
+                findings.Add(ReconciliationFinding.New(
+                    position,
+                    ReconciliationFindingType.MissingStopLoss,
+                    ReconciliationSeverity.Critical,
+                    "Expected stop-loss order is missing.",
+                    HealingActionType.RecreateStopLoss,
+                    _options.AutoHealProtectiveOrders));
+            }
+        }
+    }
+
+    private static void DetectOrphanOrders(
+        string symbol,
+        IReadOnlyCollection<BotPosition> localPositions,
+        IReadOnlyCollection<ExchangeOrderSnapshot> remoteOrders,
+        ICollection<ReconciliationFinding> findings)
+    {
+        var knownClientOrderIds = localPositions
+            .SelectMany(EnumerateClientOrderIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var order in remoteOrders.Where(order =>
+                     order.ClientOrderId.StartsWith("BOT", StringComparison.OrdinalIgnoreCase) &&
+                     !knownClientOrderIds.Contains(order.ClientOrderId)))
+        {
+            findings.Add(new ReconciliationFinding(
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                ResolveBot(order.ClientOrderId),
+                symbol,
+                null,
+                ReconciliationFindingType.OrphanExchangeOrder,
+                ReconciliationSeverity.Critical,
+                $"Exchange order '{order.ClientOrderId}' is not represented in local state.",
+                HealingActionType.RequestManualReview,
+                false));
+        }
+    }
+
+    private async Task<int> ExecuteAllowedHealingActionsAsync(
+        IEnumerable<ReconciliationFinding> findings,
+        CancellationToken ct)
+    {
+        var healedCount = 0;
+
+        foreach (var finding in findings.Where(f => f.AutoHealAllowed))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (await healer.ExecuteAsync(finding, ct))
+                healedCount++;
+        }
+
+        return healedCount;
+    }
+
+    public static IEnumerable<string> EnumerateClientOrderIds(BotPosition position)
+    {
+        var values = new[]
+        {
+            position.ParentClientId,
+            position.TpClientId,
+            position.SlClientId,
+            position.Stop3ClientId,
+            position.CloseClientId
+        };
+
+        return values.Where(value => !string.IsNullOrWhiteSpace(value))!;
+    }
+
+    private static string ResolveBot(string clientOrderId)
+    {
+        var separator = clientOrderId.IndexOf('_');
+
+        return separator > 0
+            ? clientOrderId[..separator]
+            : clientOrderId.Length >= 7
+                ? clientOrderId[..7]
+                : "UNKNOWN";
+    }
 }

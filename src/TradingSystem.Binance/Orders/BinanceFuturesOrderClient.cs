@@ -272,23 +272,16 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         };
     }
 
-    public async Task<decimal> GetMarkPriceAsync(
-    string symbol,
-    CancellationToken ct)
+    public async Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken ct)
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
 
         using var document = JsonDocument.Parse(
             await SendUnsignedAsync(
                 "fapi/v1/premiumIndex",
-                new()
-                {
-                    ["symbol"] = normalizedSymbol
-                },
+                new() { ["symbol"] = normalizedSymbol },
                 ct));
 
-        return NumberValue(
-            document.RootElement,
-            "markPrice");
+        return NumberValue(document.RootElement, "markPrice");
     }
 }

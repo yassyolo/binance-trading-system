@@ -32,8 +32,11 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
             return;
 
         await using var connection = new NpgsqlConnection(_connectionString);
+       
         await connection.OpenAsync(ct);
+        
         await using var command = CreateInsertCommand(connection, historicalEvent);
+        
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -101,6 +104,7 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
         command.Parameters.AddWithValue("net_pnl", trade.NetPnl);
         command.Parameters.AddWithValue("close_reason", trade.CloseReason);
         command.Parameters.AddWithValue("environment", trade.Environment);
+        
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -119,19 +123,19 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
+        
         await connection.OpenAsync(ct);
+        
         await using var command = new NpgsqlCommand(sql, connection)
         {
             CommandTimeout = _options.CommandTimeoutSeconds
-        };
+        };  
         command.Parameters.AddWithValue("cutoff", cutoffUtc);
+        
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
     }
 
-    private NpgsqlCommand CreateInsertCommand(
-        NpgsqlConnection connection,
-        HistoricalEvent item,
-        NpgsqlTransaction? transaction = null)
+    private NpgsqlCommand CreateInsertCommand(NpgsqlConnection connection, HistoricalEvent item, NpgsqlTransaction? transaction = null)
     {
         const string sql = """
             INSERT INTO trading_history.events
@@ -167,9 +171,8 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
         command.Parameters.AddWithValue("realized_pnl", (object?)item.RealizedPnl ?? DBNull.Value);
         command.Parameters.AddWithValue("reason", (object?)item.Reason ?? DBNull.Value);
         command.Parameters.AddWithValue("data", JsonSerializer.Serialize(item.Data, JsonOptions));
-        command.Parameters.AddWithValue(
-            "raw_payload",
-            _options.StoreRawPayloads ? (object?)item.RawPayload ?? DBNull.Value : DBNull.Value);
+        command.Parameters.AddWithValue("raw_payload", _options.StoreRawPayloads ? (object?)item.RawPayload ?? DBNull.Value : DBNull.Value);
+        
         return command;
     }
 }

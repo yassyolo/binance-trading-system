@@ -15,7 +15,8 @@ public sealed class HistoricalPortfolioSnapshotWorker(
     IHistoricalEventStore store,
     ITradingEnvironmentProvider environment,
     IOptions<HistoricalDatabaseOptions> options,
-    ILogger<HistoricalPortfolioSnapshotWorker> logger) : BackgroundService
+    ILogger<HistoricalPortfolioSnapshotWorker> logger)
+    : BackgroundService
 {
     private readonly HistoricalDatabaseOptions _options = options.Value;
 
@@ -24,8 +25,7 @@ public sealed class HistoricalPortfolioSnapshotWorker(
         if (!_options.Enabled)
             return;
 
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_options.PortfolioSnapshotIntervalSeconds));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.PortfolioSnapshotIntervalSeconds));
 
         do
         {

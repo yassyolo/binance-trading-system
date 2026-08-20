@@ -121,28 +121,15 @@ public sealed class BinanceProtectedPositionService(
         position.MarkClosing(clock.UtcNow);
 
         if (!position.TpExecuted && !string.IsNullOrWhiteSpace(position.TpOrderId))
-        {
-            await TryCancelOrderAsync(
-                position.Symbol,
-                position.TpOrderId,
-                ct);
-        }
+            await TryCancelOrderAsync(position.Symbol, position.TpOrderId, ct);
 
         if (!position.SlExecuted && !string.IsNullOrWhiteSpace(position.SlOrderId))
-        {
-            await TryCancelAlgoOrderAsync(
-                position.Symbol,
-                position.SlOrderId,
-                ct);
-        }
+            await TryCancelAlgoOrderAsync(position.Symbol, position.SlOrderId, ct);
 
         if (!string.IsNullOrWhiteSpace(position.Stop3OrderId) &&
             position.Stop3OrderId != position.SlOrderId)
         {
-            await TryCancelAlgoOrderAsync(
-                position.Symbol,
-                position.Stop3OrderId,
-                ct);
+            await TryCancelAlgoOrderAsync(position.Symbol, position.Stop3OrderId, ct);
         }
 
         if (position.RemainingQuantity <= 0)
@@ -216,9 +203,7 @@ public sealed class BinanceProtectedPositionService(
     }
 
     private static bool IsUnknownOrder(BinanceApiException exception)
-        => exception.ResponseBody.Contains(
-            "\"code\":-2011",
-            StringComparison.Ordinal);
+        => exception.ResponseBody.Contains("\"code\":-2011", StringComparison.Ordinal);
 
     private async Task<BinanceOrderResult> WaitAsync(
         string symbol,
