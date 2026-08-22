@@ -3,6 +3,7 @@ using System.Text.Json;
 using StackExchange.Redis;
 using TradingSystem.Application.Events;
 using TradingSystem.Application.Orders;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Binance.Execution.Models;
 using TradingSystem.Contracts.Messaging;
 using TradingSystem.HistoricalDatabase.EventStore;
@@ -23,6 +24,8 @@ public sealed class UserStreamOrderSubscriber(
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
     ITradingEnvironmentProvider environment,
+    IBotRuntimeConfigurationProvider configurations,
+    LivePositionLifecycleRecorder lifecycle,
     ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
@@ -129,14 +132,13 @@ public sealed class UserStreamOrderSubscriber(
                           ?? GetString(order, "algoId");
 
             var symbol = GetString(order, "s") ?? "unknown";
-            var key = $"{eventType}:{orderId}:{clientId}:{status}";
-
-            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
-                return;
-
             var quantity = GetDecimal(order, "q");
             var executed = GetDecimal(order, "z");
             var price = GetDecimal(order, "p");
+            var key = $"{eventType}:{orderId}:{clientId}:{status}:{executed.ToString(CultureInfo.InvariantCulture)}";
+
+            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
+                return;
 
             metrics.OrderEvents.WithLabels(bot, symbol, role, status ?? "unknown").Inc();
 
@@ -150,7 +152,7 @@ public sealed class UserStreamOrderSubscriber(
                 status,
                 GetString(order, "S"),
                 symbol,
-                environment.EnvironmentName,
+                await ResolveEnvironmentAsync(bot, ct),
                 DateTime.UtcNow,
                 price,
                 quantity,
@@ -161,7 +163,7 @@ public sealed class UserStreamOrderSubscriber(
                 Guid.NewGuid(),
                 HistoricalEventType.OrderUpdate,
                 DateTime.UtcNow,
-                environment.EnvironmentName,
+                await ResolveEnvironmentAsync(bot, ct),
                 key,
                 bot,
                 null,
@@ -191,6 +193,12 @@ public sealed class UserStreamOrderSubscriber(
                 await handler.HandleSlTriggeredAsync(shortId, ct);
             else if (role is "S3" or "STOP3" && IsTriggered(status))
                 await handler.HandleStop3TriggeredAsync(shortId, ct);
+
+            await lifecycle.RecordClosedAsync(
+                bot,
+                shortId,
+                status,
+                ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -201,6 +209,15 @@ public sealed class UserStreamOrderSubscriber(
             metrics.ProcessingFailures.WithLabels("user_stream_order", "unknown", exception.GetType().Name).Inc();
             logger.LogError(exception, "Order event processing failed.");
         }
+    }
+
+    private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
+    {
+        var configuration = await configurations.GetAsync(botName, ct);
+
+        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
+            ? configuration.Environment.Trim()
+            : environment.EnvironmentName;
     }
 
     private static bool IsTriggered(string? status) =>

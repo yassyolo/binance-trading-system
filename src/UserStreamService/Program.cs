@@ -29,10 +29,18 @@ builder.Services
     .Validate(x => x.KeepAliveIntervalSeconds > 0, "WebSocket keepalive interval must be positive.")
     .Validate(x => x.ReceiveBufferSizeBytes >= 4096, "Receive buffer size must be at least 4096 bytes.")
     .ValidateOnStart();
-builder.Services.AddOptions<UserStreamServiceOptions>().Bind(builder.Configuration.GetSection(UserStreamServiceOptions.SectionName)).ValidateOnStart();
+
+builder.Services
+    .AddOptions<UserStreamServiceOptions>()
+    .Bind(builder.Configuration.GetSection(UserStreamServiceOptions.SectionName))
+    .ValidateOnStart();
+
 builder.Services.AddSingleton<IValidateOptions<UserStreamServiceOptions>, UserStreamServiceOptionsValidator>();
 
-builder.Services.AddHttpClient<IBinanceListenKeyClient, BinanceListenKeyClient>();
+builder.Services
+    .AddHttpClient<IBinanceListenKeyClient, BinanceListenKeyClient>()
+    .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(30));
+
 builder.Services.AddSingleton<IBinanceUserStreamClient, BinanceUserStreamClient>();
 builder.Services.AddSingleton<IBinanceOrdersSnapshotProvider, BinanceOrdersSnapshotProvider>();
 builder.Services.AddSingleton<UserStreamEventProcessor>();
