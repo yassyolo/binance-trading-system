@@ -1,12 +1,14 @@
-﻿using System.Security.Claims;
-using System.Text;
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.RateLimiting;
+using TradingSystem.Dashboard.Api.Authentication;
+using TradingSystem.Dashboard.Api.Authentication.Models;
 using TradingSystem.Dashboard.Api.Exceptions;
 using TradingSystem.Dashboard.Api.Middlewares;
 using TradingSystem.Dashboard.Application.Contracts;
@@ -125,7 +127,10 @@ public static class DependencyInjection
         services.AddSingleton<IAlertCommandStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
     }
 
-    private static void AddAuthentication(IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
+    private static void AddAuthentication(
+        IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
         var signingKey =
             configuration["Authentication:SigningKey"];
@@ -133,16 +138,78 @@ public static class DependencyInjection
         if (string.IsNullOrWhiteSpace(signingKey) ||
             signingKey.Length < 32 ||
             (!environment.IsDevelopment() &&
-             signingKey.StartsWith("DEVELOPMENT-ONLY", StringComparison.Ordinal)))
+             signingKey.StartsWith(
+                 "DEVELOPMENT-ONLY",
+                 StringComparison.Ordinal)))
         {
-            throw new InvalidOperationException("Authentication:SigningKey must be a secure secret with at least 32 characters.");
+            throw new InvalidOperationException(
+                "Authentication:SigningKey must be a secure secret with at least 32 characters.");
         }
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        var issuer =
+            configuration["Authentication:Issuer"]
+            ?? "TradingDashboard";
+
+        var audience =
+            configuration["Authentication:Audience"]
+            ?? "TradingDashboard";
+
+        var adminUserName =
+     configuration["Authentication:AdminUsername"];
+
+        var adminPasswordHash =
+            configuration["Authentication:AdminPasswordHash"];
+
+        if (!environment.IsDevelopment() &&
+            (string.IsNullOrWhiteSpace(adminUserName) ||
+             adminUserName.Length > 100))
+        {
+            throw new InvalidOperationException(
+                "Authentication:AdminUsername must be configured and be at most 100 characters outside Development.");
+        }
+
+        if (!environment.IsDevelopment() &&
+            (string.IsNullOrWhiteSpace(adminPasswordHash) ||
+             !adminPasswordHash.StartsWith(
+                 "PBKDF2-SHA256$",
+                 StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "Authentication:AdminPasswordHash must be configured as a PBKDF2-SHA256 hash outside Development.");
+        }
+
+        var lifetimeHours =
+            Math.Clamp(
+                configuration.GetValue(
+                    "Authentication:TokenLifetimeHours",
+                    12),
+                1,
+                24);
+
+        services.AddSingleton(
+    new DashboardCredentials(
+        adminUserName?.Trim() ?? string.Empty,
+        adminPasswordHash?.Trim() ?? string.Empty));
+
+        services.AddSingleton(
+            new DashboardTokenOptions(
+                issuer,
+                audience,
+                signingKey,
+                lifetimeHours));
+
+        services.AddSingleton<
+            DashboardTokenService>();
+
+        services
+            .AddAuthentication(
+                JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
                 options.MapInboundClaims = false;
-                options.RequireHttpsMetadata = !environment.IsDevelopment();
+                options.RequireHttpsMetadata =
+                    !environment.IsDevelopment();
+
                 options.TokenValidationParameters =
                     new TokenValidationParameters
                     {
@@ -152,12 +219,16 @@ public static class DependencyInjection
                         ValidateIssuerSigningKey = true,
                         RequireExpirationTime = true,
                         RequireSignedTokens = true,
-                        ClockSkew = TimeSpan.FromSeconds(30),
-                        ValidIssuer = configuration["Authentication:Issuer"] ?? "TradingDashboard",
-                        ValidAudience = configuration["Authentication:Audience"] ?? "TradingDashboard",
-                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-                        NameClaimType = ClaimTypes.Name,
-                        RoleClaimType = ClaimTypes.Role
+                        ClockSkew =
+                            TimeSpan.FromSeconds(30),
+                        ValidIssuer = issuer,
+                        ValidAudience = audience,
+                        IssuerSigningKey =
+                            new SymmetricSecurityKey(
+                                Encoding.UTF8.GetBytes(
+                                    signingKey)),
+                        NameClaimType = "name",
+                        RoleClaimType = "role"
                     };
             });
     }
@@ -263,6 +334,19 @@ public static class DependencyInjection
                             })
                     .ExecuteAsync(context.HttpContext);
             };
+
+            options.AddPolicy(
+                "auth",
+                context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.Connection.RemoteIpAddress?.ToString()
+                        ?? "anonymous",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        }));
 
             options.AddPolicy(
                 "read",

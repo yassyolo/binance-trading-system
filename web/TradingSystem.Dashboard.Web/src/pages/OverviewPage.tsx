@@ -17,7 +17,6 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { PageSection } from '@/components/ui/PageSection'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { DevelopmentAccessPanel } from '@/features/overview/DevelopmentAccessPanel'
 import {
   environmentLabel,
   healthTone,
@@ -129,25 +128,6 @@ export function OverviewPage() {
       <>
         <PageHeader title="Overview" description="Live operational snapshot of the trading system." />
         <OverviewLoading />
-      </>
-    )
-  }
-
-  if (error?.status === 401 || error?.status === 403) {
-    return (
-      <>
-        <PageHeader title="Overview" description="Live operational snapshot of the trading system." />
-        <main className="space-y-5 p-8">
-          <ErrorState
-            title={error.status === 401 ? 'Authentication required' : 'Access denied'}
-            description={
-              error.status === 401
-                ? 'The Dashboard API requires a valid JWT before live data can be loaded.'
-                : 'The current token does not have Viewer access.'
-            }
-          />
-          <DevelopmentAccessPanel onSaved={() => void query.refetch()} />
-        </main>
       </>
     )
   }

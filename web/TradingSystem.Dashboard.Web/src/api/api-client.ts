@@ -1,6 +1,10 @@
 import { apiConfig } from '@/api/api-config'
 import { ApiError } from '@/api/api-error'
-import { getAccessToken } from '@/api/auth-token'
+import {
+  clearAccessToken,
+  getAccessToken,
+  notifyAuthenticationExpired,
+} from '@/api/auth-token'
 import type { ProblemDetails } from '@/api/problem-details'
 
 interface ApiRequestOptions extends RequestInit {
@@ -28,6 +32,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   })
 
   const responseCorrelationId = response.headers.get('X-Correlation-ID') ?? correlationId
+
+  if (authenticated && response.status === 401) {
+    clearAccessToken()
+    notifyAuthenticationExpired()
+  }
 
   if (!response.ok) {
     let problem: ProblemDetails | null = null

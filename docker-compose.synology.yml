@@ -1,6 +1,4 @@
-﻿name: ${COMPOSE_PROJECT_NAME:-binance-trading}
-
-x-worker-common: &worker-common
+﻿x-worker-common: &worker-common
   restart: unless-stopped
   init: true
   networks:
@@ -152,11 +150,16 @@ services:
       context: .
       dockerfile: src/TradingSystem.Dashboard.Api/Dockerfile
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__TradingHistory: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       TradingHistory__ConnectionStringName: TradingHistory
       Authentication__SigningKey: ${DASHBOARD_SIGNING_KEY}
+      Authentication__Issuer: TradingDashboard
+      Authentication__Audience: TradingDashboard
+      Authentication__AdminUsername: ${DASHBOARD_ADMIN_USERNAME}
+      Authentication__AdminPasswordHash: ${DASHBOARD_ADMIN_PASSWORD_HASH}
+      Authentication__TokenLifetimeHours: ${DASHBOARD_TOKEN_LIFETIME_HOURS:-12}
       Cors__Origins__0: ${DASHBOARD_ORIGIN}
       ServiceHeartbeat__Environment: ${SERVICE_ENVIRONMENT:-SynologyDemo}
       Deployment__UseHttpsRedirection: "false"
@@ -196,7 +199,7 @@ services:
     environment:
       TradingView__Bots__BOT8012__Enabled: "true"
       TradingView__Bots__BOT8012__Symbol: "BTCUSDC"
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       Redis__ConnectionString: redis:6379
       Redis__AbortOnConnectFail: "false"
@@ -217,4 +220,3 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-
