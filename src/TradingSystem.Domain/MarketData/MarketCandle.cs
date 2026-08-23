@@ -10,4 +10,4 @@ public sealed record MarketCandle(
     decimal Low, 
     decimal Close, 
     decimal Volume, 
-    bool IsClosed  =  true);
+    bool IsClosed = true);

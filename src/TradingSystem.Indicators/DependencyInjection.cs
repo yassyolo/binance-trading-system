@@ -11,49 +11,21 @@ namespace TradingSystem.Indicators;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingIndicators(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddTradingIndicators(this IServiceCollection services, IConfiguration configuration)
     {
-        var alligator = configuration
-            .GetSection(AlligatorOptions.SectionName)
-            .Get<AlligatorOptions>() ?? new();
+        var alligator = configuration.GetSection(AlligatorOptions.SectionName).Get<AlligatorOptions>() ?? new();
+        services.AddOptions<AlligatorOptions>().Bind(configuration.GetSection(AlligatorOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AlligatorOptions>, AlligatorOptionsValidator>();
 
-        var bollinger = configuration
-            .GetSection(BollingerOptions.SectionName)
-            .Get<BollingerOptions>() ?? new();
-
-        services
-            .AddOptions<AlligatorOptions>()
-            .Bind(configuration.GetSection(AlligatorOptions.SectionName))
-            .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<AlligatorOptions>,
-            AlligatorOptionsValidator>();
-
-        services
-            .AddOptions<BollingerOptions>()
-            .Bind(configuration.GetSection(BollingerOptions.SectionName))
-            .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<BollingerOptions>,
-            BollingerOptionsValidator>();
+        var bollinger = configuration.GetSection(BollingerOptions.SectionName).Get<BollingerOptions>() ?? new();
+        services.AddOptions<BollingerOptions>().Bind(configuration.GetSection(BollingerOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<BollingerOptions>, BollingerOptionsValidator>();
 
         if (alligator.Enabled)
-        {
-            services.AddSingleton<
-                IIndicatorProcessor,
-                AlligatorIndicatorProcessor>();
-        }
+            services.AddSingleton<IIndicatorProcessor, AlligatorIndicatorProcessor>();
 
         if (bollinger.Enabled)
-        {
-            services.AddSingleton<
-                IIndicatorProcessor,
-                BollingerIndicatorProcessor>();
-        }
+            services.AddSingleton<IIndicatorProcessor, BollingerIndicatorProcessor>();
 
         return services;
     }

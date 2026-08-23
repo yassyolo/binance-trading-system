@@ -62,9 +62,8 @@ public sealed class IndicatorProcessingWorker(
 			}
 		}
 
-		var subscriptions = _processors
-			.SelectMany(processor => processor.Symbols.SelectMany(s =>
-				processor.Intervals.Select(i => (
+		var subscriptions = _processors.SelectMany(p => p.Symbols.SelectMany(s =>
+				p.Intervals.Select(i => (
 					Symbol: s.Trim().ToUpperInvariant(),
 					Interval: i.Trim().ToLowerInvariant()))))
 			.Distinct()

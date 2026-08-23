@@ -2,7 +2,6 @@ using System.Text.Json;
 using Dapper;
 using TradingSystem.Operations.Contracts;
 using TradingSystem.Operations.Models;
-using TradingSystem.Operations.Models.Enums;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.Operations;
@@ -31,6 +30,7 @@ public sealed class PostgresOperationalStore(
             """;
 
         await using var connection = await factory.OpenAsync(ct);
+        
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
@@ -43,8 +43,7 @@ public sealed class PostgresOperationalStore(
                 heartbeat.StartedAtUtc,
                 heartbeat.LastSeenAtUtc,
                 heartbeat.StaleAfterSeconds,
-                Details = JsonSerializer.Serialize(
-                    heartbeat.Details ?? new Dictionary<string, string>())
+                Details = JsonSerializer.Serialize(heartbeat.Details ?? new Dictionary<string, string>())
             },
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));

@@ -3,28 +3,31 @@ using System.Collections.Concurrent;
 using TradingSystem.Contracts.Indicators;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Indicators.Alligator.Configuration;
-using TradingSystem.Indicators.Common;
+using TradingSystem.Indicators.Alligator.Models;
 using TradingSystem.Indicators.Contracts;
 
 namespace TradingSystem.Indicators.Alligator;
-public sealed class AlligatorIndicatorProcessor(IOptions<AlligatorOptions> options) : IIndicatorProcessor
+
+public sealed class AlligatorIndicatorProcessor(
+	IOptions<AlligatorOptions> options) 
+	: IIndicatorProcessor
 {
-	private readonly AlligatorOptions _o = options.Value; 
-	private readonly ConcurrentDictionary<string, State> _states = new();
+	private readonly AlligatorOptions _options = options.Value; 
+	private readonly ConcurrentDictionary<string, AlligatorState> _states = new();
 	
 	public string Name => "alligator_ma"; 
 	
-	public IReadOnlyCollection<string> Symbols => _o.Symbols; 
+	public IReadOnlyCollection<string> Symbols => _options.Symbols; 
 	
-	public IReadOnlyCollection<string> Intervals => _o.Intervals; 
+	public IReadOnlyCollection<string> Intervals => _options.Intervals; 
 	
-	public int RequiredHistory => Math.Max(_o.HistoryLimit, _o.SmaLength);
+	public int RequiredHistory => Math.Max(_options.HistoryLimit, _options.SmaLength);
 	
 	public void Initialize(string symbol, string interval, IReadOnlyList<MarketCandle> candles) 
 	{ 
-		var s = new State(_o); 
+		var s = new AlligatorState(_options); 
 		
-		foreach (var c in candles.Where(x => x.IsClosed).OrderBy(x => x.CloseTimeUtc).TakeLast(_o.HistoryLimit)) 
+		foreach (var c in candles.Where(x => x.IsClosed).OrderBy(x => x.CloseTimeUtc).TakeLast(_options.HistoryLimit)) 
 			s.Add(c); 
 		
 		_states[Key(symbol, interval)] = s; 
@@ -60,11 +63,4 @@ public sealed class AlligatorIndicatorProcessor(IOptions<AlligatorOptions> optio
 	
 	private static string Key(string s, string i) 
 		=> $"{s.ToUpperInvariant()}:{i.ToLowerInvariant()}";
-	
-	private sealed class State
-	{
-		readonly AlligatorOptions o; readonly Queue<MarketCandle> q = new(); readonly SmoothedMovingAverage jaw, teeth, lips; DateTime last;
-		public State(AlligatorOptions o) { this.o = o; jaw = new(o.JawLength); teeth = new(o.TeethLength); lips = new(o.LipsLength); }
-		public (decimal jaw, decimal teeth, decimal lips, decimal sma)? Add(MarketCandle c) { if (c.CloseTimeUtc <= last) return null; last = c.CloseTimeUtc; q.Enqueue(c); while (q.Count > o.HistoryLimit) q.Dequeue(); var h = (c.High + c.Low) / 2; var j = jaw.Update(h); var t = teeth.Update(h); var l = lips.Update(h); if (q.Count < o.SmaLength) return null; return (j, t, l, q.TakeLast(o.SmaLength).Average(x => x.Close)); }
-	}
 }

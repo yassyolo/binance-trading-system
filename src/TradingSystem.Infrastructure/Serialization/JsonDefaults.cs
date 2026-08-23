@@ -15,7 +15,9 @@ public static class JsonDefaults
             PropertyNamingPolicy  =  JsonNamingPolicy.SnakeCaseLower, 
             DefaultIgnoreCondition  =  JsonIgnoreCondition.WhenWritingNull
         };
+        
         options.Converters.Add(new JsonStringEnumConverter());
+        
         return options;
     }
 }

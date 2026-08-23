@@ -35,11 +35,7 @@ public static class DependencyInjection
     {
         AddCommonOptions(services, configuration);
 
-        services
-            .AddHttpClient<
-                IHistoricalCandleSource,
-                BinanceHistoricalCandleSource>()
-            .ConfigureHttpClient(ConfigureBinanceHttpClient);
+        services.AddHttpClient<IHistoricalCandleSource, BinanceHistoricalCandleSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
 
         services
             .AddHttpClient<
@@ -101,18 +97,11 @@ public static class DependencyInjection
         services.AddSingleton<BinanceRetryService>();
     }
 
-    private static void ConfigureBinanceHttpClient(
-        IServiceProvider serviceProvider,
-        HttpClient client)
+    private static void ConfigureBinanceHttpClient(IServiceProvider serviceProvider, HttpClient client)
     {
-        var options = serviceProvider
-            .GetRequiredService<IOptions<BinanceFuturesOptions>>()
-            .Value;
+        var options = serviceProvider.GetRequiredService<IOptions<BinanceFuturesOptions>>().Value;
 
-        client.BaseAddress = new Uri(
-            options.BaseUrl.TrimEnd('/') + "/",
-            UriKind.Absolute);
-
+        client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
         client.Timeout = TimeSpan.FromSeconds(30);
     }
 }

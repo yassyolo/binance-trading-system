@@ -14,34 +14,37 @@ public sealed class BinanceHistoricalCandleSource(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);
+        
         if (limit is < 1 or > 1500)
             throw new ArgumentOutOfRangeException(nameof(limit), limit, "Limit must be between 1 and 1500.");
 
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var normalizedInterval = interval.Trim().ToLowerInvariant();
+        
         var url = $"fapi/v1/klines?symbol={Uri.EscapeDataString(normalizedSymbol)}" +
                   $"&interval={Uri.EscapeDataString(normalizedInterval)}&limit={limit}";
 
         using var response = await httpClient.GetAsync(url, ct);
         var content = await response.Content.ReadAsStringAsync(ct);
+       
         if (!response.IsSuccessStatusCode)
             throw new BinanceApiException(response.StatusCode, content, "load latest candles");
 
         using var document = JsonDocument.Parse(content);
         return document.RootElement
             .EnumerateArray()
-            .Select(row => new MarketCandle(
+            .Select(c => new MarketCandle(
                 normalizedSymbol,
                 normalizedInterval,
-                DateTimeOffset.FromUnixTimeMilliseconds(row[0].GetInt64()).UtcDateTime,
-                DateTimeOffset.FromUnixTimeMilliseconds(row[6].GetInt64()).UtcDateTime,
-                ParseDecimal(row[1]),
-                ParseDecimal(row[2]),
-                ParseDecimal(row[3]),
-                ParseDecimal(row[4]),
-                ParseDecimal(row[5]),
+                DateTimeOffset.FromUnixTimeMilliseconds(c[0].GetInt64()).UtcDateTime,
+                DateTimeOffset.FromUnixTimeMilliseconds(c[6].GetInt64()).UtcDateTime,
+                ParseDecimal(c[1]),
+                ParseDecimal(c[2]),
+                ParseDecimal(c[3]),
+                ParseDecimal(c[4]),
+                ParseDecimal(c[5]),
                 true))
-            .OrderBy(candle => candle.OpenTimeUtc)
+            .OrderBy(c => c.OpenTimeUtc)
             .ToArray();
     }
 

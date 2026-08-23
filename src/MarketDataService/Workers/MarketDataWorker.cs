@@ -27,7 +27,7 @@ public sealed class MarketDataWorker(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return Task.WhenAll(intervals.Select(interval => RunStreamLoopAsync(symbols, interval, ct)));
+        return Task.WhenAll(intervals.Select(x => RunStreamLoopAsync(symbols, x, ct)));
     }
 
     private async Task RunStreamLoopAsync(IReadOnlyCollection<string> symbols, string interval, CancellationToken ct)
@@ -44,7 +44,7 @@ public sealed class MarketDataWorker(
                     ReceiveBufferSizeBytes = _options.ReceiveBufferSizeBytes
                 });
 
-                var streams = string.Join('/', symbols.Select(symbol => $"{symbol.ToLowerInvariant()}@kline_{interval}"));
+                var streams = string.Join('/', symbols.Select(x => $"{x.ToLowerInvariant()}@kline_{interval}"));
 
                 var baseUrl = _options.BinanceWebSocketBaseUrl.TrimEnd('/', '?');
                 var streamUrl = new Uri($"{baseUrl}?streams={streams}");

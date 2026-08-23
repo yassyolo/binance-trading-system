@@ -17,7 +17,7 @@ public sealed class ServiceHeartbeatWorker(
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;
     private readonly string _instanceId = $"{Environment.MachineName}-{Environment.ProcessId}";
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var settings = options.Value;
         if (!settings.Enabled)
@@ -46,19 +46,20 @@ public sealed class ServiceHeartbeatWorker(
                         _startedAtUtc,
                         DateTime.UtcNow,
                         Math.Max(settings.StaleAfterSeconds, settings.IntervalSeconds * 2),
-                        details), stoppingToken);
+                        details), 
+                        ct);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
-                catch (Exception exception)
+                catch (Exception ex)
                 {
-                    logger.LogError(exception, "Failed to publish heartbeat for {ServiceName}", settings.ServiceName);
+                    logger.LogError(ex, "Failed to publish heartbeat for {ServiceName}", settings.ServiceName);
                 }
-            } while (await timer.WaitForNextTickAsync(stoppingToken));
+            } while (await timer.WaitForNextTickAsync(ct));
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {}
     }
 }

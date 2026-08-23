@@ -24,10 +24,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddTradingRedis(this IServiceCollection services,  IConfiguration configuration, bool subscribeToSignals = false)
     {
-        services.AddOptions<RedisOptions>()
-            .Bind(configuration.GetSection(RedisOptions.SectionName))
-            .Validate(x => !string.IsNullOrWhiteSpace(x.ConnectionString), "Redis connection string is required.")
-            .ValidateOnStart();
+        services.AddOptions<RedisOptions>().Bind(configuration.GetSection(RedisOptions.SectionName)).Validate(x => !string.IsNullOrWhiteSpace(x.ConnectionString), "Redis connection string is required.").ValidateOnStart();
 
         services.AddSingleton<IConnectionMultiplexer>(sp =>
         {

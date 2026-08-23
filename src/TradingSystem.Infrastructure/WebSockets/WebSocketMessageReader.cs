@@ -11,10 +11,12 @@ public static class WebSocketMessageReader
     public static async Task<string?> ReadTextMessageAsync(ClientWebSocket socket, int bufferSizeBytes, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(socket);
+        
         if (bufferSizeBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(bufferSizeBytes));
 
         var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(1024, bufferSizeBytes));
+       
         try
         {
             using var stream = new MemoryStream();
