@@ -192,11 +192,6 @@ public sealed class Bot8016RedisMarketSubscriber(
         string json,
         CancellationToken cancellationToken)
     {
-        logger.LogInformation(
-            "BOT8016 received indicator message. Channel = {Channel}, Payload = {Payload}",
-            channel,
-            json);
-
         var indicator = ParseIndicator(json);
 
         if (indicator is null)
@@ -227,15 +222,6 @@ public sealed class Bot8016RedisMarketSubscriber(
         CancellationToken cancellationToken)
     {
         var candle = ParseCandle(json);
-
-        logger.LogInformation(
-            "BOT8016 received candle. Symbol = {Symbol}, Interval = {Interval}, OpenTime = {OpenTime}, CloseTime = {CloseTime}, IsClosed = {IsClosed}, Close = {Close}",
-            candle?.Symbol,
-            candle?.Interval,
-            candle?.OpenTime,
-            candle?.CloseTime,
-            candle?.IsClosed,
-            candle?.Close);
 
         if (candle is null)
         {
@@ -269,8 +255,6 @@ public sealed class Bot8016RedisMarketSubscriber(
 
     private async Task ProcessEntryCandleAsync(Bot8016Candle candle, CancellationToken cancellationToken)
     {
-        logger.LogInformation("BOT8016 processing entry candle. CloseTime = {CloseTime}, LastProcessed = {LastProcessed}", candle.CloseTime,  _lastProcessedEntryCloseTime);
-
         if (candle.CloseTime <= _lastProcessedEntryCloseTime)
         {
             logger.LogInformation("BOT8016 entry candle ignored because it was already processed. CloseTime = {CloseTime}, LastProcessed = {LastProcessed}", candle.CloseTime, _lastProcessedEntryCloseTime);

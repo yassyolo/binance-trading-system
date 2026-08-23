@@ -16,6 +16,9 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 {
     private readonly HttpClient _httpClient;
     private readonly BinanceFuturesOptions _options;
+    private readonly SemaphoreSlim _timeSyncGate = new(1, 1);
+
+    private long _serverTimeOffsetMilliseconds;
 
     public BinanceFuturesOrderClient(HttpClient httpClient, IOptions<BinanceFuturesOptions> options)
     {
@@ -165,7 +168,35 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     public async Task SetHedgeModeAsync(CancellationToken ct)
-        => _ = await SendSignedAsync(HttpMethod.Post, "fapi/v1/positionSide/dual", new() { ["dualSidePosition"] = "true" }, ct);
+    {
+        var currentModeJson = await SendSignedAsync(
+            HttpMethod.Get,
+            "fapi/v1/positionSide/dual",
+            new(),
+            ct);
+
+        using (var document = JsonDocument.Parse(currentModeJson))
+        {
+            if (document.RootElement.TryGetProperty("dualSidePosition", out var dualSidePosition) &&
+                dualSidePosition.ValueKind is JsonValueKind.True)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            _ = await SendSignedAsync(
+                HttpMethod.Post,
+                "fapi/v1/positionSide/dual",
+                new() { ["dualSidePosition"] = "true" },
+                ct);
+        }
+        catch (BinanceApiException ex) when (IsNoNeedToChangePositionSide(ex))
+        {
+            // Binance -4059 means the requested position mode is already active.
+        }
+    }
 
     public async Task SetLeverageAsync(string symbol, int leverage, CancellationToken ct)
         => _ = await SendSignedAsync(HttpMethod.Post, "fapi/v1/leverage", new() { ["symbol"] = NormalizeSymbol(symbol), ["leverage"] = leverage.ToString(CultureInfo.InvariantCulture) }, ct);
@@ -191,8 +222,22 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
     private async Task<string> SendSignedAsync(HttpMethod method, string endpoint, Dictionary<string, string> parameters, CancellationToken ct)
     {
+        try
+        {
+            return await SendSignedOnceAsync(method, endpoint, parameters, ct);
+        }
+        catch (BinanceApiException ex) when (IsTimestampOutsideReceiveWindow(ex))
+        {
+            await SynchronizeServerTimeAsync(ct);
+            return await SendSignedOnceAsync(method, endpoint, parameters, ct);
+        }
+    }
+
+    private async Task<string> SendSignedOnceAsync(HttpMethod method, string endpoint, Dictionary<string, string> parameters, CancellationToken ct)
+    {
         parameters["recvWindow"] = _options.ReceiveWindow.ToString(CultureInfo.InvariantCulture);
-        parameters["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+        parameters["timestamp"] = CurrentBinanceTimestampMilliseconds().ToString(CultureInfo.InvariantCulture);
+
         var query = BuildQueryString(parameters);
         var signedQuery = $"{query}&signature={Sign(query)}";
 
@@ -201,6 +246,43 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         using var response = await _httpClient.SendAsync(request, ct);
         return await ReadResponseAsync(response, endpoint, ct);
     }
+
+    private async Task SynchronizeServerTimeAsync(CancellationToken ct)
+    {
+        await _timeSyncGate.WaitAsync(ct);
+
+        try
+        {
+            var requestStartedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            using var document = JsonDocument.Parse(
+                await SendUnsignedAsync(
+                    "fapi/v1/time",
+                    new(),
+                    ct));
+
+            var requestCompletedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            if (!document.RootElement.TryGetProperty("serverTime", out var serverTimeElement) ||
+                !serverTimeElement.TryGetInt64(out var serverTime))
+            {
+                throw new InvalidOperationException("Binance server time response does not contain a valid serverTime.");
+            }
+
+            var localMidpoint = requestStartedAt + ((requestCompletedAt - requestStartedAt) / 2);
+            Interlocked.Exchange(
+                ref _serverTimeOffsetMilliseconds,
+                serverTime - localMidpoint);
+        }
+        finally
+        {
+            _timeSyncGate.Release();
+        }
+    }
+
+    private long CurrentBinanceTimestampMilliseconds()
+        => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() +
+           Interlocked.Read(ref _serverTimeOffsetMilliseconds);
 
     private static async Task<string> ReadResponseAsync(HttpResponseMessage response, string operation, CancellationToken ct)
     {
@@ -316,9 +398,9 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     public async Task<IReadOnlyCollection<BinanceTradeFill>> GetTradeFillsForOrderAsync(
-    string symbol,
-    string orderId,
-    CancellationToken ct)
+        string symbol,
+        string orderId,
+        CancellationToken ct)
     {
         using var document = JsonDocument.Parse(
             await SendSignedAsync(
@@ -343,4 +425,10 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             })
             .ToArray();
     }
+
+    private static bool IsTimestampOutsideReceiveWindow(BinanceApiException exception)
+        => exception.ResponseBody.Contains("\"code\":-1021", StringComparison.Ordinal);
+
+    private static bool IsNoNeedToChangePositionSide(BinanceApiException exception)
+        => exception.ResponseBody.Contains("\"code\":-4059", StringComparison.Ordinal);
 }

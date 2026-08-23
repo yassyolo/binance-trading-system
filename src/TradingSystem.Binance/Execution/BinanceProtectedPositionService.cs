@@ -128,15 +128,22 @@ public sealed class BinanceProtectedPositionService(
         position.MarkClosing(clock.UtcNow);
 
         if (!position.TpExecuted && !string.IsNullOrWhiteSpace(position.TpOrderId))
+        {
             await TryCancelOrderAsync(position.Symbol, position.TpOrderId, ct);
+            position.TpStatus = "CANCELED";
+        }
 
         if (!position.SlExecuted && !string.IsNullOrWhiteSpace(position.SlOrderId))
+        {
             await TryCancelAlgoOrderAsync(position.Symbol, position.SlOrderId, ct);
+            position.SlStatus = "CANCELED";
+        }
 
         if (!string.IsNullOrWhiteSpace(position.Stop3OrderId) &&
             position.Stop3OrderId != position.SlOrderId)
         {
             await TryCancelAlgoOrderAsync(position.Symbol, position.Stop3OrderId, ct);
+            position.Stop3Status = "CANCELED";
         }
 
         if (position.RemainingQuantity <= 0)

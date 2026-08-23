@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TradingSystem.Application.Time;
+using TradingSystem.Binance.Exceptions;
 using TradingSystem.Binance.Execution.Models;
 using TradingSystem.Binance.Orders;
 using TradingSystem.Binance.Orders.Contracts;
@@ -101,7 +102,10 @@ public sealed class BinanceTpOnlyPositionService(
         position.MarkClosing(clock.UtcNow);
 
         if (!position.TpExecuted && !string.IsNullOrWhiteSpace(position.TpOrderId))
-            await orders.CancelOrderAsync(position.Symbol, position.TpOrderId, ct);
+        {
+            await TryCancelOrderAsync(position.Symbol, position.TpOrderId, ct);
+            position.TpStatus = "CANCELED";
+        }
 
         if (position.RemainingQuantity <= 0)
             return;
@@ -123,6 +127,24 @@ public sealed class BinanceTpOnlyPositionService(
         position.CloseOrderId = close.OrderId;
         position.CloseStatus = close.Status;
     }
+
+    private async Task TryCancelOrderAsync(string symbol, string orderId, CancellationToken ct)
+    {
+        try
+        {
+            await orders.CancelOrderAsync(symbol, orderId, ct);
+        }
+        catch (BinanceApiException ex) when (IsUnknownOrder(ex))
+        {
+            logger.LogInformation(
+                "Standard Binance order was already absent while cancelling. Symbol = {Symbol} OrderId = {OrderId}",
+                symbol,
+                orderId);
+        }
+    }
+
+    private static bool IsUnknownOrder(BinanceApiException exception)
+        => exception.ResponseBody.Contains("\"code\":-2011", StringComparison.Ordinal);
 
     private static decimal ResolvePrice(BinanceOrderResult order)
         => order.AveragePrice is > 0
