@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
+using StrategyService.Services;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Reconciliation.Configuration;
 using TradingSystem.Reconciliation.Contracts;
@@ -11,6 +12,7 @@ namespace StrategyService.Reliability;
 public sealed class SafeHealingActionExecutor(
     IPositionStore localStore,
     IExchangeStateProvider exchange,
+    LivePositionLifecycleRecorder lifecycle,
     IOptions<ReconciliationOptions> options,
     TimeProvider time,
     ILogger<SafeHealingActionExecutor> logger)
@@ -95,6 +97,11 @@ public sealed class SafeHealingActionExecutor(
         position.MarkClosed("RECONCILIATION_STALE_LOCAL_POSITION", now);
 
         await localStore.SaveAsync(position, ct);
+        await lifecycle.RecordClosedAsync(
+            position.BotName,
+            position.ShortId,
+            "RECONCILIATION_STALE_LOCAL_POSITION",
+            ct);
 
         logger.LogWarning(
             "Stale local position marked closed after Binance revalidation. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, Finding = {FindingId}",

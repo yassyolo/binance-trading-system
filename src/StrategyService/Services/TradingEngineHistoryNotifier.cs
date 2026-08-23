@@ -3,13 +3,12 @@ using TradingSystem.Application.Execution.Models;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Strategies;
 using TradingSystem.Application.Strategies.Models;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Signals;
 using TradingSystem.HistoricalDatabase.EventStore;
 using TradingSystem.HistoricalDatabase.Models;
 using TradingSystem.HistoricalDatabase.Models.Enums;
 using TradingSystem.Observability.Environment;
-using TradingSystem.Observability.History.Models;
-using TradingSystem.Observability.Pipeline;
 using TradingSystem.Prometheus.PrometheusMetrics;
 
 namespace StrategyService.Services;
@@ -18,16 +17,18 @@ public sealed class TradingEngineHistoryNotifier(
     TelegramTradingEngineNotifier notifications,
     TradingStrategyRegistry strategies,
     IPositionStore positions,
-    ITradingPipelineRecorder history,
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
-    ITradingEnvironmentProvider environment)
+    ITradingEnvironmentProvider environment,
+    IBotRuntimeConfigurationProvider configurations,
+    LivePositionLifecycleRecorder lifecycle)
     : ITradingEngineNotifier
 {
     public async Task DecisionMadeAsync(TradeSignal signal, decimal markPrice, StrategyDecision decision, CancellationToken ct)
     {
         var strategy = strategies.GetRequired(signal.BotName);
         var decisionName = decision.ShouldOpen ? "Open" : "Block";
+        var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
         metrics.SignalsReceived.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown").Inc();
         metrics.Decisions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName).Inc();
@@ -37,7 +38,7 @@ public sealed class TradingEngineHistoryNotifier(
                 Guid.NewGuid(),
                 HistoricalEventType.StrategyDecision,
                 DateTime.UtcNow,
-                environment.EnvironmentName,
+                environmentName,
                 signal.SignalId,
                 signal.BotName,
                 strategy.Metadata.Version,
@@ -64,6 +65,7 @@ public sealed class TradingEngineHistoryNotifier(
     {
         metrics.Executions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), result.Succeeded ? "success" : "failure").Inc();
 
+        var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
         string? strategyVersion = null;
 
         if (result.Succeeded && !string.IsNullOrWhiteSpace(result.ShortId))
@@ -74,27 +76,7 @@ public sealed class TradingEngineHistoryNotifier(
             {
                 var strategy = strategies.GetRequired(signal.BotName);
                 strategyVersion = strategy.Metadata.Version;
-
-                await history.UpsertPositionAsync(
-                    new PositionHistoryRecord(
-                        position.ShortId,
-                        signal.SignalId,
-                        position.BotName,
-                        strategy.Metadata.Version,
-                        position.Symbol,
-                        position.Side.ToString(),
-                        position.Source,
-                        environment.EnvironmentName,
-                        position.Status.ToString(),
-                        position.Quantity,
-                        position.EntryPrice,
-                        position.TpPrice,
-                        position.ParentFilledAtUtc ?? position.CreatedAtUtc,
-                        position.ClosedAtUtc,
-                        null,
-                        null,
-                        position.CloseStatus),
-                    ct);
+                await lifecycle.RecordOpenedAsync(position, signal.SignalId, strategyVersion, ct);
             }
         }
 
@@ -103,7 +85,7 @@ public sealed class TradingEngineHistoryNotifier(
                 Guid.NewGuid(),
                 HistoricalEventType.ExecutionCompleted,
                 DateTime.UtcNow,
-                environment.EnvironmentName,
+                environmentName,
                 signal.SignalId,
                 signal.BotName,
                 strategyVersion,
@@ -128,13 +110,14 @@ public sealed class TradingEngineHistoryNotifier(
     public async Task ProcessingFailedAsync(TradeSignal signal, Exception exception, CancellationToken ct)
     {
         metrics.ProcessingFailures.WithLabels("trading_engine", signal.BotName, exception.GetType().Name).Inc();
+        var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
         await historicalEvents.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.ProcessingFailed,
                 DateTime.UtcNow,
-                environment.EnvironmentName,
+                environmentName,
                 signal.SignalId,
                 signal.BotName,
                 null,
@@ -154,5 +137,14 @@ public sealed class TradingEngineHistoryNotifier(
             ct);
 
         await notifications.ProcessingFailedAsync(signal, exception, ct);
+    }
+
+    private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
+    {
+        var configuration = await configurations.GetAsync(botName, ct);
+
+        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
+            ? configuration.Environment.Trim()
+            : environment.EnvironmentName;
     }
 }

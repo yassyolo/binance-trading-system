@@ -62,6 +62,8 @@ builder.Services.AddSingleton<ITradingEngineNotifier, TradingEngineHistoryNotifi
 
 builder.Services.AddSingleton<IExchangeStateProvider, BinanceExchangeStateProvider>();
 builder.Services.AddSingleton<IHealingActionExecutor, SafeHealingActionExecutor>();
+builder.Services.AddSingleton<LivePositionLifecycleRecorder>();
+builder.Services.AddHostedService<PositionHistoryProjectionRepairWorker>();
 
 builder.Services.AddSingleton<GridSpacingPolicy>();
 builder.Services.AddSingleton<PositionAdmissionPolicy>();

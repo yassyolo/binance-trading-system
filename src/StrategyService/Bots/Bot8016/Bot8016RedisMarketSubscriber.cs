@@ -228,6 +228,15 @@ public sealed class Bot8016RedisMarketSubscriber(
     {
         var candle = ParseCandle(json);
 
+        logger.LogInformation(
+            "BOT8016 received candle. Symbol = {Symbol}, Interval = {Interval}, OpenTime = {OpenTime}, CloseTime = {CloseTime}, IsClosed = {IsClosed}, Close = {Close}",
+            candle?.Symbol,
+            candle?.Interval,
+            candle?.OpenTime,
+            candle?.CloseTime,
+            candle?.IsClosed,
+            candle?.Close);
+
         if (candle is null)
         {
             logger.LogWarning("BOT8016 could not parse kline payload. Payload = {Payload}", json);
@@ -258,20 +267,22 @@ public sealed class Bot8016RedisMarketSubscriber(
             await ProcessExitCandleAsync(candle, cancellationToken);
     }
 
-    private async Task ProcessEntryCandleAsync(
-        Bot8016Candle candle,
-        CancellationToken cancellationToken)
+    private async Task ProcessEntryCandleAsync(Bot8016Candle candle, CancellationToken cancellationToken)
     {
+        logger.LogInformation("BOT8016 processing entry candle. CloseTime = {CloseTime}, LastProcessed = {LastProcessed}", candle.CloseTime,  _lastProcessedEntryCloseTime);
+
         if (candle.CloseTime <= _lastProcessedEntryCloseTime)
+        {
+            logger.LogInformation("BOT8016 entry candle ignored because it was already processed. CloseTime = {CloseTime}, LastProcessed = {LastProcessed}", candle.CloseTime, _lastProcessedEntryCloseTime);
+
             return;
+        }
 
         _pendingEntryCandle = candle;
         await TryProcessPendingEntryAsync(state.GetIndicator(), cancellationToken);
     }
 
-    private async Task TryProcessPendingEntryAsync(
-        Bot8016IndicatorSnapshot? indicator,
-        CancellationToken cancellationToken)
+    private async Task TryProcessPendingEntryAsync(Bot8016IndicatorSnapshot? indicator, CancellationToken cancellationToken)
     {
         var candle = _pendingEntryCandle;
         if (candle is null)

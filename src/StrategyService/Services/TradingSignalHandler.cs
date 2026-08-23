@@ -3,6 +3,7 @@ using TradingSystem.Application.Engine.Models;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Execution.Models;
 using TradingSystem.Application.Strategies;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Domain.Signals;
 using TradingSystem.Observability.Environment;
 using TradingSystem.Observability.History.Models;
@@ -15,6 +16,7 @@ public sealed class TradingSignalHandler(
     TradingStrategyRegistry strategies,
     ITradingPipelineRecorder history,
     ITradingEnvironmentProvider environment,
+    IBotRuntimeConfigurationProvider configurations,
     ITradingSignalContextAccessor signalContext,
     TelegramTradingEngineNotifier notifications,
     ILogger<TradingSignalHandler> logger)
@@ -83,7 +85,7 @@ public sealed class TradingSignalHandler(
                 Symbol: signal.Symbol,
                 Side: signal.Side.ToString(),
                 Source: signal.Source,
-                Environment: environment.EnvironmentName,
+                Environment: await ResolveEnvironmentAsync(signal.BotName, ct),
                 SignalTimeUtc: signal.GeneratedAtUtc,
                 ReferencePrice: signal.SuggestedPrice,
                 CandleOpenTimeUtc: null,
@@ -112,7 +114,7 @@ public sealed class TradingSignalHandler(
                 Side: signal.Side.ToString(),
                 Decision: decision,
                 Reason: reason,
-                Environment: environment.EnvironmentName,
+                Environment: await ResolveEnvironmentAsync(signal.BotName, ct),
                 DecidedAtUtc: DateTime.UtcNow,
                 MarkPrice: null,
                 Parameters: null,
@@ -123,6 +125,15 @@ public sealed class TradingSignalHandler(
         {
             logger.LogError(exception, "Final signal decision could not be recorded. SignalId = {SignalId}", signal.SignalId);
         }
+    }
+
+    private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
+    {
+        var configuration = await configurations.GetAsync(botName, ct);
+
+        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
+            ? configuration.Environment.Trim()
+            : environment.EnvironmentName;
     }
 
     private static bool IsTransientInfrastructureFailure(Exception exception)

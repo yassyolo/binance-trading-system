@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Runtime.Configuration;
+using StrategyService.Services;
 using System.Text.Json;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Positions.Contracts;
@@ -19,6 +20,7 @@ public sealed class BotCommandWorker(
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
     IPositionStore positionStore,
+    LivePositionLifecycleRecorder lifecycle,
     IAuditLog auditLog,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotCommandWorker> logger)
@@ -217,6 +219,12 @@ public sealed class BotCommandWorker(
                     result.Exception);
             }
 
+            await lifecycle.RecordClosedAsync(
+                command.BotName,
+                position.ShortId,
+                reason,
+                ct);
+
             logger.LogInformation(
                 "Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}",
                 command.CommandId,
@@ -249,6 +257,12 @@ public sealed class BotCommandWorker(
 
             throw new InvalidOperationException(message, result.Exception);
         }
+
+        await lifecycle.RecordClosedAsync(
+            command.BotName,
+            positionIdentifier,
+            reason,
+            ct);
 
         logger.LogInformation(
             "Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}",

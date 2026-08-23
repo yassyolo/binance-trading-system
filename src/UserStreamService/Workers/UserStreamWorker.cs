@@ -25,7 +25,21 @@ public sealed class UserStreamWorker(
     private DateTimeOffset? _disconnectedAtUtc;
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
-        => Task.WhenAll(StreamLoopAsync(stoppingToken), KeepAliveLoopAsync(stoppingToken));
+    {
+        // A process restart can miss Redis Pub/Sub events that happened while the
+        // process was down. Treat the first successful connection as a recovery
+        // boundary and publish the same REST healing snapshot used after reconnect.
+        lock (_sync)
+        {
+            _disconnectedAtUtc =
+                time.GetUtcNow() -
+                TimeSpan.FromSeconds(Math.Max(0, _serviceOptions.MinDowntimeForHealingSeconds));
+        }
+
+        return Task.WhenAll(
+            StreamLoopAsync(stoppingToken),
+            KeepAliveLoopAsync(stoppingToken));
+    }
 
     private async Task StreamLoopAsync(CancellationToken ct)
     {
@@ -38,7 +52,11 @@ public sealed class UserStreamWorker(
                 lock (_sync)
                     _listenKey = listenKey;
 
-                await stream.RunAsync(listenKey, processor.ProcessAsync, OnConnectedAsync, ct);
+                await stream.RunAsync(
+                    listenKey,
+                    processor.ProcessAsync,
+                    OnConnectedAsync,
+                    ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -58,13 +76,16 @@ public sealed class UserStreamWorker(
             }
 
             if (!ct.IsCancellationRequested)
-                await Task.Delay(TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds), ct);
+                await Task.Delay(
+                    TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds),
+                    ct);
         }
     }
 
     private async Task KeepAliveLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
 
         try
         {
@@ -93,7 +114,8 @@ public sealed class UserStreamWorker(
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {}
+        {
+        }
     }
 
     private async Task OnConnectedAsync(CancellationToken ct)
@@ -106,10 +128,17 @@ public sealed class UserStreamWorker(
             _disconnectedAtUtc = null;
         }
 
+        logger.LogInformation("Binance user stream connected.");
+
         if (disconnectedAtUtc is null)
             return;
 
         var downtime = time.GetUtcNow() - disconnectedAtUtc.Value;
+
+        logger.LogInformation(
+            "Publishing post-connect healing snapshot. DowntimeSeconds = {DowntimeSeconds}",
+            Math.Round(downtime.TotalSeconds, 1));
+
         await healing.PublishAfterReconnectAsync(downtime, ct);
     }
 }

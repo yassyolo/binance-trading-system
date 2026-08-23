@@ -62,6 +62,7 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
                     select count(*)::int
                     from trading_dashboard.alerts
                     where not acknowledged
+                      and not resolved
                       and severity = 'Critical'
                 ) as "Alerts"
             from trading_dashboard.v_live_bot_overview;
@@ -83,25 +84,33 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
             totals.Alerts);
     }
 
-    public async Task<IReadOnlyCollection<SignalRowDto>> GetSignalsAsync(DashboardQuery q, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<SignalRowDto>(new CommandDefinition("select row_number() over(order by s.signal_time_utc desc) Id, s.signal_id SignalId, s.signal_time_utc TimeUtc, s.bot_name BotName, s.symbol Symbol, s.source Source, s.side Side, s.reference_price Price, d.decision Decision, d.reason BlockReason, s.strategy_version StrategyVersion, s.environment Environment from trading_history.signals s left join lateral(select decision, reason from trading_history.strategy_decisions d where d.signal_id = s.signal_id order by decided_at_utc desc limit 1)d on true where (@Bot is null or s.bot_name = @Bot) and (@Symbol is null or s.symbol = @Symbol) and (cast(@FromUtc as timestamptz) is null or s.signal_time_utc >= cast(@FromUtc as timestamptz)) and (cast(@ToUtc as timestamptz) is null or s.signal_time_utc < cast(@ToUtc as timestamptz)) order by s.signal_time_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.FromUtc, q.ToUtc, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList(); }
+    public async Task<IReadOnlyCollection<SignalRowDto>> GetSignalsAsync(DashboardQuery q, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
 
-    public async Task<IReadOnlyCollection<PositionRowDto>> GetPositionsAsync(DashboardQuery q, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<PositionRowDto>(new CommandDefinition("select p.position_id PositionId, p.bot_name BotName, p.symbol Symbol, p.side Side, p.status Status, p.quantity Quantity, p.entry_price EntryPrice, p.take_profit_price TakeProfitPrice, null::numeric CurrentPrice, 0::numeric UnrealizedPnl, p.realized_pnl RealizedPnl, p.opened_at_utc OpenedAtUtc, p.closed_at_utc ClosedAtUtc, p.strategy_version StrategyVersion, p.environment Environment from trading_history.positions p where (@Bot is null or p.bot_name = @Bot) and (@Symbol is null or p.symbol = @Symbol) and (@Status is null or p.status = @Status) order by p.opened_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.Status, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList(); }
+        return (await c.QueryAsync<SignalRowDto>(new CommandDefinition("select row_number() over(order by s.signal_time_utc desc) Id, s.signal_id SignalId, s.signal_time_utc TimeUtc, s.bot_name BotName, s.symbol Symbol, s.source Source, s.side Side, s.reference_price Price, d.decision Decision, d.reason BlockReason, s.strategy_version StrategyVersion, s.environment Environment from trading_history.signals s left join lateral(select decision, reason from trading_history.strategy_decisions d where d.signal_id = s.signal_id order by decided_at_utc desc limit 1)d on true where (@Bot is null or s.bot_name = @Bot) and (@Symbol is null or s.symbol = @Symbol) and (cast(@FromUtc as timestamptz) is null or s.signal_time_utc >= cast(@FromUtc as timestamptz)) and (cast(@ToUtc as timestamptz) is null or s.signal_time_utc < cast(@ToUtc as timestamptz)) order by s.signal_time_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.FromUtc, q.ToUtc, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList();
+    }
 
-    public async Task<IReadOnlyCollection<TradeHistoryRowDto>> GetTradesAsync(DashboardQuery q, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<TradeHistoryRowDto>(new CommandDefinition("select position_id PositionId, bot_name BotName, symbol Symbol, side Side, entry_price EntryPrice, (metadata->>'exitPrice')::numeric ExitPrice, quantity Quantity, realized_pnl RealizedPnl, fees Fees, (closed_at_utc-opened_at_utc) Duration, source Source, strategy_version StrategyVersion, environment Environment, close_reason CloseReason, opened_at_utc OpenedAtUtc, closed_at_utc ClosedAtUtc from trading_history.positions where closed_at_utc is not null and (@Bot is null or bot_name = @Bot) and (@Symbol is null or symbol = @Symbol) order by closed_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList(); }
+    public async Task<IReadOnlyCollection<PositionRowDto>> GetPositionsAsync(DashboardQuery q, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
 
-    public async Task<AnalyticsSummaryDto> GetAnalyticsAsync(DashboardQuery q, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        var r = await c.QuerySingleAsync<dynamic>(new CommandDefinition("select coalesce(sum(realized_pnl), 0) TotalPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=date_trunc('day', now() at time zone 'utc')), 0) DailyPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=now()-interval '7 day'), 0) WeeklyPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=now()-interval '30 day'), 0) MonthlyPnl, coalesce(100.0*count(*) filter(where realized_pnl>0)/nullif(count(*), 0), 0) WinRate, coalesce(avg(realized_pnl) filter(where realized_pnl>0), 0) AverageWin, coalesce(avg(realized_pnl) filter(where realized_pnl<0), 0) AverageLoss, coalesce(avg(extract(epoch from(closed_at_utc-opened_at_utc))/60), 0) AverageHoldingMinutes, coalesce(sum(realized_pnl) filter(where side = 'Long'), 0) LongPnl, coalesce(sum(realized_pnl) filter(where side = 'Short'), 0) ShortPnl from trading_history.positions where closed_at_utc is not null and (@Bot is null or bot_name = @Bot)", new { Bot = q.BotName }, cancellationToken: ct)); var counts = await c.QuerySingleAsync<(int Signals, int Opened, int Blocked)>(new CommandDefinition("select (select count(*)::int from trading_history.signals where (@Bot is null or bot_name = @Bot)) Signals, (select count(*)::int from trading_history.positions where (@Bot is null or bot_name = @Bot)) Opened, (select count(*)::int from trading_history.strategy_decisions where decision = 'Block' and (@Bot is null or bot_name = @Bot)) Blocked", new { Bot = q.BotName }, cancellationToken: ct)); var reasons = (await c.QueryAsync<(string Reason, int Count)>(new CommandDefinition("select coalesce(reason, 'Unknown') Reason, count(*)::int Count from trading_history.strategy_decisions where decision = 'Block' and (@Bot is null or bot_name = @Bot) group by reason order by count(*) desc", new { Bot = q.BotName }, cancellationToken: ct))).ToDictionary(x => x.Reason, x => x.Count); var dd = await c.ExecuteScalarAsync<decimal>(new CommandDefinition("select round(coalesce(max(maximum_drawdown_percent), 0), 8)::numeric(18,8) from trading.performance_snapshots where (cast(@Bot as text) is null or bot_name = cast(@Bot as text))", new { Bot = q.BotName }, cancellationToken: ct)); return new((decimal)r.totalpnl, (decimal)r.dailypnl, (decimal)r.weeklypnl, (decimal)r.monthlypnl, (decimal)r.winrate, (decimal)r.averagewin, (decimal)r.averageloss, dd, (decimal)r.averageholdingminutes, counts.Signals, counts.Opened, counts.Blocked, reasons, (decimal)r.longpnl, (decimal)r.shortpnl); }
+        return (await c.QueryAsync<PositionRowDto>(new CommandDefinition("select p.position_id PositionId, p.bot_name BotName, p.symbol Symbol, p.side Side, p.status Status, p.quantity Quantity, p.entry_price EntryPrice, p.take_profit_price TakeProfitPrice, null::numeric CurrentPrice, 0::numeric UnrealizedPnl, p.realized_pnl RealizedPnl, p.opened_at_utc OpenedAtUtc, p.closed_at_utc ClosedAtUtc, p.strategy_version StrategyVersion, p.environment Environment from trading_history.positions p where (@Bot is null or p.bot_name = @Bot) and (@Symbol is null or p.symbol = @Symbol) and (@Status is null or p.status = @Status) order by p.opened_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.Status, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList();
+    }
+
+    public async Task<IReadOnlyCollection<TradeHistoryRowDto>> GetTradesAsync(DashboardQuery q, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        return (await c.QueryAsync<TradeHistoryRowDto>(new CommandDefinition("select position_id PositionId, bot_name BotName, symbol Symbol, side Side, entry_price EntryPrice, (metadata->>'exitPrice')::numeric ExitPrice, quantity Quantity, realized_pnl RealizedPnl, fees Fees, (closed_at_utc-opened_at_utc) Duration, source Source, strategy_version StrategyVersion, environment Environment, close_reason CloseReason, opened_at_utc OpenedAtUtc, closed_at_utc ClosedAtUtc from trading_history.positions where closed_at_utc is not null and (@Bot is null or bot_name = @Bot) and (@Symbol is null or symbol = @Symbol) order by closed_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, Symbol = q.Symbol, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList();
+    }
+
+    public async Task<AnalyticsSummaryDto> GetAnalyticsAsync(DashboardQuery q, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        var r = await c.QuerySingleAsync<dynamic>(new CommandDefinition("select coalesce(sum(realized_pnl), 0) TotalPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=date_trunc('day', now() at time zone 'utc')), 0) DailyPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=now()-interval '7 day'), 0) WeeklyPnl, coalesce(sum(realized_pnl) filter(where closed_at_utc>=now()-interval '30 day'), 0) MonthlyPnl, coalesce(100.0*count(*) filter(where realized_pnl>0)/nullif(count(*), 0), 0) WinRate, coalesce(avg(realized_pnl) filter(where realized_pnl>0), 0) AverageWin, coalesce(avg(realized_pnl) filter(where realized_pnl<0), 0) AverageLoss, coalesce(avg(extract(epoch from(closed_at_utc-opened_at_utc))/60), 0) AverageHoldingMinutes, coalesce(sum(realized_pnl) filter(where side = 'Long'), 0) LongPnl, coalesce(sum(realized_pnl) filter(where side = 'Short'), 0) ShortPnl from trading_history.positions where closed_at_utc is not null and (@Bot is null or bot_name = @Bot)", new { Bot = q.BotName }, cancellationToken: ct)); var counts = await c.QuerySingleAsync<(int Signals, int Opened, int Blocked)>(new CommandDefinition("select (select count(*)::int from trading_history.signals where (@Bot is null or bot_name = @Bot)) Signals, (select count(*)::int from trading_history.positions where (@Bot is null or bot_name = @Bot)) Opened, (select count(*)::int from trading_history.strategy_decisions where decision = 'Block' and (@Bot is null or bot_name = @Bot)) Blocked", new { Bot = q.BotName }, cancellationToken: ct)); var reasons = (await c.QueryAsync<(string Reason, int Count)>(new CommandDefinition("select coalesce(reason, 'Unknown') Reason, count(*)::int Count from trading_history.strategy_decisions where decision = 'Block' and (@Bot is null or bot_name = @Bot) group by reason order by count(*) desc", new { Bot = q.BotName }, cancellationToken: ct))).ToDictionary(x => x.Reason, x => x.Count); var dd = await c.ExecuteScalarAsync<decimal>(new CommandDefinition("select round(coalesce(max(maximum_drawdown_percent), 0), 8)::numeric(18,8) from trading.performance_snapshots where (cast(@Bot as text) is null or bot_name = cast(@Bot as text))", new { Bot = q.BotName }, cancellationToken: ct)); return new((decimal)r.totalpnl, (decimal)r.dailypnl, (decimal)r.weeklypnl, (decimal)r.monthlypnl, (decimal)r.winrate, (decimal)r.averagewin, (decimal)r.averageloss, dd, (decimal)r.averageholdingminutes, counts.Signals, counts.Opened, counts.Blocked, reasons, (decimal)r.longpnl, (decimal)r.shortpnl);
+    }
     public async Task<IReadOnlyCollection<EquityPointDto>> GetEquityAsync(
         DashboardQuery q,
         CancellationToken ct)
@@ -169,38 +178,50 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
             .ToArray();
     }
 
-    public async Task<PriceChartDto> GetPriceChartAsync(string symbol, string interval, DateTime fromUtc, DateTime toUtc, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        var candles = (await c.QueryAsync<PriceCandleDto>(new CommandDefinition("select open_time_utc OpenTimeUtc, open Open, high High, low Low, close Close, volume Volume from trading_dashboard.market_candles where symbol = @symbol and interval = @interval and open_time_utc>=@fromUtc and open_time_utc<@toUtc order by open_time_utc limit 5000", new { symbol, interval, fromUtc, toUtc }, cancellationToken: ct))).AsList(); var markers = (await c.QueryAsync<ChartMarkerDto>(new CommandDefinition("select s.signal_time_utc TimeUtc, case when d.decision = 'Block' then 'BlockedSignal' else 'Signal' end Kind, s.side Side, coalesce(s.reference_price, d.mark_price, 0) Price, coalesce(d.reason, d.decision) Label from trading_history.signals s left join lateral(select decision, reason, mark_price from trading_history.strategy_decisions x where x.signal_id = s.signal_id order by decided_at_utc desc limit 1)d on true where s.symbol = @symbol and s.signal_time_utc>=@fromUtc and s.signal_time_utc<@toUtc order by s.signal_time_utc", new { symbol, fromUtc, toUtc }, cancellationToken: ct))).AsList(); return new(candles, markers); }
+    public async Task<PriceChartDto> GetPriceChartAsync(string symbol, string interval, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
 
-    public async Task<IReadOnlyCollection<RunSummaryDto>> GetRunsAsync(DashboardQuery q, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<RunSummaryDto>(new CommandDefinition("select r.run_id RunId, r.run_type RunType, r.bot_name BotName, r.strategy_version StrategyVersion, r.symbol Symbol, r.interval Interval, r.started_at_utc StartedAtUtc, r.completed_at_utc CompletedAtUtc, r.status Status, s.net_profit NetProfit, s.win_rate_percent WinRatePercent, s.maximum_drawdown_percent MaxDrawdownPercent, s.score Score from trading.performance_runs r left join trading.performance_snapshots s on s.run_id = r.run_id where (@Bot is null or r.bot_name = @Bot) order by r.started_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList(); }
+        var candles = (await c.QueryAsync<PriceCandleDto>(new CommandDefinition("select open_time_utc OpenTimeUtc, open Open, high High, low Low, close Close, volume Volume from trading_dashboard.market_candles where symbol = @symbol and interval = @interval and open_time_utc>=@fromUtc and open_time_utc<@toUtc order by open_time_utc limit 5000", new { symbol, interval, fromUtc, toUtc }, cancellationToken: ct))).AsList(); var markers = (await c.QueryAsync<ChartMarkerDto>(new CommandDefinition("select s.signal_time_utc TimeUtc, case when d.decision = 'Block' then 'BlockedSignal' else 'Signal' end Kind, s.side Side, coalesce(s.reference_price, d.mark_price, 0) Price, coalesce(d.reason, d.decision) Label from trading_history.signals s left join lateral(select decision, reason, mark_price from trading_history.strategy_decisions x where x.signal_id = s.signal_id order by decided_at_utc desc limit 1)d on true where s.symbol = @symbol and s.signal_time_utc>=@fromUtc and s.signal_time_utc<@toUtc order by s.signal_time_utc", new { symbol, fromUtc, toUtc }, cancellationToken: ct))).AsList(); return new(candles, markers);
+    }
 
-    public async Task<IReadOnlyCollection<OptimizationTrialDto>> GetOptimizationTrialsAsync(Guid runId, int take, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        var rows = await c.QueryAsync<dynamic>(new CommandDefinition("select trial_id, parameters::text, score, metrics::text, selected, row_number() over(order by score desc) rank from trading.optimization_trials where optimization_run_id = @runId order by score desc limit @take", new { runId, take = Take(take) }, cancellationToken: ct)); return rows.Select(x => { var p = JsonSerializer.Deserialize<Dictionary<string, string>>((string)x.parameters) ?? []; using var m = JsonDocument.Parse((string)x.metrics); decimal V(string n) => m.RootElement.TryGetProperty(n, out var v) && v.TryGetDecimal(out var d) ? d : 0; int I(string n) => m.RootElement.TryGetProperty(n, out var v) && v.TryGetInt32(out var d) ? d : 0; return new OptimizationTrialDto((Guid)x.trial_id, (int)(long)x.rank, p, (decimal)x.score, V("NetProfit"), V("MaximumDrawdownPercent"), V("WinRatePercent"), I("ClosedPositions"), (bool)x.selected); }).ToArray(); }
+    public async Task<IReadOnlyCollection<RunSummaryDto>> GetRunsAsync(DashboardQuery q, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
 
-    public async Task<StrategyComparisonDto?> CompareRunsAsync(Guid l, Guid r, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        var rows = (await c.QueryAsync<dynamic>(new CommandDefinition("select r.run_id, r.bot_name || ' ' || r.strategy_version label, s.net_profit, s.maximum_drawdown_percent, s.win_rate_percent, s.score from trading.performance_runs r join trading.performance_snapshots s on s.run_id = r.run_id where r.run_id = any(@ids)", new { ids = new[] { l, r } }, cancellationToken: ct))).ToDictionary(x => (Guid)x.run_id); if (!rows.TryGetValue(l, out var a) || !rows.TryGetValue(r, out var b)) return null; return new(l, r, (string)a.label, (string)b.label, (decimal)a.net_profit - (decimal)b.net_profit, (decimal)a.maximum_drawdown_percent - (decimal)b.maximum_drawdown_percent, (decimal)a.win_rate_percent - (decimal)b.win_rate_percent, (decimal)a.score - (decimal)b.score); }
+        return (await c.QueryAsync<RunSummaryDto>(new CommandDefinition("select r.run_id RunId, r.run_type RunType, r.bot_name BotName, r.strategy_version StrategyVersion, r.symbol Symbol, r.interval Interval, r.started_at_utc StartedAtUtc, r.completed_at_utc CompletedAtUtc, r.status Status, s.net_profit NetProfit, s.win_rate_percent WinRatePercent, s.maximum_drawdown_percent MaxDrawdownPercent, s.score Score from trading.performance_runs r left join trading.performance_snapshots s on s.run_id = r.run_id where (@Bot is null or r.bot_name = @Bot) order by r.started_at_utc desc offset @Skip limit @Take", new { Bot = q.BotName, q.Skip, Take = Take(q.Take) }, cancellationToken: ct))).AsList();
+    }
 
-    public async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthAsync(CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return await GetHealthWithConnection(c, ct); }
+    public async Task<IReadOnlyCollection<OptimizationTrialDto>> GetOptimizationTrialsAsync(Guid runId, int take, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
 
-    private static async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthWithConnection(System.Data.Common.DbConnection c, CancellationToken ct) 
+        var rows = await c.QueryAsync<dynamic>(new CommandDefinition("select trial_id, parameters::text, score, metrics::text, selected, row_number() over(order by score desc) rank from trading.optimization_trials where optimization_run_id = @runId order by score desc limit @take", new { runId, take = Take(take) }, cancellationToken: ct)); return rows.Select(x => { var p = JsonSerializer.Deserialize<Dictionary<string, string>>((string)x.parameters) ?? []; using var m = JsonDocument.Parse((string)x.metrics); decimal V(string n) => m.RootElement.TryGetProperty(n, out var v) && v.TryGetDecimal(out var d) ? d : 0; int I(string n) => m.RootElement.TryGetProperty(n, out var v) && v.TryGetInt32(out var d) ? d : 0; return new OptimizationTrialDto((Guid)x.trial_id, (int)(long)x.rank, p, (decimal)x.score, V("NetProfit"), V("MaximumDrawdownPercent"), V("WinRatePercent"), I("ClosedPositions"), (bool)x.selected); }).ToArray();
+    }
+
+    public async Task<StrategyComparisonDto?> CompareRunsAsync(Guid l, Guid r, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        var rows = (await c.QueryAsync<dynamic>(new CommandDefinition("select r.run_id, r.bot_name || ' ' || r.strategy_version label, s.net_profit, s.maximum_drawdown_percent, s.win_rate_percent, s.score from trading.performance_runs r join trading.performance_snapshots s on s.run_id = r.run_id where r.run_id = any(@ids)", new { ids = new[] { l, r } }, cancellationToken: ct))).ToDictionary(x => (Guid)x.run_id); if (!rows.TryGetValue(l, out var a) || !rows.TryGetValue(r, out var b)) return null; return new(l, r, (string)a.label, (string)b.label, (decimal)a.net_profit - (decimal)b.net_profit, (decimal)a.maximum_drawdown_percent - (decimal)b.maximum_drawdown_percent, (decimal)a.win_rate_percent - (decimal)b.win_rate_percent, (decimal)a.score - (decimal)b.score);
+    }
+
+    public async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthAsync(CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        return await GetHealthWithConnection(c, ct);
+    }
+
+    private static async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthWithConnection(System.Data.Common.DbConnection c, CancellationToken ct)
         => (await c.QueryAsync<ComponentHealthDto>(new CommandDefinition("with latest as (select component, instance_id, last_seen_at_utc, stale_after_seconds, details, row_number() over(partition by component order by last_seen_at_utc desc, instance_id desc) rn from trading_dashboard.service_heartbeats) select component Component, case when last_seen_at_utc>=now()-make_interval(secs => stale_after_seconds) then 'Healthy' else 'Unhealthy' end Status, last_seen_at_utc LastSeenUtc, details Details from latest where rn = 1 order by component", cancellationToken: ct))).AsList();
 
     public async Task<IReadOnlyCollection<AlertDto>> GetAlertsAsync(bool acknowledged, int take, CancellationToken ct)
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<AlertDto>(new CommandDefinition("select alert_id AlertId, severity Severity, type Type, message Message, bot_name BotName, position_id PositionId, created_at_utc CreatedAtUtc, acknowledged Acknowledged, acknowledged_at_utc AcknowledgedAtUtc, acknowledged_by AcknowledgedBy from trading_dashboard.alerts where acknowledged = @acknowledged order by created_at_utc desc limit @take", new { acknowledged, take = Take(take) }, cancellationToken: ct))).AsList(); }
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        return (await c.QueryAsync<AlertDto>(new CommandDefinition("select alert_id AlertId, severity Severity, type Type, message Message, bot_name BotName, position_id PositionId, created_at_utc CreatedAtUtc, acknowledged Acknowledged, acknowledged_at_utc AcknowledgedAtUtc, acknowledged_by AcknowledgedBy from trading_dashboard.alerts where acknowledged = @acknowledged and not resolved order by created_at_utc desc limit @take", new { acknowledged, take = Take(take) }, cancellationToken: ct))).AsList();
+    }
 
     public async Task<IReadOnlyCollection<BotConfigurationDto>> GetAllAsync(CancellationToken ct)
     {
@@ -265,10 +286,10 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
     }
 
     public async Task<JobAcceptedDto> EnqueueBacktestAsync(BacktestRequest r, string user, CancellationToken ct)
-    { 
-        DashboardValidation.Validate(r); 
-        
-        return await Job("Backtest", r, user, ct); 
+    {
+        DashboardValidation.Validate(r);
+
+        return await Job("Backtest", r, user, ct);
     }
 
     public Task<JobAcceptedDto> EnqueueOptimizationAsync(OptimizationRequest r, string user, CancellationToken ct)
@@ -288,10 +309,12 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
         await using var c = await factory.OpenAsync(ct); await c.ExecuteAsync(new CommandDefinition("update trading_dashboard.alerts set acknowledged = true, acknowledged_at_utc = now(), acknowledged_by = @user where alert_id = @id", new { id, user }, cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyCollection<AuditEventDto>> GetAuditEventsAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct) 
-    { await using var c = await factory.OpenAsync(ct); 
-        
-        return (await c.QueryAsync<AuditEventDto>(new CommandDefinition("select audit_id AuditId, occurred_at_utc OccurredAtUtc, actor Actor, action Action, entity_type EntityType, entity_id EntityId, reason Reason, correlation_id CorrelationId, ip_address IpAddress, old_value::text OldValueJson, new_value::text NewValueJson from trading_dashboard.audit_events where (@actor is null or actor = @actor) and (@action is null or action ilike '%' || @action || '%') and (cast(@fromUtc as timestamptz) is null or occurred_at_utc >= cast(@fromUtc as timestamptz)) and (cast(@toUtc as timestamptz) is null or occurred_at_utc < cast(@toUtc as timestamptz)) order by occurred_at_utc desc offset @skip limit @take", new { actor, action, fromUtc, toUtc, skip, take = Take(take) }, cancellationToken: ct))).AsList(); }
+    public async Task<IReadOnlyCollection<AuditEventDto>> GetAuditEventsAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct)
+    {
+        await using var c = await factory.OpenAsync(ct);
+
+        return (await c.QueryAsync<AuditEventDto>(new CommandDefinition("select audit_id AuditId, occurred_at_utc OccurredAtUtc, actor Actor, action Action, entity_type EntityType, entity_id EntityId, reason Reason, correlation_id CorrelationId, ip_address IpAddress, old_value::text OldValueJson, new_value::text NewValueJson from trading_dashboard.audit_events where (@actor is null or actor = @actor) and (@action is null or action ilike '%' || @action || '%') and (cast(@fromUtc as timestamptz) is null or occurred_at_utc >= cast(@fromUtc as timestamptz)) and (cast(@toUtc as timestamptz) is null or occurred_at_utc < cast(@toUtc as timestamptz)) order by occurred_at_utc desc offset @skip limit @take", new { actor, action, fromUtc, toUtc, skip, take = Take(take) }, cancellationToken: ct))).AsList();
+    }
 
     private sealed record OverviewTotalsRow(
         decimal Realized,
@@ -304,6 +327,3 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
         double Equity,
         double DrawdownPercent);
 }
-
-
-

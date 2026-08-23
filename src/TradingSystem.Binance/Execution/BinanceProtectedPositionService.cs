@@ -3,6 +3,7 @@ using TradingSystem.Application.Time;
 using TradingSystem.Binance.Exceptions;
 using TradingSystem.Binance.Exchange;
 using TradingSystem.Binance.Execution.Models;
+using TradingSystem.Binance.Orders;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Orders.Models;
 using TradingSystem.Domain.Enums;
@@ -12,6 +13,7 @@ namespace TradingSystem.Binance.Execution;
 
 public sealed class BinanceProtectedPositionService(
     IBinanceFuturesOrderClient orders,
+    SafeBinanceOrderService safeOrders,
     BinanceExchangeInfoService exchange,
     IClock clock,
     ILogger<BinanceProtectedPositionService> logger)
@@ -30,7 +32,7 @@ public sealed class BinanceProtectedPositionService(
         var tpId = BinanceClientOrderId.Create(bot, "TP", id);
         var slId = BinanceClientOrderId.Create(bot, "SL", id);
 
-        var parent = await orders.PlaceMarketOrderAsync(
+        var parent = await safeOrders.SafePlaceMarketOrderAsync(
             symbol,
             BinanceOrderSide.Entry(side),
             BinanceOrderSide.Position(side),
@@ -38,7 +40,12 @@ public sealed class BinanceProtectedPositionService(
             pId,
             ct);
 
-        var filled = await WaitAsync(symbol, parent.OrderId, ct);
+        var filled = await safeOrders.WaitForFillAsync(
+            symbol,
+            parent,
+            pId,
+            ct);
+
         var entry = Price(filled);
 
         if (entry <= 0)
@@ -147,7 +154,7 @@ public sealed class BinanceProtectedPositionService(
             "CL",
             position.ShortId);
 
-        var closeOrder = await orders.PlaceMarketOrderAsync(
+        var closeOrder = await safeOrders.SafePlaceMarketOrderAsync(
             position.Symbol,
             BinanceOrderSide.Close(position.Side),
             BinanceOrderSide.Position(position.Side),
@@ -166,10 +173,7 @@ public sealed class BinanceProtectedPositionService(
             position.RemainingQuantity);
     }
 
-    private async Task TryCancelOrderAsync(
-        string symbol,
-        string orderId,
-        CancellationToken ct)
+    private async Task TryCancelOrderAsync(string symbol, string orderId, CancellationToken ct)
     {
         try
         {
@@ -184,10 +188,7 @@ public sealed class BinanceProtectedPositionService(
         }
     }
 
-    private async Task TryCancelAlgoOrderAsync(
-        string symbol,
-        string orderId,
-        CancellationToken ct)
+    private async Task TryCancelAlgoOrderAsync(string symbol, string orderId, CancellationToken ct)
     {
         try
         {
@@ -204,29 +205,6 @@ public sealed class BinanceProtectedPositionService(
 
     private static bool IsUnknownOrder(BinanceApiException exception)
         => exception.ResponseBody.Contains("\"code\":-2011", StringComparison.Ordinal);
-
-    private async Task<BinanceOrderResult> WaitAsync(
-        string symbol,
-        string orderId,
-        CancellationToken ct)
-    {
-        var until = clock.UtcNow.AddSeconds(20);
-
-        while (clock.UtcNow < until)
-        {
-            var order = await orders.GetOrderAsync(symbol, orderId, ct);
-
-            if (order.Status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase) == true)
-                return order;
-
-            if (order.Status is "CANCELED" or "EXPIRED" or "REJECTED")
-                throw new InvalidOperationException($"Entry order terminal: {order.Status}");
-
-            await Task.Delay(250, ct);
-        }
-
-        throw new TimeoutException($"Order {orderId} was not filled.");
-    }
 
     private static decimal Price(BinanceOrderResult order)
         => order.AveragePrice is > 0

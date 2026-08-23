@@ -89,7 +89,8 @@ services:
       context: .
       dockerfile: src/StrategyService/Dockerfile
     environment:
-      <<: *trading-env
+      <<: *trading-env  
+      SignalGeneration__Bots__BOT8013__Mode: "InternalShadow" 
       TradingEnvironment__EnvironmentName: ${TRADING_ENVIRONMENT:-Paper}
       Reconciliation__AutoHealStaleLocalPositions: "true"
       Reconciliation__AutoHealProtectiveOrders: "false"
@@ -193,6 +194,8 @@ services:
       context: .
       dockerfile: src/TradingViewWebhookService/Dockerfile
     environment:
+      TradingView__Bots__BOT8012__Enabled: "true"
+      TradingView__Bots__BOT8012__Symbol: "BTCUSDC"
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       Redis__ConnectionString: redis:6379
