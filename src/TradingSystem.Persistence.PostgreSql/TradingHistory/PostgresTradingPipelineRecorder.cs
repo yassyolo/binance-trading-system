@@ -12,34 +12,42 @@ public sealed class PostgresTradingPipelineRecorder(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public Task RecordSignalAsync(SignalHistoryRecord x, CancellationToken ct) => Exec(
-        """
-        insert into trading_history.signals
-            (signal_id, bot_name, strategy_version, symbol, side, source, environment,
-             signal_time_utc, reference_price, candle_open_time_utc, interval, reason,
-             raw_payload, metadata)
-        values
-            (@SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Source, @Environment,
-             @SignalTimeUtc, @ReferencePrice, @CandleOpenTimeUtc, @Interval, @Reason,
-             cast(@Raw as jsonb), cast(@Meta as jsonb))
-        on conflict(signal_id) do nothing;
-        """,
+    public Task RecordSignalAsync(SignalHistoryRecord signal, CancellationToken ct) 
+        => Exec("""
+            insert into trading_history.signals
+                (signal_id, 
+                 bot_name, 
+                 strategy_version, 
+                 symbol, side, 
+                 source,
+                 environment,
+                 signal_time_utc, 
+                 reference_price,
+                 candle_open_time_utc, 
+                 interval,
+                 reason,
+                 raw_payload,
+                 metadata)
+            values
+                (@SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Source, @Environment, @SignalTimeUtc, @ReferencePrice, @CandleOpenTimeUtc, @Interval, @Reason, cast(@Raw as jsonb), cast(@Meta as jsonb))
+            on conflict(signal_id) do nothing;
+            """,
         new
         {
-            x.SignalId,
-            x.BotName,
-            x.StrategyVersion,
-            x.Symbol,
-            x.Side,
-            x.Source,
-            x.Environment,
-            x.SignalTimeUtc,
-            x.ReferencePrice,
-            x.CandleOpenTimeUtc,
-            x.Interval,
-            x.Reason,
-            Raw = Normalize(x.RawPayload),
-            Meta = Serialize(x.Metadata)
+            signal.SignalId,
+            signal.BotName,
+            signal.StrategyVersion,
+            signal.Symbol,
+            signal.Side,
+            signal.Source,
+            signal.Environment,
+            signal.SignalTimeUtc,
+            signal.ReferencePrice,
+            signal.CandleOpenTimeUtc,
+            signal.Interval,
+            signal.Reason,
+            Raw = Normalize(signal.RawPayload),
+            Meta = Serialize(signal.Metadata)
         },
         ct);
 

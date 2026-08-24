@@ -5,11 +5,6 @@ namespace TradingSystem.Contracts.UserStream;
 
 public sealed record HealingSnapshotMessage
 {
-    [JsonPropertyName("type")] 
-    public string Type { get; init; } = "healing_snapshot";
-    
-    [JsonPropertyName("reason")] 
-    public string Reason { get; init; } = "reconnected";
     
     [JsonPropertyName("hub_ts_utc")] 
     public required DateTime HubTimestampUtc { get; init; }

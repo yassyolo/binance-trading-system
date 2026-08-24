@@ -95,8 +95,7 @@ public sealed class RedisTradingSignalSubscriber(
             logger.LogInformation("Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        {}
         catch (JsonException exception)
         {
             logger.LogError(exception, "Trading signal JSON is invalid. Raw = {Raw}", raw);
@@ -107,7 +106,7 @@ public sealed class RedisTradingSignalSubscriber(
         }
     }
 
-    private async Task HandleWithTransientRetryAsync(TradingSystem.Domain.Signals.TradeSignal signal, CancellationToken ct)
+    private async Task HandleWithTransientRetryAsync(Domain.Signals.TradeSignal signal, CancellationToken ct)
     {
         var deadline = clock.UtcNow.AddSeconds(60);
         var attempt = 0;
@@ -126,7 +125,7 @@ public sealed class RedisTradingSignalSubscriber(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 var remaining = deadline - clock.UtcNow;
                 if (remaining <= TimeSpan.Zero)
@@ -136,12 +135,7 @@ public sealed class RedisTradingSignalSubscriber(
                 if (delay > remaining)
                     delay = remaining;
 
-                logger.LogWarning(
-                    exception,
-                    "Trading signal hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.",
-                    signal.SignalId,
-                    attempt,
-                    delay);
+                logger.LogWarning(ex, "Trading signal hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.", signal.SignalId, attempt, delay);
 
                 await Task.Delay(delay, ct);
             }

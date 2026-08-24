@@ -8,6 +8,7 @@ public sealed class RedisPositionLockProvider(
     :IPositionLockProvider
 {
     const string Script = "if redis.call('get', KEYS[1])==ARGV[1] then return redis.call('del', KEYS[1]) end return 0";
+   
     public async Task<IAsyncDisposable?> TryAcquireAsync(string bot, string id, TimeSpan ttl, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -19,7 +20,8 @@ public sealed class RedisPositionLockProvider(
         var token = Guid.NewGuid().ToString("N");
         
         return await db.StringSetAsync(key, token, ttl, When.NotExists)
-            ? new H(db, key, token) : null;
+            ? new H(db, key, token) 
+            : null;
     }
     
     sealed class H(IDatabase db, RedisKey key, RedisValue token) :IAsyncDisposable

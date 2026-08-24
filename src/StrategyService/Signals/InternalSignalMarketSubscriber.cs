@@ -1,8 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TradingSystem.Contracts.Indicators;
@@ -48,14 +46,13 @@ public sealed class InternalSignalMarketSubscriber(
         "BB20_CLOSE.lower"
     ];
 
-    private readonly SignalGenerationOptions _options = options.Value;
     private readonly ConcurrentDictionary<MarketKey, JoinedState> _states = new();
     private readonly HashSet<MarketKey> _markets = options.Value.Bots
         .Where(x => x.Value.Enabled && x.Value.Mode != SignalGenerationMode.TradingViewOnly)
         .Select(x => new MarketKey(NormalizeSymbol(x.Value.Symbol), NormalizeInterval(x.Value.Interval)))
         .ToHashSet();
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         if (_markets.Count == 0)
         {
@@ -71,8 +68,9 @@ public sealed class InternalSignalMarketSubscriber(
             var channel = RedisChannel.Literal(RedisChannels.Kline(market.Interval, market.Symbol));
             await subscriber.SubscribeAsync(channel, async (_, value) =>
             {
-                if (!value.HasValue || stoppingToken.IsCancellationRequested) return;
-                await ProcessCandleSafelyAsync(value.ToString(), stoppingToken);
+                if (!value.HasValue || ct.IsCancellationRequested) return;
+               
+                await ProcessCandleSafelyAsync(value.ToString(), ct);
             });
             subscriptions.Add(channel);
         }
@@ -82,30 +80,35 @@ public sealed class InternalSignalMarketSubscriber(
             var channel = RedisChannel.Literal(RedisChannels.Indicator(indicatorName));
             await subscriber.SubscribeAsync(channel, async (_, value) =>
             {
-                if (!value.HasValue || stoppingToken.IsCancellationRequested) return;
-                await ProcessIndicatorSafelyAsync(value.ToString(), stoppingToken);
+                if (!value.HasValue || ct.IsCancellationRequested) return;
+                
+                await ProcessIndicatorSafelyAsync(value.ToString(), ct);
             });
+            
             subscriptions.Add(channel);
         }
 
-        logger.LogInformation(
-            "Internal signal market subscriber started. Markets = {Markets}; Channels = {Channels}",
-            string.Join(", ", _markets.Select(x => $"{x.Symbol}:{x.Interval}")),
-            string.Join(", ", subscriptions));
+        logger.LogInformation("Internal signal market subscriber started. Markets = {Markets}; Channels = {Channels}", string.Join(", ", _markets.Select(x => $"{x.Symbol}:{x.Interval}")),  string.Join(", ", subscriptions));
 
         try
         {
-            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
         finally
         {
             foreach (var channel in subscriptions)
             {
-                try { await subscriber.UnsubscribeAsync(channel); }
-                catch (Exception ex) { logger.LogWarning(ex, "Could not unsubscribe from {Channel}", channel); }
+                try 
+                { 
+                    await subscriber.UnsubscribeAsync(channel); 
+                }
+                catch (Exception ex) 
+                { 
+                    logger.LogWarning(ex, "Could not unsubscribe from {Channel}", channel); 
+                }
             }
         }
     }
@@ -115,14 +118,19 @@ public sealed class InternalSignalMarketSubscriber(
         try
         {
             var candle = JsonSerializer.Deserialize<ClosedKlineMessage>(raw, JsonDefaults.Messaging);
-            if (candle is null) return;
+            if (candle is null) 
+                return;
 
             var key = new MarketKey(NormalizeSymbol(candle.Symbol), NormalizeInterval(candle.Interval));
-            if (!_markets.Contains(key)) return;
-            if (!TryParseCandle(candle, out _, out _, out _, out _, out _)) return;
+            if (!_markets.Contains(key)) 
+                return;
+           
+            if (!TryParseCandle(candle, out _, out _, out _, out _, out _)) 
+                return;
 
             var state = _states.GetOrAdd(key, _ => new JoinedState());
             await state.Gate.WaitAsync(ct);
+            
             try
             {
                 if (state.CandleCloseTime != candle.CloseTime)
@@ -139,8 +147,14 @@ public sealed class InternalSignalMarketSubscriber(
                 state.Gate.Release();
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { logger.LogError(ex, "Internal signal candle processing failed."); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
+        { 
+            throw; 
+        }
+        catch (Exception ex) 
+        { 
+            logger.LogError(ex, "Internal signal candle processing failed."); 
+        }
     }
 
     private async Task ProcessIndicatorSafelyAsync(string raw, CancellationToken ct)
@@ -182,8 +196,11 @@ public sealed class InternalSignalMarketSubscriber(
     private async Task TryDispatchAsync(MarketKey key, JoinedState state, CancellationToken ct)
     {
         var candle = state.Candle;
-        if (candle is null || candle.CloseTime != state.CandleCloseTime) return;
-        if (!TryParseCandle(candle, out var open, out var high, out var low, out var close, out var volume)) return;
+        if (candle is null || candle.CloseTime != state.CandleCloseTime) 
+            return;
+        
+        if (!TryParseCandle(candle, out var open, out var high, out var low, out var close, out var volume)) 
+            return;
 
         var snapshot = new MarketIndicatorSnapshot(
             key.Symbol,
@@ -200,9 +217,7 @@ public sealed class InternalSignalMarketSubscriber(
         await coordinator.ProcessAsync(snapshot, ct);
     }
 
-    private static void ReplaceIndicatorFamily(
-        IDictionary<string, decimal> cachedIndicators,
-        IEnumerable<string> incomingKeys)
+    private static void ReplaceIndicatorFamily(IDictionary<string, decimal> cachedIndicators, IEnumerable<string> incomingKeys)
     {
         var keys = incomingKeys.ToArray();
 
@@ -233,15 +248,27 @@ public sealed class InternalSignalMarketSubscriber(
         close = 0;
         volume = 0;
 
-        if (!decimal.TryParse(candle.Open, NumberStyles.Any, CultureInfo.InvariantCulture, out open) || open <= 0) return false;
-        if (!decimal.TryParse(candle.High, NumberStyles.Any, CultureInfo.InvariantCulture, out high) || high <= 0) return false;
-        if (!decimal.TryParse(candle.Low, NumberStyles.Any, CultureInfo.InvariantCulture, out low) || low <= 0) return false;
-        if (!decimal.TryParse(candle.Close, NumberStyles.Any, CultureInfo.InvariantCulture, out close) || close <= 0) return false;
-        if (!decimal.TryParse(candle.Volume, NumberStyles.Any, CultureInfo.InvariantCulture, out volume) || volume < 0) return false;
+        if (!decimal.TryParse(candle.Open, NumberStyles.Any, CultureInfo.InvariantCulture, out open) || open <= 0) 
+            return false;
+        
+        if (!decimal.TryParse(candle.High, NumberStyles.Any, CultureInfo.InvariantCulture, out high) || high <= 0) 
+            return false;
+        
+        if (!decimal.TryParse(candle.Low, NumberStyles.Any, CultureInfo.InvariantCulture, out low) || low <= 0) 
+            return false;
+       
+        if (!decimal.TryParse(candle.Close, NumberStyles.Any, CultureInfo.InvariantCulture, out close) || close <= 0) 
+            return false;
+        
+        if (!decimal.TryParse(candle.Volume, NumberStyles.Any, CultureInfo.InvariantCulture, out volume) || volume < 0) 
+            return false;
 
         return candle.Time > 0 && candle.CloseTime >= candle.Time;
     }
 
-    private static string NormalizeSymbol(string value) => value.Trim().ToUpperInvariant();
-    private static string NormalizeInterval(string value) => value.Trim().ToLowerInvariant();
+    private static string NormalizeSymbol(string value) 
+        => value.Trim().ToUpperInvariant();
+    
+    private static string NormalizeInterval(string value) 
+        => value.Trim().ToLowerInvariant();
 }

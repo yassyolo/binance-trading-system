@@ -1,4 +1,5 @@
 namespace TradingSystem.Signals.Models;
+
 public sealed record MarketIndicatorSnapshot(
     string Symbol, 
     string Interval, 

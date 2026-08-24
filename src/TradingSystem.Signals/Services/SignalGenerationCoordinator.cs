@@ -37,8 +37,7 @@ public sealed class SignalGenerationCoordinator(
                 StringComparer.OrdinalIgnoreCase);
 
     private readonly SignalGenerationOptions _options = options.Value;
-    private readonly ConcurrentDictionary<string, DateTime> _processedSignalIds =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTime> _processedSignalIds = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task ProcessAsync(MarketIndicatorSnapshot snapshot, CancellationToken ct)
     {
@@ -79,13 +78,7 @@ public sealed class SignalGenerationCoordinator(
             try
             {
                 var minimumInterval = TimeSpan.FromSeconds(botOptions.MinimumSecondsBetweenGeneratedSignals);
-                var acquired = await throttle.TryAcquireAsync(
-                    signal.BotName,
-                    signal.Symbol,
-                    signal.Action,
-                    signal.GeneratedAtUtc,
-                    minimumInterval,
-                    ct);
+                var acquired = await throttle.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Action, signal.GeneratedAtUtc, minimumInterval, ct);
 
                 if (!acquired)
                     continue;
@@ -136,13 +129,14 @@ public sealed class SignalGenerationCoordinator(
                     signal.Reason,
                     null,
                     signal.Metadata), ct);
+               
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 var remaining = deadline - DateTime.UtcNow;
                 if (remaining <= TimeSpan.Zero)
@@ -152,12 +146,7 @@ public sealed class SignalGenerationCoordinator(
                 if (delay > remaining)
                     delay = remaining;
 
-                logger.LogWarning(
-                    exception,
-                    "Signal history persistence failed. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.",
-                    signal.SignalId,
-                    attempt,
-                    delay);
+                logger.LogWarning(ex, "Signal history persistence failed. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.", signal.SignalId, attempt, delay);
 
                 await Task.Delay(delay, ct);
             }
@@ -188,6 +177,7 @@ public sealed class SignalGenerationCoordinator(
             signal.Action.Trim().ToUpperInvariant());
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
+        
         return Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant();
     }
 

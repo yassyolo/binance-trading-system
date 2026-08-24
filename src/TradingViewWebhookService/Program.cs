@@ -9,9 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 
-builder.Services.AddOptions<TradingViewWebhookOptions>()
-    .Bind(builder.Configuration.GetSection(TradingViewWebhookOptions.SectionName))
-    .ValidateOnStart();
+builder.Services.AddOptions<TradingViewWebhookOptions>().Bind(builder.Configuration.GetSection(TradingViewWebhookOptions.SectionName)).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<TradingViewWebhookOptions>, TradingViewWebhookOptionsValidator>();
 
 builder.Services.AddTradingInfrastructure();

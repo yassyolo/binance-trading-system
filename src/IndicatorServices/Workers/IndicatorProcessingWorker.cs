@@ -101,16 +101,15 @@ public sealed class IndicatorProcessingWorker(
 		try
 		{
 			var message = JsonSerializer.Deserialize<ClosedKlineMessage>(json, MessageJsonOptions);
-
 			if (message is null || !KlineMessageMapper.TryMap(message, out var candle))
 			{
 				logger.LogWarning("Invalid closed kline message.");
 				return;
 			}
 
-			var matchingProcessors = _processors.Where(processor =>
-				processor.Symbols.Contains(candle.Symbol, StringComparer.OrdinalIgnoreCase) &&
-				processor.Intervals.Contains(candle.Interval, StringComparer.OrdinalIgnoreCase));
+			var matchingProcessors = _processors.Where(p =>
+				p.Symbols.Contains(candle.Symbol, StringComparer.OrdinalIgnoreCase) &&
+				p.Intervals.Contains(candle.Interval, StringComparer.OrdinalIgnoreCase));
 
 			foreach (var processor in matchingProcessors)
 			{

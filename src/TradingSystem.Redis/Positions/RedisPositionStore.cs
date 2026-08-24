@@ -30,8 +30,7 @@ public sealed class RedisPositionStore(
 
 	public async Task<BotPosition?> GetAsync(string bot, string id, CancellationToken ct)
 	{
-		var entries = await _database
-			.HashGetAllAsync(keys.Position(bot, id))
+		var entries = await _database.HashGetAllAsync(keys.Position(bot, id))
 			.WaitAsync(ct);
 
 		return entries.Length == 0 ? null : FromEntries(entries);
@@ -50,8 +49,8 @@ public sealed class RedisPositionStore(
 		}).ToArray();
 
 		var loaded = await Task.WhenAll(loadTasks).WaitAsync(ct);
+		
 		var missingIds = loaded.Where(x => x.Entries.Length == 0).Select(x => x.Id).ToArray();
-
 		if (missingIds.Length > 0)
 			await _database.SetRemoveAsync(keys.PositionIndex(bot), missingIds).WaitAsync(ct);
 

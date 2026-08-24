@@ -12,7 +12,10 @@ public sealed class Bot8012SignalGenerator(
 {
     private readonly Bot8012Options _o = options.Value;
     
-    public string BotName => _o.BotName;public string StrategyVersion => _o.StrategyVersion;
+    public string BotName => _o.BotName;
+    
+    public string StrategyVersion => _o.StrategyVersion;
+   
     public IReadOnlyCollection<string> SupportedSymbols => [_o.Symbol];
  
     public ValueTask<GeneratedTradingSignal?> GenerateAsync(MarketIndicatorSnapshot x, CancellationToken ct)
@@ -26,7 +29,9 @@ public sealed class Bot8012SignalGenerator(
             ? "LONG" : Match(x, false)
             ? "SHORT" : null;
         
-        if(side is null || (side=="LONG" && !_o.EnableLong) || (side=="SHORT" && !_o.EnableShort))
+        if(side is null 
+            || (side=="LONG" && !_o.EnableLong) 
+            || (side=="SHORT" && !_o.EnableShort))
             return ValueTask.FromResult<GeneratedTradingSignal?>(null);
         
         return ValueTask.FromResult<GeneratedTradingSignal?>(new(
@@ -49,14 +54,14 @@ public sealed class Bot8012SignalGenerator(
         var r = _o.SignalRules;
         
         if(r.RequireBollingerBreakout 
-            && (!x.TryGet(longSide?IndicatorKeys.BollingerUpper:IndicatorKeys.BollingerLower, out var b) 
-            || (longSide?x.Close<=b:x.Close>=b)))
+            && (!x.TryGet(longSide ? IndicatorKeys.BollingerUpper : IndicatorKeys.BollingerLower, out var b) 
+            || (longSide ? x.Close <= b : x.Close >= b)))
             return false;
         
         if(r.RequireSmmaAlignment 
             && (!x.TryGet(IndicatorKeys.SmmaFast, out var f) 
             || !x.TryGet(IndicatorKeys.SmmaSlow, out var s) 
-            || (longSide?f<=s:f>=s)))
+            || (longSide ? f <= s : f >= s)))
             return false;
         
         if(r.RequireAlligatorAlignment 

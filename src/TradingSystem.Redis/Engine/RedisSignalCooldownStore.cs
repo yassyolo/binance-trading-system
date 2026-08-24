@@ -19,19 +19,20 @@ public sealed class RedisSignalCooldownStore(
     {
         ct.ThrowIfCancellationRequested();
         
-        var key = keys.Cooldown(botName, symbol, side); var value = await _db.StringGetAsync(key);
-        
+        var key = keys.Cooldown(botName, symbol, side);
+
+        var value = await _db.StringGetAsync(key);
         if (!value.HasValue) 
             return null;
         
-        if (!long.TryParse(value,  NumberStyles.Integer,  CultureInfo.InvariantCulture,  out var ms)) 
+        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture,  out var ms)) 
         { 
             await _db.KeyDeleteAsync(key);
             
             return null;
         }
         
-        var remaining = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime-nowUtc;   
+        var remaining = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime - nowUtc;   
         if (remaining > TimeSpan.Zero) 
             return remaining;
         

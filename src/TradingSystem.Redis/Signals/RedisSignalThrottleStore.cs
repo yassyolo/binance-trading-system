@@ -11,12 +11,13 @@ public sealed class RedisSignalThrottleStore(
 	{
 		ct.ThrowIfCancellationRequested();
 		
-		if(interval<=TimeSpan.Zero)
+		if(interval <= TimeSpan.Zero)
 			return Task.FromResult(true);	
 		
 		var key = $"trading:signal-throttle:{N(bot)}:{N(symbol)}:{N(side)}";
 		
-		return redis.GetDatabase().StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);
+		return redis.GetDatabase()
+			.StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);
 	}
 	
 	static string N(string x) => x.Trim().ToUpperInvariant();

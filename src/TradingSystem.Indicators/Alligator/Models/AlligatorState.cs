@@ -13,7 +13,7 @@ public sealed class AlligatorState
 
     public AlligatorState(AlligatorOptions options)
     {
-        this._options = options;
+        _options = options;
         _jaw = new(options.JawLength);
         _teeth = new(options.TeethLength);
         _lips = new(options.LipsLength);

@@ -25,7 +25,8 @@ public sealed class RedisTradingOperationLockProvider(
         var token = Guid.NewGuid().ToString("N");
         
         return await _db.StringSetAsync(key, token, ttl, When.NotExists) 
-            ? new Handle(_db, key, token) : null;
+            ? new Handle(_db, key, token) 
+            : null;
     }
     
     private sealed class Handle(IDatabase db, RedisKey key, RedisValue token) : IAsyncDisposable
