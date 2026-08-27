@@ -51,9 +51,7 @@ builder.Services.AddCentralRiskManagement(builder.Configuration);
 builder.Services.AddTradingReconciliation(builder.Configuration);
 builder.Services.AddHostedService<ReconciliationWorker>();
 
-builder.Services.AddOptions<TelegramOptions>()
-    .Bind(builder.Configuration.GetSection(TelegramOptions.SectionName))
-    .ValidateOnStart();
+builder.Services.AddOptions<TelegramOptions>().Bind(builder.Configuration.GetSection(TelegramOptions.SectionName)).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
 builder.Services.AddHttpClient<TelegramNotificationService>();
 builder.Services.AddSingleton<TelegramTradingEngineNotifier>();

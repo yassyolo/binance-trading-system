@@ -8,15 +8,19 @@ public abstract class TpOnlyGridOrderEventHandler<TOptions>(
     TOptions options, 
     IPositionStore store, 
     IClock clock):
-    IBotOrderEventHandler where TOptions:class, ITpOnlyGridBotOptions
+    IBotOrderEventHandler where TOptions:class, 
+    ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
+    
     public async Task HandleTpFilledAsync(string id, decimal qty, CancellationToken ct)
     {
         var p = await store.GetAsync(BotName, id, ct);
         
         if(p is null || p.Closed)
-            return;p.MarkTpFilled(qty, clock.UtcNow);
+            return;
+        
+        p.MarkTpFilled(qty, clock.UtcNow);
         
         await store.SaveAsync(p, ct);
     }
@@ -34,5 +38,8 @@ public abstract class TpOnlyGridOrderEventHandler<TOptions>(
     }
     
     public Task HandleSlTriggeredAsync(string id, CancellationToken ct) 
-        => Task.CompletedTask;public Task HandleStop3TriggeredAsync(string id, CancellationToken ct) => Task.CompletedTask;
+        => Task.CompletedTask;
+    
+    public Task HandleStop3TriggeredAsync(string id, CancellationToken ct) 
+        => Task.CompletedTask;
 }

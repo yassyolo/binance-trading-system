@@ -23,7 +23,8 @@ public sealed class Bot8012TradeExecutor(
 
     public async Task<TradeExecutionResult> OpenAsync(string symbol, PositionSide side, string? source, CancellationToken ct)
     {
-        var runtime  =  await runtimeConfigurationProvider.GetAsync(BotName,  ct);
+        var runtime = await runtimeConfigurationProvider.GetAsync(BotName,  ct);
+        
         if (!symbol.Equals(runtime?.Symbol ?? _options.Symbol, StringComparison.OrdinalIgnoreCase))
             return TradeExecutionResult.Failure($"Unsupported symbol '{symbol}'.");
         try
@@ -43,7 +44,7 @@ public sealed class Bot8012TradeExecutor(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex,  "BOT8012 open failed.");
+            logger.LogError(ex, "BOT8012 open failed.");
            
             return TradeExecutionResult.Failure(ex.Message,  ex);
         }
@@ -51,7 +52,7 @@ public sealed class Bot8012TradeExecutor(
 
     public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken ct)
     {
-        var position  =  await store.GetAsync(BotName,  shortId,  ct);
+        var position = await store.GetAsync(BotName, shortId, ct);
         if (position is null) 
             return TradeExecutionResult.Failure($"Position '{shortId}' not found.");
         

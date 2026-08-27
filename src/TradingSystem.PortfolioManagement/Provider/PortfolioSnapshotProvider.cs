@@ -65,9 +65,7 @@ public sealed class PortfolioSnapshotProvider(
         if (!_options.Enabled)
             return Empty(now);
 
-        var botNames = _options.Bots.Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var botNames = _options.Bots.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
         var redisPositionsTask = LoadRedisPositionsAsync(botNames, ct);
         var paperPositionsTask = paperPositionSource.GetOpenAsync(ct);

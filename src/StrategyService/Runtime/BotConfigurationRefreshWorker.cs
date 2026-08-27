@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Runtime.Configuration;
-using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Configuration.Contracts;
 
 namespace StrategyService.Runtime;
@@ -14,7 +13,7 @@ public sealed class BotConfigurationRefreshWorker(
 {
     private readonly BotRuntimeOptions _options = options.Value;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         if (!_options.Enabled) return;
 
@@ -25,27 +24,27 @@ public sealed class BotConfigurationRefreshWorker(
             try
             {
                 var queryFrom = watermark == DateTime.UnixEpoch ? watermark : watermark.AddMilliseconds(-1);
-                var changed = await store.GetChangedSinceAsync(queryFrom, stoppingToken);
+                var changed = await store.GetChangedSinceAsync(queryFrom, ct);
                 
-                foreach (var configuration in changed.OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
+                foreach (var config in changed.OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
                 {
-                    provider.Set(configuration);
+                    provider.Set(config);
                     
-                    if (configuration.UpdatedAtUtc > watermark)
-                        watermark = configuration.UpdatedAtUtc;
+                    if (config.UpdatedAtUtc > watermark)
+                        watermark = config.UpdatedAtUtc;
 
-                    logger.LogInformation("Bot configuration refreshed. Bot = {Bot} Version = {Version} RestartRequired = {RestartRequired}", configuration.BotName, configuration.Version, configuration.RestartRequired);
+                    logger.LogInformation("Bot config refreshed. Bot = {Bot} Version = {Version} RestartRequired = {RestartRequired}", config.BotName, config.Version, config.RestartRequired);
                 }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) 
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) 
             { 
                 break; 
             }
             catch (Exception ex) 
             { 
-                logger.LogError(ex, "Dynamic bot configuration refresh failed."); 
+                logger.LogError(ex, "Dynamic bot config refresh failed."); 
             }
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        while (await timer.WaitForNextTickAsync(ct));
     }
 }

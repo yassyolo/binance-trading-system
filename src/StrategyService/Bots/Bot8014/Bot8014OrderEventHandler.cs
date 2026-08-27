@@ -7,7 +7,7 @@ using TradingSystem.Application.Time;
 namespace StrategyService.Bots.Bot8014;
 
 public sealed class Bot8014OrderEventHandler(
-    IOptions<Bot8014Options> o,
-    IPositionStore s,
-    IClock c)
-    : TpOnlyGridOrderEventHandler<Bot8014Options>(o.Value, s, c);
+    IOptions<Bot8014Options> options,
+    IPositionStore positions,
+    IClock clock)
+    : TpOnlyGridOrderEventHandler<Bot8014Options>(options.Value, positions, clock);

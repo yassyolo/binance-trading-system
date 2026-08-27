@@ -37,14 +37,10 @@ public static class DependencyInjection
 
         services.AddHttpClient<IHistoricalCandleSource, BinanceHistoricalCandleSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
 
-        services
-            .AddHttpClient<
-                IHistoricalCandleRangeSource,
-                BinanceHistoricalCandleRangeSource>()
+        services.AddHttpClient<IHistoricalCandleRangeSource, BinanceHistoricalCandleRangeSource>()
             .ConfigureHttpClient(ConfigureBinanceHttpClient);
 
-        services
-            .AddHttpClient<
+        services.AddHttpClient<
                 IBinanceFuturesMarketClient,
                 BinanceFuturesMarketClient>()
             .ConfigureHttpClient(ConfigureBinanceHttpClient);

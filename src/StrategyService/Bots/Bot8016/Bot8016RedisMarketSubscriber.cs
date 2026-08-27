@@ -351,7 +351,7 @@ public sealed class Bot8016RedisMarketSubscriber(
             GetString(root, "interval") ?? GetString(root, "timeframe") ?? GetString(root, "i") ?? string.Empty,
             GetLong(root, "time", "candle_open_time", "openTime", "open_time", "t"),
             GetLong(root, "close_time", "candle_close_time", "closeTime", "T"),
-            GetDecimal(root, "open", "o"),
+            GetDecimal(root, "open", "options"),
             GetDecimal(root, "high", "h"),
             GetDecimal(root, "low", "l"),
             GetDecimal(root, "close", "c"),

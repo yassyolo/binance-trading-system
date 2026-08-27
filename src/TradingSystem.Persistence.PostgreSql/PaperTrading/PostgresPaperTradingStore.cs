@@ -37,6 +37,7 @@ public sealed class PostgresPaperTradingStore(
     public async Task<PaperTradingPosition?> GetAsync(string botName, string shortId, CancellationToken ct)
     {
         await using var connection = await connections.OpenAsync(ct);
+        
         return await connection.QuerySingleOrDefaultAsync<PaperTradingPosition>(
             new CommandDefinition(
                 BaseSelect + " and bot_name = @botName and short_id = @shortId",
@@ -48,6 +49,7 @@ public sealed class PostgresPaperTradingStore(
     public async Task<IReadOnlyCollection<PaperTradingPosition>> GetOpenAsync(CancellationToken ct)
     {
         await using var connection = await connections.OpenAsync(ct);
+        
         var rows = await connection.QueryAsync<PaperTradingPosition>(
             new CommandDefinition(
                 BaseSelect + """
@@ -120,7 +122,8 @@ public sealed class PostgresPaperTradingStore(
     {
         const string sql = """
             update trading_paper.positions
-            set exit_price = @exitPrice,
+            set 
+                exit_price = @exitPrice,
                 exit_fee = @exitFee,
                 realized_pnl = @pnl,
                 status = 2,
@@ -133,9 +136,20 @@ public sealed class PostgresPaperTradingStore(
             """;
 
         await using var connection = await connections.OpenAsync(ct);
-        return await connection.ExecuteAsync(new CommandDefinition(
+        
+        return await connection.ExecuteAsync(
+            new CommandDefinition(
             sql,
-            new { id, expectedVersion, exitPrice, exitFee, pnl, reason, closedAt },
+            new 
+            { 
+                id,
+                expectedVersion, 
+                exitPrice, 
+                exitFee, 
+                pnl, 
+                reason, 
+                closedAt 
+            },
             commandTimeout: connections.CommandTimeoutSeconds,
             cancellationToken: ct)) == 1;
     }

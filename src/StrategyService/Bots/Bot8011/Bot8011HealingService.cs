@@ -12,15 +12,15 @@ public sealed class Bot8011HealingService(
     IPositionStore store, IClock clock)
     :IBotHealingService
 {
-    readonly Bot8011Options o = options.Value;
-    public string BotName => o.BotName;
+    readonly Bot8011Options options = options.Value;
+    public string BotName => options.BotName;
     
-    public async Task HealAsync(HealingSnapshotMessage s, CancellationToken ct)
+    public async Task HealAsync(HealingSnapshotMessage healingSnapshot, CancellationToken ct)
     {
-        if(!s.Symbol.Equals(o.Symbol, StringComparison.OrdinalIgnoreCase))
+        if(!healingSnapshot.Symbol.Equals(options.Symbol, StringComparison.OrdinalIgnoreCase))
             return;
         
-        var active = s.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var active = healingSnapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         
         foreach(var p in (await store.GetAllAsync(BotName, ct)).Where(x => !x.Closed))
         {
@@ -33,9 +33,9 @@ public sealed class Bot8011HealingService(
             
             if(!any && !p.Stop3Pending)
             {
-                p.ProtectiveActive = false;
-                
+                p.ProtectiveActive = false;           
                 p.MarkClosed("HEALING_NO_ACTIVE_ORDERS", clock.UtcNow);
+                
                 await store.SaveAsync(p, ct);
             }
         }

@@ -110,36 +110,50 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
     public async Task<IReadOnlyCollection<BinanceOpenOrder>> GetOpenOrdersAsync(string symbol, CancellationToken ct)
     {
-        using var document = JsonDocument.Parse(await SendSignedAsync(HttpMethod.Get, "fapi/v1/openOrders", new() { ["symbol"] = NormalizeSymbol(symbol) }, ct));
-        return document.RootElement.EnumerateArray().Select(element => new BinanceOpenOrder
-        {
-            Symbol = StringValue(element, "symbol"),
-            OrderId = FlexibleString(element, "orderId"),
-            ClientOrderId = StringValue(element, "clientOrderId"),
-            Type = StringValue(element, "type"),
-            Side = StringValue(element, "side"),
-            PositionSide = StringValue(element, "positionSide"),
-            Price = NumberValue(element, "price"),
-            Quantity = NumberValue(element, "origQty"),
-            CreatedAtUtc = UnixTime(LongValue(element, "time")),
-            UpdateTimeUtc = UnixTime(LongValue(element, "updateTime") ?? LongValue(element, "time"))
-        }).ToArray();
+        using var document = JsonDocument.Parse(
+            await SendSignedAsync(
+                HttpMethod.Get, 
+                "fapi/v1/openOrders", 
+                new() { ["symbol"] = NormalizeSymbol(symbol) }, 
+                ct));
+        
+        return document.RootElement.EnumerateArray()
+            .Select(p => new BinanceOpenOrder
+            {
+                Symbol = StringValue(p, "symbol"),
+                OrderId = FlexibleString(p, "orderId"),
+                ClientOrderId = StringValue(p, "clientOrderId"),
+                Type = StringValue(p, "type"),
+                Side = StringValue(p, "side"),
+                PositionSide = StringValue(p, "positionSide"),
+                Price = NumberValue(p, "price"),
+                Quantity = NumberValue(p, "origQty"),
+                CreatedAtUtc = UnixTime(LongValue(p, "time")),
+                UpdateTimeUtc = UnixTime(LongValue(p, "updateTime") ?? LongValue(p, "time"))
+            }).ToArray();
     }
 
     public async Task<IReadOnlyCollection<BinanceOpenAlgoOrder>> GetOpenAlgoOrdersAsync(string symbol, CancellationToken ct)
     {
-        using var document = JsonDocument.Parse(await SendSignedAsync(HttpMethod.Get, "fapi/v1/openAlgoOrders", new() { ["symbol"] = NormalizeSymbol(symbol) }, ct));
-        return document.RootElement.EnumerateArray().Select(element => new BinanceOpenAlgoOrder
-        {
-            Symbol = StringValue(element, "symbol"),
-            AlgoOrderId = FlexibleString(element, "algoId"),
-            ClientAlgoId = StringValue(element, "clientAlgoId"),
-            PositionSide = StringValue(element, "positionSide"),
-            Status = StringValue(element, "algoStatus"),
-            TriggerPrice = NumberValue(element, "triggerPrice"),
-            Quantity = NumberValue(element, "quantity"),
-            OrderType = StringValue(element, "orderType")
-        }).ToArray();
+        using var document = JsonDocument.Parse(
+            await SendSignedAsync(
+                HttpMethod.Get, 
+                "fapi/v1/openAlgoOrders", 
+                new() { ["symbol"] = NormalizeSymbol(symbol) }, 
+                ct));
+        
+        return document.RootElement.EnumerateArray()
+            .Select(o => new BinanceOpenAlgoOrder
+            {
+                Symbol = StringValue(o, "symbol"),
+                AlgoOrderId = FlexibleString(o, "algoId"),
+                ClientAlgoId = StringValue(o, "clientAlgoId"),
+                PositionSide = StringValue(o, "positionSide"),
+                Status = StringValue(o, "algoStatus"),
+                TriggerPrice = NumberValue(o, "triggerPrice"),
+                Quantity = NumberValue(o, "quantity"),
+                OrderType = StringValue(o, "orderType")
+            }).ToArray();
     }
 
     public async Task<BinanceSymbolFilters> GetSymbolFiltersAsync(string symbol, CancellationToken ct)
@@ -203,15 +217,22 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
     public async Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(string symbol, CancellationToken ct)
     {
-        using var document = JsonDocument.Parse(await SendSignedAsync(HttpMethod.Get, "fapi/v2/positionRisk", new() { ["symbol"] = NormalizeSymbol(symbol) }, ct));
-        return document.RootElement.EnumerateArray().Select(element => new BinancePositionRisk
-        {
-            Symbol = StringValue(element, "symbol"),
-            PositionSide = StringValue(element, "positionSide"),
-            PositionAmount = NumberValue(element, "positionAmt"),
-            EntryPrice = NumberValue(element, "entryPrice"),
-            MarkPrice = NumberValue(element, "markPrice")
-        }).ToArray();
+        using var document = JsonDocument.Parse(
+            await SendSignedAsync(
+                HttpMethod.Get, 
+                "fapi/v2/positionRisk", 
+                new() { ["symbol"] = NormalizeSymbol(symbol) },
+                ct));
+        
+        return document.RootElement.EnumerateArray()
+            .Select(element => new BinancePositionRisk
+            {
+                Symbol = StringValue(element, "symbol"),
+                PositionSide = StringValue(element, "positionSide"),
+                PositionAmount = NumberValue(element, "positionAmt"),
+                EntryPrice = NumberValue(element, "entryPrice"),
+                MarkPrice = NumberValue(element, "markPrice")
+            }).ToArray();
     }
 
     private async Task<string> SendUnsignedAsync(string endpoint, Dictionary<string, string> parameters, CancellationToken ct)
@@ -229,6 +250,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         catch (BinanceApiException ex) when (IsTimestampOutsideReceiveWindow(ex))
         {
             await SynchronizeServerTimeAsync(ct);
+            
             return await SendSignedOnceAsync(method, endpoint, parameters, ct);
         }
     }
@@ -243,7 +265,9 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
         using var request = new HttpRequestMessage(method, $"{endpoint}?{signedQuery}");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        
         using var response = await _httpClient.SendAsync(request, ct);
+       
         return await ReadResponseAsync(response, endpoint, ct);
     }
 
@@ -270,9 +294,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             }
 
             var localMidpoint = requestStartedAt + ((requestCompletedAt - requestStartedAt) / 2);
-            Interlocked.Exchange(
-                ref _serverTimeOffsetMilliseconds,
-                serverTime - localMidpoint);
+            Interlocked.Exchange(ref _serverTimeOffsetMilliseconds, serverTime - localMidpoint);
         }
         finally
         {
@@ -281,8 +303,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     private long CurrentBinanceTimestampMilliseconds()
-        => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() +
-           Interlocked.Read(ref _serverTimeOffsetMilliseconds);
+        => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + Interlocked.Read(ref _serverTimeOffsetMilliseconds);
 
     private static async Task<string> ReadResponseAsync(HttpResponseMessage response, string operation, CancellationToken ct)
     {

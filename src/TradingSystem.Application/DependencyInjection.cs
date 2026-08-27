@@ -18,18 +18,11 @@ namespace TradingSystem.Application;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddTradingApplication(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddTradingApplication(this IServiceCollection services, IConfiguration configuration)
     {
-        services
-     .AddOptions<TradingEngineOptions>()
-     .Bind(configuration.GetSection(TradingEngineOptions.SectionName))
-     .ValidateOnStart();
+        services.AddOptions<TradingEngineOptions>().Bind(configuration.GetSection(TradingEngineOptions.SectionName)).ValidateOnStart();
 
-        services.AddSingleton<
-            IValidateOptions<TradingEngineOptions>,
-            TradingEngineOptionsValidator>();
+        services.AddSingleton<IValidateOptions<TradingEngineOptions>, TradingEngineOptionsValidator>();
 
         services.AddSingleton<TradingStrategyRegistry>();
         services.AddSingleton<TradeExecutorRegistry>();
@@ -40,6 +33,7 @@ public static class DependencyInjection
         services.TryAddSingleton<ITradingEngineNotifier, NullTradingEngineNotifier>();
         services.TryAddSingleton<ICentralRiskManager, NullCentralRiskManager>();
         services.AddSingleton<TradingEngine>();
+       
         return services;
     }
 }

@@ -110,10 +110,7 @@ public sealed class BinanceTpOnlyPositionService(
         if (position.RemainingQuantity <= 0)
             return;
 
-        var clientOrderId = BinanceClientOrderId.Create(
-            position.BotName,
-            "CL",
-            position.ShortId);
+        var clientOrderId = BinanceClientOrderId.Create(position.BotName, "CL", position.ShortId);
 
         var close = await safeOrders.SafePlaceMarketOrderAsync(
             position.Symbol,

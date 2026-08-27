@@ -11,7 +11,7 @@ namespace StrategyService.Bots.Bot8011;
 
 public sealed class Bot8011PositionEvents(
     IOptions<Bot8011Options> options,
-    IPositionStore store,
+    IPositionStore positions,
     IPositionLockProvider locks, 
     Bot8011Stop3OrderService stop3, 
     SafeBinanceOrderService safe, 
@@ -29,7 +29,7 @@ public sealed class Bot8011PositionEvents(
         if(l is null)
             return;
         
-        var p = await store.GetAsync(BotName, id, ct);
+        var p = await positions.GetAsync(BotName, id, ct);
         if(p is null || p.Closed || p.TpExecuted)
             return;
         
@@ -39,7 +39,7 @@ public sealed class Bot8011PositionEvents(
         if(p.RemainingQuantity <= 0)
         {
             p.MarkClosed("TP_FULL_EXIT", now);
-            await store.SaveAsync(p, ct);
+            await positions.SaveAsync(p, ct);
             
             return;
         }
@@ -47,7 +47,7 @@ public sealed class Bot8011PositionEvents(
         p.Stop3Pending = true;
         p.Status = PositionStatus.Stop3Pending;
         
-        await store.SaveAsync(p, ct);
+        await positions.SaveAsync(p, ct);
         
         try
         {
@@ -60,14 +60,14 @@ public sealed class Bot8011PositionEvents(
             p.Stop3Pending = false;
             p.Status = PositionStatus.Stop3Active;
             
-            await store.SaveAsync(p, ct);
+            await positions.SaveAsync(p, ct);
             
             if(!string.IsNullOrWhiteSpace(p.SlOrderId))
             {
                 await safe.SafeCancelAlgoAsync(p.Symbol, p.SlOrderId, p.SlClientId, ct);
                 
                 p.SlStatus = "CANCELED";
-                await store.SaveAsync(p, ct);
+                await positions.SaveAsync(p, ct);
             }
         }
         catch
@@ -76,7 +76,7 @@ public sealed class Bot8011PositionEvents(
             p.Stop3Created = false;
             p.ProtectiveActive = true;
             
-            await store.SaveAsync(p, ct);
+            await positions.SaveAsync(p, ct);
             
             throw;
         }
@@ -99,7 +99,7 @@ public sealed class Bot8011PositionEvents(
         if(l is null)
             return;
         
-        var p = await store.GetAsync(BotName, id, ct);
+        var p = await positions.GetAsync(BotName, id, ct);
         if(p is null || p.Closed
             )return;
         
@@ -110,7 +110,7 @@ public sealed class Bot8011PositionEvents(
         p.TrailingInProgress = false;
         p.MarkClosed(reason, now);
         
-        await store.SaveAsync(p, ct);
+        await positions.SaveAsync(p, ct);
         await history.RecordPositionEventAsync(new(p.ShortId, p.BotName, reason, "Closed", now, p.Stop3Current, p.RemainingQuantity), ct);
     }
 }

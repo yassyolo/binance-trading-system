@@ -15,11 +15,11 @@ public sealed class HealingSnapshotSubscriber(
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
-    protected override async Task ExecuteAsync(CancellationToken token)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var channel = RedisChannel.Literal(RedisChannels.Healing);
 
-        while (!token.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             var subscriber = redis.GetSubscriber();
             var subscribed = false;
@@ -28,29 +28,29 @@ public sealed class HealingSnapshotSubscriber(
             {
                 await subscriber.SubscribeAsync(channel, async (_, message) =>
                 {
-                    if (!message.HasValue || token.IsCancellationRequested)
+                    if (!message.HasValue || ct.IsCancellationRequested)
                         return;
 
-                    await ProcessSafelyAsync(message.ToString(), token);
+                    await ProcessSafelyAsync(message.ToString(), ct);
                 });
 
                 subscribed = true;
                 
                 logger.LogInformation("Subscribed to healing snapshots. Channel = {Channel}", channel);
                 
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
-            catch (RedisException exception)
+            catch (RedisException redisEx)
             {
-                logger.LogWarning(exception, "Could not subscribe to healing snapshots because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
+                logger.LogWarning(redisEx, "Could not subscribe to healing snapshots because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(exception, "Healing snapshot subscription failed. Channel = {Channel}. Retrying.", channel);
+                logger.LogError(ex, "Healing snapshot subscription failed. Channel = {Channel}. Retrying.", channel);
             }
             finally
             {
@@ -67,7 +67,7 @@ public sealed class HealingSnapshotSubscriber(
                 }
             }
 
-            await DelayBeforeRetryAsync(token);
+            await DelayBeforeRetryAsync(ct);
         }
     }
 

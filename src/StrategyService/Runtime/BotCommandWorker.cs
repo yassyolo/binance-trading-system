@@ -70,46 +70,31 @@ public sealed class BotCommandWorker(
             try
             {
                 await ProcessAsync(command, ct);
+                
                 await queue.CompleteAsync(command.CommandId, _workerId, ct);
+                
                 await TryAuditAsync(command, "Completed", null);
 
-                logger.LogInformation(
-                    "Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}",
-                    command.CommandId,
-                    command.BotName,
-                    command.Command);
+                logger.LogInformation("Bot command completed. CommandId = {CommandId} Bot = {Bot} Command = {Command}", command.CommandId, command.BotName, command.Command);
             }
             catch (UnsupportedBotCommandException exception)
             {
                 await queue.RejectAsync(command.CommandId, _workerId, exception.Message, ct);
+                
                 await TryAuditAsync(command, "Rejected", exception.Message);
 
-                logger.LogWarning(
-                    "Bot command rejected. CommandId = {CommandId} Reason = {Reason}",
-                    command.CommandId,
-                    exception.Message);
+                logger.LogWarning("Bot command rejected. CommandId = {CommandId} Reason = {Reason}", command.CommandId, exception.Message);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                var retryable =
-                    !IsPermanentFailure(exception) &&
-                    command.AttemptCount < _options.MaximumCommandAttempts;
+                var retryable = !IsPermanentFailure(ex) && command.AttemptCount < _options.MaximumCommandAttempts;
 
-                await queue.FailAsync(
-                    command.CommandId,
-                    _workerId,
-                    exception.Message,
-                    retryable,
-                    ct);
+                await queue.FailAsync(command.CommandId, _workerId, ex.Message, retryable, ct);
 
                 if (!retryable)
-                    await TryAuditAsync(command, "Failed", exception.Message);
+                    await TryAuditAsync(command, "Failed", ex.Message);
 
-                logger.LogError(
-                    exception,
-                    "Bot command failed. CommandId = {CommandId} Retryable = {Retryable}",
-                    command.CommandId,
-                    retryable);
+                logger.LogError(ex, "Bot command failed. CommandId = {CommandId} Retryable = {Retryable}", command.CommandId, retryable);
             }
         }
     }
@@ -121,11 +106,9 @@ public sealed class BotCommandWorker(
             case BotCommandType.ClosePosition:
                 await ProcessClosePositionAsync(command, ct);
                 return;
-
             case BotCommandType.CancelTakeProfit:
             case BotCommandType.RecreateTakeProfit:
-                throw new UnsupportedBotCommandException(
-                    $"Command '{command.Command}' requires a protected order-command handler which is not implemented yet.");
+                throw new UnsupportedBotCommandException($"Command '{command.Command}' requires a protected order-command handler which is not implemented yet.");
         }
 
         await ProcessRuntimeStateCommandAsync(command, ct);
@@ -160,10 +143,7 @@ public sealed class BotCommandWorker(
         }
         else
         {
-            logger.LogInformation(
-                "Bot runtime command requires no state transition. Bot = {Bot} Status = {Status}",
-                command.BotName,
-                current.Status);
+            logger.LogInformation("Bot runtime command requires no state transition. Bot = {Bot} Status = {Status}", command.BotName, current.Status);
         }
 
         if (command.Command is BotCommandType.Stop or BotCommandType.EmergencyStop)
@@ -180,20 +160,14 @@ public sealed class BotCommandWorker(
             return;
 
         if (cancelOpenOrders && !closeOpenPositions)
-        {
-            throw new UnsupportedBotCommandException(
-                "CancelOpenOrders without CloseOpenPositions is not supported because it could leave an exposed position without protective orders.");
-        }
+            throw new UnsupportedBotCommandException("CancelOpenOrders without CloseOpenPositions is not supported because it could leave an exposed p without protective orders.");
 
         var positions = await positionStore.GetAllAsync(command.BotName, ct);
-        var activePositions = positions.Where(position => !position.Closed).ToArray();
+        var activePositions = positions.Where(p => !p.Closed).ToArray();
 
         if (activePositions.Length == 0)
         {
-            logger.LogInformation(
-                "Stop side effects require no position close. Bot = {Bot} Command = {Command}",
-                command.BotName,
-                command.Command);
+            logger.LogInformation("Stop side effects require no positions close. Bot = {Bot} Command = {Command}", command.BotName, command.Command);
 
             return;
         }
@@ -206,31 +180,14 @@ public sealed class BotCommandWorker(
                 ? $"{command.Command}_CLOSE_OPEN_POSITION"
                 : command.Reason.Trim();
 
-            var result = await tradeExecutor.CloseAsync(
-                command.BotName,
-                position.ShortId,
-                reason,
-                ct);
+            var result = await tradeExecutor.CloseAsync(command.BotName, position.ShortId, reason, ct);
 
             if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    $"Runtime command '{command.Command}' changed the bot state but failed to close position '{position.ShortId}' for bot '{command.BotName}': {result.Reason}",
-                    result.Exception);
-            }
+                throw new InvalidOperationException($"Runtime command '{command.Command}' changed the bot state but failed to close position '{position.ShortId}' for bot '{command.BotName}': {result.Reason}", result.Exception);
 
-            await lifecycle.RecordClosedAsync(
-                command.BotName,
-                position.ShortId,
-                reason,
-                ct);
+            await lifecycle.RecordClosedAsync(command.BotName, position.ShortId, reason, ct);
 
-            logger.LogInformation(
-                "Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}",
-                command.CommandId,
-                command.BotName,
-                position.ShortId,
-                command.Command);
+            logger.LogInformation("Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}", command.CommandId, command.BotName, position.ShortId, command.Command);
         }
     }
 
@@ -241,16 +198,11 @@ public sealed class BotCommandWorker(
             ? "MANUAL_POSITION_CLOSE"
             : command.Reason.Trim();
 
-        var result = await tradeExecutor.CloseAsync(
-            command.BotName,
-            positionIdentifier,
-            reason,
-            ct);
+        var result = await tradeExecutor.CloseAsync(command.BotName, positionIdentifier, reason,  ct);
 
         if (!result.Succeeded)
         {
-            var message =
-                $"Position close failed for bot '{command.BotName}' and position '{positionIdentifier}': {result.Reason}";
+            var message = $"Position close failed for bot '{command.BotName}' and p '{positionIdentifier}': {result.Reason}";
 
             if (result.Reason.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 throw new PermanentBotCommandException(message, result.Exception);
@@ -258,18 +210,9 @@ public sealed class BotCommandWorker(
             throw new InvalidOperationException(message, result.Exception);
         }
 
-        await lifecycle.RecordClosedAsync(
-            command.BotName,
-            positionIdentifier,
-            reason,
-            ct);
+        await lifecycle.RecordClosedAsync(command.BotName, positionIdentifier, reason, ct);
 
-        logger.LogInformation(
-            "Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}",
-            command.CommandId,
-            command.BotName,
-            positionIdentifier,
-            result.Reason);
+        logger.LogInformation("Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}", command.CommandId, command.BotName, positionIdentifier, result.Reason);
     }
 
     private static string ReadRequiredPositionIdentifier(BotCommand command)
@@ -285,8 +228,7 @@ public sealed class BotCommandWorker(
         if (TryReadString(root, "shortId", out positionId))
             return positionId;
 
-        throw new UnsupportedBotCommandException(
-            $"Command '{command.Command}' requires PositionId in its payload.");
+        throw new UnsupportedBotCommandException($"Command '{command.Command}' requires PositionId in its payload.");
     }
 
     private static bool ReadBoolean(JsonElement root, string pascalCase, string camelCase)
@@ -330,15 +272,12 @@ public sealed class BotCommandWorker(
         return true;
     }
 
-    private static bool IsPermanentFailure(Exception exception)
+    private static bool IsPermanentFailure(Exception ex)
     {
-        if (exception is PermanentBotCommandException)
+        if (ex is PermanentBotCommandException)
             return true;
 
-        return exception is InvalidOperationException &&
-               exception.Message.StartsWith(
-                   "Runtime state was not found for bot",
-                   StringComparison.OrdinalIgnoreCase);
+        return ex is InvalidOperationException && ex.Message.StartsWith("Runtime state was not found for bot",StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task TryAuditAsync(BotCommand command, string status, string? error)
@@ -369,12 +308,9 @@ public sealed class BotCommandWorker(
                     }),
                 CancellationToken.None);
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(
-                exception,
-                "Bot command audit persistence failed. CommandId = {CommandId}",
-                command.CommandId);
+            logger.LogWarning(ex, "Bot command audit persistence failed. CommandId = {CommandId}", command.CommandId);
         }
     }
 

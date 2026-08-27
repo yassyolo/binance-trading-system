@@ -19,12 +19,11 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
     {
         _options = options.Value;
         _connectionString = configuration.GetConnectionString(_options.ConnectionStringName)
-            ?? throw new InvalidOperationException(
-                $"Connection string '{_options.ConnectionStringName}' was not found.");
+            ?? throw new InvalidOperationException($"Connection string '{_options.ConnectionStringName}' was not found.");
     }
 
-    public Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken ct) =>
-        AppendAsync(historicalEvent, ct);
+    public Task WriteAsync(HistoricalEvent historicalEvent, CancellationToken ct) 
+        => AppendAsync(historicalEvent, ct);
 
     public async Task AppendAsync(HistoricalEvent historicalEvent, CancellationToken ct)
     {
@@ -139,9 +138,24 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
     {
         const string sql = """
             INSERT INTO trading_history.events
-            (event_id, event_type, occurred_at_utc, environment, correlation_id,
-             bot_name, strategy_version, symbol, position_id, order_id, side,
-             status, price, quantity, realized_pnl, reason, data, raw_payload)
+            (event_id, 
+             event_type, 
+             occurred_at_utc, 
+             environment, 
+             correlation_id,
+             bot_name, 
+             strategy_version, 
+             symbol, 
+             position_id, 
+             order_id, 
+             side,
+             status,
+             price,
+             quantity, 
+             realized_pnl,
+             reason, 
+             data, 
+             raw_payload)
             VALUES
             (@event_id, @event_type, @occurred_at_utc, @environment, @correlation_id,
              @bot_name, @strategy_version, @symbol, @position_id, @order_id, @side,

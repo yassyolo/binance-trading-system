@@ -6,5 +6,5 @@ public sealed record ReconciliationRunResult(
     IReadOnlyCollection<ReconciliationFinding> Findings,
     int HealedCount)
 {
-    public IReadOnlyCollection<string> EvaluatedSymbols { get; init; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> EvaluatedSymbols { get; init; } = [];
 }

@@ -1,10 +1,10 @@
+using StackExchange.Redis;
 using System.Globalization;
 using System.Text.Json;
-using StackExchange.Redis;
 using TradingSystem.Application.Events;
 using TradingSystem.Application.Orders;
-using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Binance.Execution.Models;
+using TradingSystem.BotRuntime.Configuration.Contracts;
 using TradingSystem.Contracts.Messaging;
 using TradingSystem.HistoricalDatabase.EventStore;
 using TradingSystem.HistoricalDatabase.Models;
@@ -19,7 +19,7 @@ namespace StrategyService.Subscribers;
 public sealed class UserStreamOrderSubscriber(
     IConnectionMultiplexer redis,
     IEnumerable<IBotOrderEventHandler> handlers,
-    IEventDeduplicationStore dedup,
+    IEventDeduplicationStore deduplication,
     ITradingPipelineRecorder history,
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
@@ -30,8 +30,7 @@ public sealed class UserStreamOrderSubscriber(
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
-    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers =
-        handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyDictionary<string, IBotOrderEventHandler> _handlers = handlers.ToDictionary(x => x.BotName, StringComparer.OrdinalIgnoreCase);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -53,19 +52,18 @@ public sealed class UserStreamOrderSubscriber(
                 });
 
                 subscribed = true;
+                
                 logger.LogInformation("Subscribed to user-stream orders. Channel = {Channel}", channel);
+               
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
-            catch (RedisException exception)
+            catch (RedisException ex)
             {
-                logger.LogWarning(
-                    exception,
-                    "Could not subscribe to user-stream orders because Redis is unavailable. Channel = {Channel}. Retrying.",
-                    channel);
+                logger.LogWarning(ex, "Could not subscribe to user-stream orders because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
             catch (Exception exception)
             {
@@ -97,6 +95,7 @@ public sealed class UserStreamOrderSubscriber(
         try
         {
             using var document = JsonDocument.Parse(raw);
+            
             var binance = document.RootElement.TryGetProperty("binance", out var wrapper)
                 ? wrapper
                 : document.RootElement;
@@ -105,7 +104,7 @@ public sealed class UserStreamOrderSubscriber(
             if (eventType is not ("ORDER_TRADE_UPDATE" or "ALGO_UPDATE"))
                 return;
 
-            var order = binance.TryGetProperty("o", out var node)
+            var order = binance.TryGetProperty("options", out var node)
                 ? node
                 : binance.TryGetProperty("ao", out node)
                     ? node
@@ -135,9 +134,10 @@ public sealed class UserStreamOrderSubscriber(
             var quantity = GetDecimal(order, "q");
             var executed = GetDecimal(order, "z");
             var price = GetDecimal(order, "p");
+           
             var key = $"{eventType}:{orderId}:{clientId}:{status}:{executed.ToString(CultureInfo.InvariantCulture)}";
 
-            if (!await dedup.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
+            if (!await deduplication.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
                 return;
 
             metrics.OrderEvents.WithLabels(bot, symbol, role, status ?? "unknown").Inc();
@@ -194,11 +194,7 @@ public sealed class UserStreamOrderSubscriber(
             else if (role is "S3" or "STOP3" && IsTriggered(status))
                 await handler.HandleStop3TriggeredAsync(shortId, ct);
 
-            await lifecycle.RecordClosedAsync(
-                bot,
-                shortId,
-                status,
-                ct);
+            await lifecycle.RecordClosedAsync(bot, shortId, status, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -207,16 +203,17 @@ public sealed class UserStreamOrderSubscriber(
         catch (Exception exception)
         {
             metrics.ProcessingFailures.WithLabels("user_stream_order", "unknown", exception.GetType().Name).Inc();
+            
             logger.LogError(exception, "Order event processing failed.");
         }
     }
 
     private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, ct);
+        var config = await configurations.GetAsync(botName, ct);
 
-        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
-            ? configuration.Environment.Trim()
+        return config is not null && !string.IsNullOrWhiteSpace(config.Environment)
+            ? config.Environment.Trim()
             : environment.EnvironmentName;
     }
 
@@ -243,7 +240,6 @@ public sealed class UserStreamOrderSubscriber(
             await Task.Delay(RetryDelay, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
+        {}
     }
 }

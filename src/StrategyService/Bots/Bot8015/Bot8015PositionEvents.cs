@@ -87,16 +87,23 @@ namespace StrategyService.Bots.Bot8015
 
         async Task Close(string id, string reason, CancellationToken ct)
         {
-            await using var l = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);
-            if (l is null) return;
+            await using var l = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);  
+            if (l is null) 
+                return;
+            
             var p = await store.GetAsync(BotName, id, ct);
-            if (p is null || p.Closed) return;
+            if (p is null || p.Closed) 
+                return;
+            
             var now = clock.UtcNow;
+           
             p.ProtectiveActive = false;
             p.Stop3Pending = false;
             p.TrailingInProgress = false;
             p.MarkClosed(reason, now);
+            
             await store.SaveAsync(p, ct);
+            
             await history.RecordPositionEventAsync(new(p.ShortId, p.BotName, reason, "Closed", now, p.Stop3Current, p.RemainingQuantity), ct);
         }
     }

@@ -11,16 +11,16 @@ public sealed class PostgresReconciliationFindingStore(
 {
     public async Task SaveRunAsync(ReconciliationRunResult result, CancellationToken ct)
     {
-        await using var c = await connections.OpenAsync(ct);
-        await using var tx = await c.BeginTransactionAsync(ct);
+        await using var connection = await connections.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
 
-        var runId = await c.ExecuteScalarAsync<long>(new CommandDefinition(
+        var runId = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             """
-            INSERT INTO trading.reconciliation_runs(
-                started_at_utc,
-                completed_at_utc,
-                finding_count,
-                healed_count)
+            INSERT INTO trading.reconciliation_runs
+            (started_at_utc,
+             completed_at_utc,
+             finding_count,
+             healed_count)
             VALUES(@Started, @Completed, @Count, @Healed)
             RETURNING id;
             """,
@@ -31,7 +31,7 @@ public sealed class PostgresReconciliationFindingStore(
                 Count = result.Findings.Count,
                 Healed = result.HealedCount
             },
-            tx,
+            transaction,
             cancellationToken: ct));
 
         var currentFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -46,9 +46,8 @@ public sealed class PostgresReconciliationFindingStore(
 
             currentFingerprints.Add(fingerprint);
 
-            // Keep one active row per logical issue. Old deployments may already have
-            // duplicates, so select one canonical unresolved row and resolve the rest.
-            var existingIds = (await c.QueryAsync<Guid>(new CommandDefinition(
+            var existingIds = (await connection.QueryAsync<Guid>(
+                new CommandDefinition(
                 """
                 SELECT id
                 FROM trading.reconciliation_findings
@@ -66,12 +65,12 @@ public sealed class PostgresReconciliationFindingStore(
                     Short = finding.ShortId,
                     Type = finding.Type.ToString()
                 },
-                tx,
+                transaction,
                 cancellationToken: ct))).AsList();
 
             if (existingIds.Count == 0)
             {
-                await c.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(new CommandDefinition(
                     """
                     INSERT INTO trading.reconciliation_findings(
                         id,
@@ -116,7 +115,7 @@ public sealed class PostgresReconciliationFindingStore(
                         Action = finding.SuggestedAction.ToString(),
                         Auto = finding.AutoHealAllowed
                     },
-                    tx,
+                    transaction,
                     cancellationToken: ct));
 
                 continue;
@@ -124,7 +123,7 @@ public sealed class PostgresReconciliationFindingStore(
 
             var canonicalId = existingIds[0];
 
-            await c.ExecuteAsync(new CommandDefinition(
+            await connection.ExecuteAsync(new CommandDefinition(
                 """
                 UPDATE trading.reconciliation_findings
                 SET run_id = @Run,
@@ -145,12 +144,12 @@ public sealed class PostgresReconciliationFindingStore(
                     Action = finding.SuggestedAction.ToString(),
                     Auto = finding.AutoHealAllowed
                 },
-                tx,
+                transaction,
                 cancellationToken: ct));
 
             if (existingIds.Count > 1)
             {
-                await c.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(new CommandDefinition(
                     """
                     UPDATE trading.reconciliation_findings
                     SET resolved = true,
@@ -162,7 +161,7 @@ public sealed class PostgresReconciliationFindingStore(
                         DuplicateIds = existingIds.Skip(1).ToArray(),
                         ResolvedAt = result.CompletedAtUtc
                     },
-                    tx,
+                    transaction,
                     cancellationToken: ct));
             }
         }
@@ -172,7 +171,7 @@ public sealed class PostgresReconciliationFindingStore(
         // issue therefore becomes resolved on the next cycle.
         if (result.EvaluatedSymbols.Count > 0)
         {
-            var unresolved = (await c.QueryAsync<UnresolvedFindingRow>(new CommandDefinition(
+            var unresolved = (await connection.QueryAsync<UnresolvedFindingRow>(new CommandDefinition(
                 """
                 SELECT id,
                        bot_name AS BotName,
@@ -184,7 +183,7 @@ public sealed class PostgresReconciliationFindingStore(
                   AND symbol = ANY(@Symbols);
                 """,
                 new { Symbols = result.EvaluatedSymbols.ToArray() },
-                tx,
+                transaction,
                 cancellationToken: ct))).AsList();
 
             var idsToResolve = unresolved
@@ -195,7 +194,7 @@ public sealed class PostgresReconciliationFindingStore(
 
             if (idsToResolve.Length > 0)
             {
-                await c.ExecuteAsync(new CommandDefinition(
+                await connection.ExecuteAsync(new CommandDefinition(
                     """
                     UPDATE trading.reconciliation_findings
                     SET resolved = true,
@@ -207,12 +206,12 @@ public sealed class PostgresReconciliationFindingStore(
                         Ids = idsToResolve,
                         ResolvedAt = result.CompletedAtUtc
                     },
-                    tx,
+                    transaction,
                     cancellationToken: ct));
             }
         }
 
-        await tx.CommitAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task<bool> HasUnresolvedCriticalAsync(CancellationToken ct)

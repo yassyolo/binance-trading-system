@@ -11,35 +11,21 @@ public sealed class BinanceExchangeStateProvider(
     public async Task<ExchangeStateSnapshot> GetAsync(string symbol, CancellationToken ct)
     {
         var positionsTask = client.GetPositionRiskAsync(symbol, ct);
-        var normalTask = client.GetOpenOrdersAsync(symbol, ct);
-        var algoTask = client.GetOpenAlgoOrdersAsync(symbol, ct);
+        var normalOpenOrdersTask = client.GetOpenOrdersAsync(symbol, ct);
+        var algoOrdersTask = client.GetOpenAlgoOrdersAsync(symbol, ct);
 
-        await Task.WhenAll(positionsTask, normalTask, algoTask);
+        await Task.WhenAll(positionsTask, normalOpenOrdersTask, algoOrdersTask);
 
         var positions = (await positionsTask)
             .Where(x => x.PositionAmount != 0)
-            .Select(x => new ExchangePositionSnapshot(
-                x.Symbol,
-                x.PositionSide,
-                Math.Abs(x.PositionAmount),
-                x.EntryPrice))
+            .Select(x => new ExchangePositionSnapshot(x.Symbol, x.PositionSide, Math.Abs(x.PositionAmount), x.EntryPrice))
             .ToArray();
 
-        var normal = (await normalTask)
-            .Select(x => new ExchangeOrderSnapshot(
-                x.Symbol,
-                x.ClientOrderId,
-                x.Type,
-                x.Quantity,
-                null));
+        var normal = (await normalOpenOrdersTask)
+            .Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientOrderId, x.Type, x.Quantity, null));
 
-        var algo = (await algoTask)
-            .Select(x => new ExchangeOrderSnapshot(
-                x.Symbol,
-                x.ClientAlgoId,
-                x.OrderType,
-                x.Quantity,
-                x.TriggerPrice));
+        var algo = (await algoOrdersTask)
+            .Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientAlgoId, x.OrderType, x.Quantity, x.TriggerPrice));
 
         return new ExchangeStateSnapshot(positions, normal.Concat(algo).ToArray());
     }

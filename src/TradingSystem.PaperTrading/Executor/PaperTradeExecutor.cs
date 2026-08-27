@@ -134,8 +134,8 @@ public sealed class PaperTradeExecutor(
             return TradeExecutionResult.Failure("Paper position trigger price must be positive.");
 
         var position = await store.GetAsync(botName, shortId, ct);
+       
         var validationResult = ValidatePositionForClose(position, shortId);
-
         if (validationResult is not null)
             return validationResult;
 
@@ -432,7 +432,9 @@ public sealed class PaperTradeExecutor(
     internal decimal ApplySlippage(decimal price, PositionSide side, bool opening)
     {
         var slippageRate = _options.SlippagePercent / 100m;
-        var isBuyOperation = opening ? side == PositionSide.Long : side == PositionSide.Short;
+        var isBuyOperation = opening 
+            ? side == PositionSide.Long 
+            : side == PositionSide.Short;
 
         return isBuyOperation
             ? price * (1m + slippageRate)
@@ -443,11 +445,9 @@ public sealed class PaperTradeExecutor(
         => price * quantity * (_options.CommissionPercent / 100m);
 
     internal static decimal CalculateGrossPnl(PaperTradingPosition position, decimal exitPrice)
-    {
-        return position.Side == PositionSide.Long
+        => position.Side == PositionSide.Long
             ? (exitPrice - position.EntryPrice) * position.Quantity
             : (position.EntryPrice - exitPrice) * position.Quantity;
-    }
 
     private static decimal ApplyPercent(
         decimal price,

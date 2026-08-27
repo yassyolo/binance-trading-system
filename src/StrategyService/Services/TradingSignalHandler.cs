@@ -25,16 +25,21 @@ public sealed class TradingSignalHandler(
     public async Task<bool> HandleAsync(TradeSignal signal, CancellationToken ct)
     {
         var strategyVersion = ResolveStrategyVersion(signal.BotName);
+        
         await TryRecordSignalAsync(signal, strategyVersion, ct);
         using var contextScope = signalContext.Push(new TradingSignalExecutionContext(signal.SignalId, strategyVersion, signal.Source));
         TradingEngineResult result;
 
-        try { result = await engine.ProcessSignalAsync(signal, ct); }
+        try 
+        { 
+            result = await engine.ProcessSignalAsync(signal, ct);
+        }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
             await TryRecordDecisionAsync(signal, strategyVersion, "Failed", exception.Message,
                 new Dictionary<string, object?> { ["exceptionType"] = exception.GetType().FullName }, ct);
+           
             logger.LogError(exception, "Signal handler failed. Id = {Id} Bot = {Bot}", signal.SignalId, signal.BotName);
 
             if (IsTransientInfrastructureFailure(exception))
@@ -44,6 +49,7 @@ public sealed class TradingSignalHandler(
         }
 
         var finalDecision = ResolveFinalDecision(result);
+        
         await TryRecordDecisionAsync(signal, strategyVersion, finalDecision, result.Reason,
             new Dictionary<string, object?>
             {
@@ -55,9 +61,7 @@ public sealed class TradingSignalHandler(
 
         await TryNotifyFinalOutcomeAsync(signal, finalDecision, result.Reason, ct);
 
-        logger.LogInformation(
-            "Signal processed. Id = {Id} Bot = {Bot} Opened = {Opened} Duplicate = {Duplicate} Reason = {Reason}",
-            signal.SignalId, signal.BotName, result.OpenedPosition, result.Duplicate, result.Reason);
+        logger.LogInformation("Signal processed. Id = {Id} Bot = {Bot} Opened = {Opened} Duplicate = {Duplicate} Reason = {Reason}", signal.SignalId, signal.BotName, result.OpenedPosition, result.Duplicate, result.Reason);
 
         return result.Succeeded;
     }
@@ -157,10 +161,14 @@ public sealed class TradingSignalHandler(
 
     private string ResolveStrategyVersion(string botName)
     {
-        try { return strategies.GetRequired(botName).Metadata.Version; }
+        try 
+        { 
+            return strategies.GetRequired(botName).Metadata.Version;
+        }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Strategy version could not be resolved for bot {Bot}. History will use 'unknown'.", botName);
+           
             return "unknown";
         }
     }

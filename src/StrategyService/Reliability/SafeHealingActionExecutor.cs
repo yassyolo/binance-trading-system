@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Options;
-using StrategyService.Services;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Reconciliation.Configuration;
 using TradingSystem.Reconciliation.Contracts;
@@ -26,51 +25,31 @@ public sealed class SafeHealingActionExecutor(
 
         if (finding.SuggestedAction != HealingActionType.DeleteStaleLocalPosition ||
             string.IsNullOrWhiteSpace(finding.ShortId))
-        {
             return false;
-        }
 
         var position = await localStore.GetAsync(finding.BotName, finding.ShortId, ct);
 
         if (position is null)
         {
-            logger.LogInformation(
-                "Stale local-position healing is already satisfied because the local position is absent. Bot = {Bot}, Position = {Position}, Finding = {FindingId}",
-                finding.BotName,
-                finding.ShortId,
-                finding.Id);
-
+            logger.LogInformation("Stale local-position healing is already satisfied because the local position is absent. Bot = {Bot}, Position = {Position}, Finding = {FindingId}", finding.BotName, finding.ShortId, finding.Id);
             return true;
         }
 
         if (position.Closed)
         {
-            logger.LogInformation(
-                "Stale local-position healing is already satisfied because the local position is closed. Bot = {Bot}, Position = {Position}, Finding = {FindingId}",
-                finding.BotName,
-                finding.ShortId,
-                finding.Id);
-
+            logger.LogInformation("Stale local-position healing is already satisfied because the local position is closed. Bot = {Bot}, Position = {Position}, Finding = {FindingId}", finding.BotName, finding.ShortId, finding.Id);
             return true;
         }
 
-        // Re-read Binance immediately before changing local state. The original finding
-        // can be several seconds old and must not be treated as authorization to mutate.
         var remote = await exchange.GetAsync(position.Symbol, ct);
 
-        var hasRemoteSidePosition = remote.Positions.Any(remotePosition =>
-            remotePosition.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase) &&
-            remotePosition.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) &&
-            Math.Abs(remotePosition.Quantity) > _options.QuantityTolerance);
+        var hasRemoteSidePosition = remote.Positions.Any(p => p.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase)
+            && p.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) 
+            && Math.Abs(p.Quantity) > _options.QuantityTolerance);
 
         if (hasRemoteSidePosition)
         {
-            logger.LogWarning(
-                "Automatic stale-position healing refused because Binance exposure exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}",
-                position.BotName,
-                position.ShortId,
-                position.Symbol);
-
+            logger.LogWarning("Automatic stale-position healing refused because Binance exposure exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);
             return false;
         }
 
@@ -78,18 +57,12 @@ public sealed class SafeHealingActionExecutor(
             .EnumerateClientOrderIds(position)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var hasRelatedOpenOrder = remote.Orders.Any(order =>
-            !string.IsNullOrWhiteSpace(order.ClientOrderId) &&
-            knownClientIds.Contains(order.ClientOrderId));
+        var hasRelatedOpenOrder = remote.Orders.Any(o => !string.IsNullOrWhiteSpace(o.ClientOrderId) 
+            && knownClientIds.Contains(o.ClientOrderId));
 
         if (hasRelatedOpenOrder)
         {
-            logger.LogWarning(
-                "Automatic stale-position healing refused because a related Binance order exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}",
-                position.BotName,
-                position.ShortId,
-                position.Symbol);
-
+            logger.LogWarning("Automatic stale-position healing refused because a related Binance o exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);
             return false;
         }
 

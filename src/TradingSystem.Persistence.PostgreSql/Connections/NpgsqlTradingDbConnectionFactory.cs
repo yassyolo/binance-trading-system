@@ -12,8 +12,10 @@ public sealed class NpgsqlTradingDbConnectionFactory(
     
     public async Task<DbConnection> OpenAsync(CancellationToken ct)
     {
-        var c = new NpgsqlConnection(connectionString);
+        var connection = new NpgsqlConnection(connectionString);
         
-        await c.OpenAsync(ct);return c;
+        await connection.OpenAsync(ct);
+        
+        return connection;
     }
 }

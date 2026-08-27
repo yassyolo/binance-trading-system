@@ -9,12 +9,14 @@ public sealed class TradingStrategyRegistry
 
     public TradingStrategyRegistry(IEnumerable<ITradingStrategy> strategies)
     {
-        var map  =  new Dictionary<string,  ITradingStrategy>(StringComparer.OrdinalIgnoreCase);
+        var map  =  new Dictionary<string, ITradingStrategy>(StringComparer.OrdinalIgnoreCase);
+        
         foreach (var strategy in strategies)
         {
-            RegisterKey(map,  strategy.Metadata.Name,  strategy);
-            RegisterKey(map,  strategy.Metadata.EffectivePluginId,  strategy);
+            RegisterKey(map, strategy.Metadata.Name, strategy);
+            RegisterKey(map, strategy.Metadata.EffectivePluginId, strategy);
         }
+        
         _strategies  =  map;
     }
 
@@ -31,9 +33,9 @@ public sealed class TradingStrategyRegistry
 
     private static void RegisterKey(IDictionary<string, ITradingStrategy> map, string key, ITradingStrategy strategy)
     {
-        if (map.TryGetValue(key,  out var existing)  &&  !ReferenceEquals(existing,  strategy))
+        if (map.TryGetValue(key, out var existing) && !ReferenceEquals(existing,  strategy))
             throw new InvalidOperationException($"Multiple strategies are registered with key '{key}'.");
        
-        map[key]  =  strategy;
+        map[key] = strategy;
     }
 }

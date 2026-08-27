@@ -8,7 +8,7 @@ public sealed class NullPaperPortfolioPositionSource : IPaperPortfolioPositionSo
     {
         ct.ThrowIfCancellationRequested();
        
-        return Task.FromResult<IReadOnlyCollection<PaperPortfolioPosition>>(Array.Empty<PaperPortfolioPosition>());
+        return Task.FromResult<IReadOnlyCollection<PaperPortfolioPosition>>([]);
     }
 }
 

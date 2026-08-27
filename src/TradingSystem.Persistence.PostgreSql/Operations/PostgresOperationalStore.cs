@@ -121,8 +121,18 @@ public sealed class PostgresOperationalStore(
     {
         const string sql = """
             insert into trading_dashboard.audit_events
-                (audit_id, occurred_at_utc, actor, action, entity_type, entity_id,
-                 reason, correlation_id, ip_address, old_value, new_value, metadata)
+                (audit_id,
+                 occurred_at_utc, 
+                 actor, 
+                 action, 
+                 entity_type, 
+                 entity_id,
+                 reason, 
+                 correlation_id, 
+                 ip_address, 
+                 old_value, 
+                 new_value,
+                 metadata)
             values
                 (@AuditId, @OccurredAtUtc, @Actor, @Action, @EntityType, @EntityId,
                  @Reason, @CorrelationId, @IpAddress, cast(@OldValueJson as jsonb),
@@ -130,6 +140,7 @@ public sealed class PostgresOperationalStore(
             """;
 
         await using var connection = await factory.OpenAsync(ct);
+       
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
@@ -145,8 +156,7 @@ public sealed class PostgresOperationalStore(
                 auditEvent.IpAddress,
                 OldValueJson = auditEvent.OldValueJson ?? "null",
                 NewValueJson = auditEvent.NewValueJson ?? "null",
-                Metadata = JsonSerializer.Serialize(
-                    auditEvent.Metadata ?? new Dictionary<string, string>())
+                Metadata = JsonSerializer.Serialize(auditEvent.Metadata ?? new Dictionary<string, string>())
             },
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));

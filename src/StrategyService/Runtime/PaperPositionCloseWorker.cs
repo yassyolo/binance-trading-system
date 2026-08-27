@@ -16,33 +16,33 @@ public sealed class PaperPositionCloseWorker(
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(2);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
-            await Task.Delay(InitialDelay, stoppingToken);
+            await Task.Delay(InitialDelay, ct);
 
             using var timer = new PeriodicTimer(CheckInterval);
 
             logger.LogInformation("{Worker} started. CheckInterval = {CheckInterval}", nameof(PaperPositionCloseWorker), CheckInterval);
 
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            while (await timer.WaitForNextTickAsync(ct))
             {
                 try
                 {
-                    await ProcessOpenPositionsAsync(stoppingToken);
+                    await ProcessOpenPositionsAsync(ct);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     break;
                 }
-                catch (Exception exception)
+                catch (Exception ex)
                 {
-                    logger.LogError(exception, "Unexpected error while processing open paper positions.");
+                    logger.LogError(ex, "Unexpected error while processing open paper positions.");
                 }
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         { }
         finally
         {
@@ -75,17 +75,15 @@ public sealed class PaperPositionCloseWorker(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Failed to obtain mark price while evaluating paper positions. Symbol = {Symbol}", symbol);
-
+            logger.LogError(ex, "Failed to obtain mark price while evaluating paper positions. Symbol = {Symbol}", symbol);
             return;
         }
 
         if (markPrice <= 0)
         {
-            logger.LogWarning("Paper p evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}", symbol, markPrice);
-
+            logger.LogWarning("Paper position evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}", symbol, markPrice);
             return;
         }
 
@@ -102,9 +100,7 @@ public sealed class PaperPositionCloseWorker(
         if (!HasValidExitLevels(position))
         {
             logger.LogError(
-            "Paper p has invalid exit levels. " +
-            "Bot = {Bot}, Position = {Position}, Side = {Side}, " +
-            "Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
+            "Paper p has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
             position.BotName,
             position.ShortId,
             position.Side,
@@ -120,11 +116,8 @@ public sealed class PaperPositionCloseWorker(
             return;
 
         logger.LogInformation(
-            "Paper exit condition reached. " +
-            "Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
-            "Side = {Side}, MarkPrice = {MarkPrice}, " +
-            "TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, " +
-            "Reason = {Reason}",
+            "Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
+            "Side = {Side}, MarkPrice = {MarkPrice}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, Reason = {Reason}",
             position.BotName,
             position.ShortId,
             position.Symbol,
@@ -161,25 +154,15 @@ public sealed class PaperPositionCloseWorker(
             result.Reason);
     }
 
-    private static bool HasValidExitLevels(
-        PaperTradingPosition position)
+    private static bool HasValidExitLevels(PaperTradingPosition position)
     {
-        if (position.EntryPrice <= 0 ||
-            position.Quantity <= 0)
-        {
+        if (position.EntryPrice <= 0 ||  position.Quantity <= 0)
             return false;
-        }
 
         return position.Side switch
         {
-            PositionSide.Long =>
-                IsValidLongTakeProfit(position) &&
-                IsValidLongStopLoss(position),
-
-            PositionSide.Short =>
-                IsValidShortTakeProfit(position) &&
-                IsValidShortStopLoss(position),
-
+            PositionSide.Long => IsValidLongTakeProfit(position) && IsValidLongStopLoss(position),
+            PositionSide.Short => IsValidShortTakeProfit(position) && IsValidShortStopLoss(position),
             _ => false
         };
     }
@@ -201,25 +184,17 @@ public sealed class PaperPositionCloseWorker(
         return position.Side switch
         {
             PositionSide.Long
-                when position.TakeProfitPrice != default &&
-                     markPrice >= position.TakeProfitPrice
+                when position.TakeProfitPrice != default && markPrice >= position.TakeProfitPrice
                 => "PAPER_TAKE_PROFIT",
-
             PositionSide.Long
-                when position.StopLossPrice != default &&
-                     markPrice <= position.StopLossPrice
+                when position.StopLossPrice != default && markPrice <= position.StopLossPrice
                 => "PAPER_STOP_LOSS",
-
             PositionSide.Short
-                when position.TakeProfitPrice != default &&
-                     markPrice <= position.TakeProfitPrice
+                when position.TakeProfitPrice != default && markPrice <= position.TakeProfitPrice
                 => "PAPER_TAKE_PROFIT",
-
             PositionSide.Short
-                when position.StopLossPrice != default &&
-                     markPrice >= position.StopLossPrice
+                when position.StopLossPrice != default && markPrice >= position.StopLossPrice
                 => "PAPER_STOP_LOSS",
-
             _ => null
         };
     }
