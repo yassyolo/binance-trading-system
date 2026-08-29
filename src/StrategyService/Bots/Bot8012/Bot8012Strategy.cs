@@ -11,20 +11,21 @@ public sealed class Bot8012Strategy(
     Bot8012GapPolicy policy)
     :ITradingStrategy, IHasSignalCooldown
 {
-    private readonly Bot8012Options _o = options.Value;
+    private readonly Bot8012Options _options = options.Value;
     
-    public StrategyMetadata Metadata => new(_o.BotName, _o.StrategyVersion, PositionMode.TpOnly, [_o.Symbol]);
-    public TimeSpan SignalCooldown => TimeSpan.FromSeconds(_o.CooldownSeconds);
+    public StrategyMetadata Metadata 
+        => new(_options.BotName, _options.StrategyVersion, PositionMode.TpOnly, [_options.Symbol]);
+    public TimeSpan SignalCooldown => TimeSpan.FromSeconds(_options.CooldownSeconds);
     
     public Task<StrategyDecision> DecideAsync(StrategyContext c, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         
         var side = c.Signal.Side;
-        if(side == PositionSide.Long && !_o.EnableLong)
+        if(side == PositionSide.Long && !_options.EnableLong)
             return Task.FromResult(StrategyDecision.Block(side, "LONG is disabled."));
         
-        if(side == PositionSide.Short && !_o.EnableShort)
+        if(side == PositionSide.Short && !_options.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
         
         return Task.FromResult(policy.Evaluate(side,  c.MarkPrice,  c.ActivePositions,  c.RuntimeConfiguration));

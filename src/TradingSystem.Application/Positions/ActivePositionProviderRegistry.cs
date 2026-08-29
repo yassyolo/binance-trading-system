@@ -18,8 +18,8 @@ public sealed class ActivePositionProviderRegistry : IActivePositionProvider
         _providers  =  map;
     }
 
-    public Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName,  string symbol,  CancellationToken ct)
-         =>  _providers.TryGetValue(botName,  out var provider)
+    public Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName, string symbol, CancellationToken ct)
+         => _providers.TryGetValue(botName,  out var provider)
             ? provider.GetActivePositionsAsync(symbol,  ct)
             : throw new InvalidOperationException($"Active position provider is not registered for bot '{botName}'.");
 }

@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 using TradingSystem.Contracts.Indicators;
 using TradingSystem.Domain.MarketData;
-using TradingSystem.Indicators.Common;
 using TradingSystem.Indicators.Bollinger.Configuration;
+using TradingSystem.Indicators.Bollinger.Models;
 using TradingSystem.Indicators.Contracts;
 
 namespace TradingSystem.Indicators.Bollinger;
@@ -11,7 +11,7 @@ namespace TradingSystem.Indicators.Bollinger;
 public sealed class BollingerIndicatorProcessor(IOptions<BollingerOptions> options) : IIndicatorProcessor
 {
     private readonly BollingerOptions _options = options.Value;
-    private readonly ConcurrentDictionary<string, State> _states = new();
+    private readonly ConcurrentDictionary<string, BollingerState> _states = new();
 
     public string Name => "bb";
     public IReadOnlyCollection<string> Symbols => _options.Symbols;
@@ -24,9 +24,8 @@ public sealed class BollingerIndicatorProcessor(IOptions<BollingerOptions> optio
         ArgumentException.ThrowIfNullOrWhiteSpace(interval);
         ArgumentNullException.ThrowIfNull(candles);
 
-        var state = new State(_options);
-        foreach (var candle in candles
-                     .Where(x => x.IsClosed)
+        var state = new BollingerState(_options);
+        foreach (var candle in candles.Where(x => x.IsClosed)
                      .OrderBy(x => x.CloseTimeUtc)
                      .TakeLast(_options.HistoryLimit))
         {
@@ -58,7 +57,5 @@ public sealed class BollingerIndicatorProcessor(IOptions<BollingerOptions> optio
     }
 
     private static string Key(string symbol, string interval) =>
-        $"{symbol.ToUpperInvariant()}:{interval.ToLowerInvariant()}";
-
-    
+        $"{symbol.ToUpperInvariant()}:{interval.ToLowerInvariant()}";  
 }

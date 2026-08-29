@@ -99,15 +99,13 @@ public sealed class PaperPositionCloseWorker(
     {
         if (!HasValidExitLevels(position))
         {
-            logger.LogError(
-            "Paper p has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
-            position.BotName,
-            position.ShortId,
-            position.Side,
-            position.EntryPrice,
-            position.TakeProfitPrice,
-            position.StopLossPrice);
-
+            logger.LogError("Paper position has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
+                position.BotName,
+                position.ShortId,
+                position.Side,
+                position.EntryPrice,
+                position.TakeProfitPrice,
+                position.StopLossPrice);
             return;
         }
 
@@ -115,8 +113,7 @@ public sealed class PaperPositionCloseWorker(
         if (closeReason is null)
             return;
 
-        logger.LogInformation(
-            "Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
+        logger.LogInformation("Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
             "Side = {Side}, MarkPrice = {MarkPrice}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, Reason = {Reason}",
             position.BotName,
             position.ShortId,
@@ -130,10 +127,7 @@ public sealed class PaperPositionCloseWorker(
         var result = await executor.CloseAtPriceAsync(position.BotName, position.ShortId, markPrice, closeReason, ct);
         if (result.Succeeded)
         {
-            logger.LogInformation(
-                "Paper p closed successfully. " +
-                "Bot = {Bot}, Position = {Position}, " +
-                "TriggerPrice = {TriggerPrice}, Reason = {Reason}",
+            logger.LogInformation("Paper p closed successfully. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}",
                 position.BotName,
                 position.ShortId,
                 markPrice,
@@ -142,11 +136,7 @@ public sealed class PaperPositionCloseWorker(
             return;
         }
 
-        logger.LogWarning(
-            "Paper p close failed. " +
-            "Bot = {Bot}, Position = {Position}, " +
-            "TriggerPrice = {TriggerPrice}, Reason = {Reason}, " +
-            "Result = {Result}",
+        logger.LogWarning("Paper p close failed. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}, Result = {Result}",
             position.BotName,
             position.ShortId,
             markPrice,

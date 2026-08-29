@@ -14,7 +14,7 @@ using TradingSystem.Prometheus.PrometheusMetrics;
 namespace StrategyService.Services;
 
 public sealed class TradingEngineHistoryNotifier(
-    TelegramTradingEngineNotifier notifications,
+    TelegramTradingEngineNotifier telegramNotifier,
     TradingStrategyRegistry strategies,
     IPositionStore positions,
     IHistoricalEventSink historicalEvents,
@@ -58,7 +58,7 @@ public sealed class TradingEngineHistoryNotifier(
                 }),
             ct);
 
-        await notifications.DecisionMadeAsync(signal, markPrice, decision, ct);
+        await telegramNotifier.DecisionMadeAsync(signal, markPrice, decision, ct);
     }
 
     public async Task ExecutionCompletedAsync(TradeSignal signal, TradeExecutionResult result, CancellationToken ct)
@@ -76,6 +76,7 @@ public sealed class TradingEngineHistoryNotifier(
             {
                 var strategy = strategies.GetRequired(signal.BotName);
                 strategyVersion = strategy.Metadata.Version;
+                
                 await lifecycle.RecordOpenedAsync(position, signal.SignalId, strategyVersion, ct);
             }
         }
@@ -104,12 +105,13 @@ public sealed class TradingEngineHistoryNotifier(
                 }),
             ct);
 
-        await notifications.ExecutionCompletedAsync(signal, result, ct);
+        await telegramNotifier.ExecutionCompletedAsync(signal, result, ct);
     }
 
     public async Task ProcessingFailedAsync(TradeSignal signal, Exception exception, CancellationToken ct)
     {
         metrics.ProcessingFailures.WithLabels("trading_engine", signal.BotName, exception.GetType().Name).Inc();
+       
         var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
         await historicalEvents.WriteAsync(
@@ -136,15 +138,15 @@ public sealed class TradingEngineHistoryNotifier(
                 }),
             ct);
 
-        await notifications.ProcessingFailedAsync(signal, exception, ct);
+        await telegramNotifier.ProcessingFailedAsync(signal, exception, ct);
     }
 
     private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, ct);
+        var config = await configurations.GetAsync(botName, ct);
 
-        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
-            ? configuration.Environment.Trim()
+        return config is not null && !string.IsNullOrWhiteSpace(config.Environment)
+            ? config.Environment.Trim()
             : environment.EnvironmentName;
     }
 }

@@ -29,7 +29,7 @@ public sealed class TradingEngine(
 	ITradingOperationLockProvider lockProvider,
 	ISignalIdempotencyStore idempotencyStore,
 	ISignalCooldownStore cooldownStore,
-	ITradingEngineNotifier notifier,
+	ITradingEngineNotifier tradingEngineNotifier,
 	ICentralRiskManager riskManager,
 	IRiskAdmissionLifecycle riskAdmissionLifecycle,
 	IBotRuntimeStateProvider runtimeStateProvider,
@@ -82,8 +82,8 @@ public sealed class TradingEngine(
 				if (!runtimeConfiguration.Symbol.Equals(signal.Symbol, StringComparison.OrdinalIgnoreCase))
 					return await CompleteBlockedAsync(signal, $"Dynamic configuration does not support symbol '{signal.Symbol}'.", ct);
 
-				var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong ||
-					signal.Side == PositionSide.Short && !runtimeConfiguration.EnableShort;
+				var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong 
+					|| signal.Side == PositionSide.Short && !runtimeConfiguration.EnableShort;
 
 				if (sideDisabled)
 					return await CompleteBlockedAsync(signal, $"{signal.Side} is disabled by dynamic configuration version {runtimeConfiguration.Version}.", ct);
@@ -112,6 +112,7 @@ public sealed class TradingEngine(
 			};
 
 			var decision = await strategy.DecideAsync(context, ct);
+			
 			await AppendEventAsync(
 				signal,
 				TradingEventTypes.StrategyDecisionTaken,
@@ -208,15 +209,14 @@ public sealed class TradingEngine(
 
 			throw;
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
 			if (!executionSucceeded)
 				await TryReleaseAsync(signal.SignalId);
 
-			await TryNotifyFailureAsync(signal, exception);
-			logger.LogError(
-				exception,
-				"Trading signal failed. SignalId = {SignalId}, Bot = {Bot}, Symbol = {Symbol}, Side = {Side}, ExecutionSucceeded = {ExecutionSucceeded}, ShortId = {ShortId}",
+			await TryNotifyFailureAsync(signal, ex);
+			
+			logger.LogError(ex, "Trading signal failed. SignalId = {SignalId}, Bot = {Bot}, Symbol = {Symbol}, Side = {Side}, ExecutionSucceeded = {ExecutionSucceeded}, ShortId = {ShortId}",
 				signal.SignalId,
 				signal.BotName,
 				signal.Symbol,
@@ -225,9 +225,7 @@ public sealed class TradingEngine(
 				executedShortId);
 
 			if (executionSucceeded)
-			{
 				return new(true, true, false, "Position was opened, but post-execution bookkeeping requires operator review.", executedShortId);
-			}
 
 			return new(false, false, false, "Trading signal processing failed. Check the service logs using the signal ID.");
 		}
@@ -237,18 +235,11 @@ public sealed class TradingEngine(
 			{
 				try
 				{
-					await riskAdmissionLifecycle.CompleteAsync(
-						signal.SignalId,
-						executionSucceeded,
-						CancellationToken.None);
+					await riskAdmissionLifecycle.CompleteAsync(signal.SignalId, executionSucceeded, CancellationToken.None);
 				}
-				catch (Exception exception)
+				catch (Exception ex)
 				{
-					logger.LogCritical(
-						exception,
-						"Risk admission reservation could not be completed. SignalId = {SignalId}, ExecutionSucceeded = {ExecutionSucceeded}",
-						signal.SignalId,
-						executionSucceeded);
+					logger.LogCritical(ex, "Risk admission reservation could not be completed. SignalId = {SignalId}, ExecutionSucceeded = {ExecutionSucceeded}", signal.SignalId, executionSucceeded);
 				}
 			}
 		}
@@ -301,7 +292,7 @@ public sealed class TradingEngine(
 	{
 		try
 		{
-			await notifier.DecisionMadeAsync(signal, markPrice, decision, CancellationToken.None);
+			await tradingEngineNotifier.DecisionMadeAsync(signal, markPrice, decision, CancellationToken.None);
 		}
 		catch (Exception exception)
 		{
@@ -313,7 +304,7 @@ public sealed class TradingEngine(
 	{
 		try
 		{
-			await notifier.ExecutionCompletedAsync(signal, result, CancellationToken.None);
+			await tradingEngineNotifier.ExecutionCompletedAsync(signal, result, CancellationToken.None);
 		}
 		catch (Exception exception)
 		{
@@ -325,7 +316,7 @@ public sealed class TradingEngine(
 	{
 		try
 		{
-			await notifier.ProcessingFailedAsync(signal, error, CancellationToken.None);
+			await tradingEngineNotifier.ProcessingFailedAsync(signal, error, CancellationToken.None);
 		}
 		catch (Exception exception)
 		{
@@ -380,24 +371,17 @@ public sealed class TradingEngine(
 			{
 				throw;
 			}
-			catch (Exception exception) when (IsTransientEventStoreFailure(exception))
+			catch (Exception ex) when (IsTransientEventStoreFailure(ex))
 			{
-				lastError = exception;
-				logger.LogWarning(
-					exception,
-					"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5",
-					signal.SignalId,
-					eventType,
-					attempt);
+				lastError = ex;
+				logger.LogWarning(ex,"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5", signal.SignalId,eventType, attempt);
 
 				if (attempt < 5)
 					await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt, 3)), ct);
 			}
 		}
 
-		throw new InvalidOperationException(
-			$"EventStore remained unavailable while persisting '{eventType}' for signal '{signal.SignalId}'.",
-			lastError);
+		throw new InvalidOperationException($"EventStore remained unavailable while persisting '{eventType}' for signal '{signal.SignalId}'.", lastError);
 	}
 
 	private static bool IsTransientEventStoreFailure(Exception exception)
@@ -427,12 +411,16 @@ public sealed class TradingEngine(
 		ArgumentNullException.ThrowIfNull(signal);
 		if (string.IsNullOrWhiteSpace(signal.SignalId))
 			throw new ArgumentException("SignalId is required.", nameof(signal));
+		
 		if (string.IsNullOrWhiteSpace(signal.BotName))
 			throw new ArgumentException("BotName is required.", nameof(signal));
+		
 		if (string.IsNullOrWhiteSpace(signal.Symbol))
 			throw new ArgumentException("Symbol is required.", nameof(signal));
+		
 		if (string.IsNullOrWhiteSpace(signal.Source))
 			throw new ArgumentException("Source is required.", nameof(signal));
+		
 		if (signal.GeneratedAtUtc.Kind != DateTimeKind.Utc)
 			throw new ArgumentException("GeneratedAtUtc must be UTC.", nameof(signal));
 	}

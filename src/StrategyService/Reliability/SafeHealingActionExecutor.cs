@@ -62,7 +62,7 @@ public sealed class SafeHealingActionExecutor(
 
         if (hasRelatedOpenOrder)
         {
-            logger.LogWarning("Automatic stale-position healing refused because a related Binance o exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);
+            logger.LogWarning("Automatic stale-position healing refused because a related Binance _options exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);
             return false;
         }
 

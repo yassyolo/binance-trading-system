@@ -7,9 +7,9 @@ public sealed record StrategyMetadata(
     string Version, 
     PositionMode PositionMode, 
     IReadOnlyCollection<string> SupportedSymbols, 
-    string? PluginId  =  null, 
-    string? DisplayName  =  null, 
-    string? Description  =  null)
+    string? PluginId = null, 
+    string? DisplayName = null, 
+    string? Description = null)
 {
-    public string EffectivePluginId  =>  string.IsNullOrWhiteSpace(PluginId) ? Name : PluginId;
+    public string EffectivePluginId => string.IsNullOrWhiteSpace(PluginId) ? Name : PluginId;
 }

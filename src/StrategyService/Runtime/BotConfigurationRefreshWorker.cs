@@ -5,8 +5,8 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 namespace StrategyService.Runtime;
 
 public sealed class BotConfigurationRefreshWorker(
-    IBotRuntimeConfigurationStore store,
-    IBotRuntimeConfigurationProvider provider,
+    IBotRuntimeConfigurationStore configStore,
+    IBotRuntimeConfigurationProvider configProvider,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotConfigurationRefreshWorker> logger) 
     : BackgroundService
@@ -24,11 +24,11 @@ public sealed class BotConfigurationRefreshWorker(
             try
             {
                 var queryFrom = watermark == DateTime.UnixEpoch ? watermark : watermark.AddMilliseconds(-1);
-                var changed = await store.GetChangedSinceAsync(queryFrom, ct);
+                var changedConfigs = await configStore.GetChangedSinceAsync(queryFrom, ct);
                 
-                foreach (var config in changed.OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
+                foreach (var config in changedConfigs.OrderBy(x => x.UpdatedAtUtc).ThenBy(x => x.BotName, StringComparer.OrdinalIgnoreCase))
                 {
-                    provider.Set(config);
+                    configProvider.Set(config);
                     
                     if (config.UpdatedAtUtc > watermark)
                         watermark = config.UpdatedAtUtc;

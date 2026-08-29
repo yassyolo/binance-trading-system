@@ -12,9 +12,9 @@ public sealed class Bot8012ActivePositionProvider(
     IBinanceFuturesOrderClient orders)
     :IBotActivePositionProvider
 {
-    private readonly Bot8012Options _o = options.Value;
+    private readonly Bot8012Options _options = options.Value;
     
-    public string BotName => _o.BotName;
+    public string BotName => _options.BotName;
     
     public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string symbol, CancellationToken ct)
     {

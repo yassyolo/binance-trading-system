@@ -58,7 +58,8 @@ public sealed class PortfolioSnapshotProvider(
         }
     }
 
-    public void Invalidate() => _cacheExpiresAtUtc = DateTime.MinValue;
+    public void Invalidate() 
+        => _cacheExpiresAtUtc = DateTime.MinValue;
 
     private async Task<PortfolioSnapshot> BuildAsync(DateTime now, CancellationToken ct)
     {
@@ -194,7 +195,7 @@ public sealed class PortfolioSnapshotProvider(
         Exception? lastError = null;
         var attempts = _options.LoadRetryCount + 1;
 
-        for (var attempt = 1; attempt <= attempts; attempt++)
+        for (var i = 1; i <= attempts; i++)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -210,17 +211,17 @@ public sealed class PortfolioSnapshotProvider(
             {
                 lastError = exception;
 
-                if (attempt == attempts)
+                if (i == attempts)
                     break;
 
-                logger.LogWarning(exception, "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.", operation, attempt, attempts);
+                logger.LogWarning(exception, "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.", operation, i, attempts);
 
                 if (_options.LoadRetryDelayMilliseconds > 0)
                     await Task.Delay(TimeSpan.FromMilliseconds(_options.LoadRetryDelayMilliseconds), ct);
             }
         }
 
-        throw new InvalidOperationException($"Could not build {operation} after {attempts} attempt(s). Risk evaluation must fail closed.", lastError);
+        throw new InvalidOperationException($"Could not build {operation} after {attempts} i(s). Risk evaluation must fail closed.", lastError);
     }
 
     private PortfolioPositionSnapshot MapRedisPosition(BotPosition position, decimal markPrice)

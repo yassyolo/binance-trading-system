@@ -7,7 +7,7 @@ public sealed class PrometheusOptionsValidator : IValidateOptions<PrometheusOpti
     public ValidateOptionsResult Validate(string? name, PrometheusOptions options)
     {
         var e = new List<string>();
-       
+      
         if (options.Port is < 1 or > 65535)
             e.Add("Prometheus Port must be between 1 and 65535.");
        

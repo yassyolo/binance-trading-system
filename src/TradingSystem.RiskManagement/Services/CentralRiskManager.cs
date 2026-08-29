@@ -13,14 +13,13 @@ namespace TradingSystem.RiskManagement.Services;
 
 public sealed class CentralRiskManager(
     IOptions<CentralRiskOptions> options,
-    IPortfolioSnapshotProvider portfolio,
-    IRiskOrderSizingProvider orderSizing,
+    IPortfolioSnapshotProvider portfolioProvider,
+    IRiskOrderSizingProvider orderSizingProvider,
     IRiskStateProvider riskStateProvider,
     IRiskAdmissionReservationStore reservations,
     IClock clock,
     ILogger<CentralRiskManager> logger)
-    : ICentralRiskManager,
-      IRiskAdmissionLifecycle
+    : ICentralRiskManager, IRiskAdmissionLifecycle
 {
     private readonly CentralRiskOptions _options = options.Value;
     private readonly SemaphoreSlim _admissionGate = new(1, 1);
@@ -35,20 +34,20 @@ public sealed class CentralRiskManager(
         {
             var now = clock.UtcNow;
 
-            portfolio.Invalidate();
-            var snapshot = await portfolio.GetSnapshotAsync(ct);
+            portfolioProvider.Invalidate();
+            var snapshot = await portfolioProvider.GetSnapshotAsync(ct);
 
-            var sizing = await orderSizing.GetAsync(context.Signal.BotName, ct);
-            if (sizing is null || sizing.Quantity <= 0)
+            var orderSizing = await orderSizingProvider.GetAsync(context.Signal.BotName, ct);
+            if (orderSizing is null || orderSizing.Quantity <= 0)
                 return RiskDecision.Block("ORDER_SIZE_UNKNOWN", $"No risk order size is configured for bot '{context.Signal.BotName}'.");
 
-            var candidateNotional = context.MarkPrice * sizing.Quantity;
+            var candidateNotional = context.MarkPrice * orderSizing.Quantity;
             if (candidateNotional <= 0)
                 return RiskDecision.Block("INVALID_NOTIONAL", "Candidate order notional is invalid.");
 
-            if (sizing.MaximumNotional is > 0 &&
-                candidateNotional > sizing.MaximumNotional.Value)
-                return RiskDecision.Block("BOT_NOTIONAL_LIMIT", $"Candidate notional {candidateNotional:F2} exceeds bot limit {sizing.MaximumNotional.Value:F2}.");
+            if (orderSizing.MaximumNotional is > 0 &&
+                candidateNotional > orderSizing.MaximumNotional.Value)
+                return RiskDecision.Block("BOT_NOTIONAL_LIMIT", $"Candidate notional {candidateNotional:F2} exceeds bot limit {orderSizing.MaximumNotional.Value:F2}.");
 
             var riskState = await riskStateProvider.GetAsync(context.EvaluatedAtUtc, ct);
 
@@ -126,7 +125,7 @@ public sealed class CentralRiskManager(
                 context.Signal.BotName,
                 context.Signal.Symbol,
                 context.Signal.Side,
-                sizing.Quantity,
+                orderSizing.Quantity,
                 candidateNotional,
                 now.AddSeconds(_options.AdmissionReservationSeconds)));
 
@@ -157,7 +156,7 @@ public sealed class CentralRiskManager(
         try
         {
             if (executionSucceeded)
-                portfolio.Invalidate();
+                portfolioProvider.Invalidate();
 
             if (reservations.RemoveBySignalId(signalId))
                 logger.LogInformation("Risk admission reservation completed. SignalId = {SignalId}, ExecutionSucceeded = {ExecutionSucceeded}", signalId, executionSucceeded);

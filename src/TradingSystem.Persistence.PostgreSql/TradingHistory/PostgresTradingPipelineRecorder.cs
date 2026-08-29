@@ -99,9 +99,7 @@ public sealed class PostgresTradingPipelineRecorder(
                  close_reason, 
                  metadata)
             values
-                (@PositionId, @SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Source,
-                 @Environment, @Status, @Quantity, @EntryPrice, @TakeProfitPrice, @OpenedAtUtc,
-                 @ClosedAtUtc, @RealizedPnl, @Fees, @CloseReason, cast(@Meta as jsonb))
+                (@PositionId, @SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Source, @Environment, @Status, @Quantity, @EntryPrice, @TakeProfitPrice, @OpenedAtUtc, @ClosedAtUtc, @RealizedPnl, @Fees, @CloseReason, cast(@Meta as jsonb))
             on conflict(position_id) do update set
                 signal_id = coalesce(excluded.signal_id, trading_history.positions.signal_id),
                 strategy_version = 
@@ -147,26 +145,33 @@ public sealed class PostgresTradingPipelineRecorder(
             },
             ct);
 
-    public Task RecordPositionEventAsync(PositionEventHistoryRecord x, CancellationToken ct) => Exec(
-        """
-        insert into trading_history.position_events
-            (position_id, bot_name, event_type, status, occurred_at_utc, price, quantity, details)
-        values
-            (@PositionId, @BotName, @EventType, @Status, @OccurredAtUtc, @Price, @Quantity,
-             cast(@Details as jsonb));
-        """,
-        new
-        {
-            x.PositionId,
-            x.BotName,
-            x.EventType,
-            x.Status,
-            x.OccurredAtUtc,
-            x.Price,
-            x.Quantity,
-            Details = Serialize(x.Details)
-        },
-        ct);
+    public Task RecordPositionEventAsync(PositionEventHistoryRecord x, CancellationToken ct) 
+        => Exec(
+            """
+            insert into trading_history.position_events
+                (position_id, 
+                 bot_name,
+                 event_type, 
+                 status, 
+                 occurred_at_utc,
+                 price,
+                 quantity,
+                 details)
+            values
+                (@PositionId, @BotName, @EventType, @Status, @OccurredAtUtc, @Price, @Quantity, cast(@Details as jsonb));
+            """,
+            new
+            {
+                x.PositionId,
+                x.BotName,
+                x.EventType,
+                x.Status,
+                x.OccurredAtUtc,
+                x.Price,
+                x.Quantity,
+                Details = Serialize(x.Details)
+            },
+            ct);
 
     public Task RecordOrderEventAsync(OrderEventHistoryRecord x, CancellationToken ct) 
         => Exec(

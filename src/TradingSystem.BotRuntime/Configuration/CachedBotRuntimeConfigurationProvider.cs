@@ -20,13 +20,13 @@ public sealed class CachedBotRuntimeConfigurationProvider(
         
         return loaded;
     }
-
-    
+   
     public BotRuntimeConfiguration? GetCurrent(string botName)  
         => _configurations.GetValueOrDefault(botName);
     
     public void Set(BotRuntimeConfiguration config)  
-        => _configurations.AddOrUpdate(config.BotName, config, (_,  existing)  => config.Version >= existing.Version ? config : existing);
+        => _configurations.AddOrUpdate(config.BotName,  config, 
+            (_,  existing) => config.Version >= existing.Version ? config : existing);
     
     public void Invalidate(string botName)  
         => _configurations.TryRemove(botName,  out _);

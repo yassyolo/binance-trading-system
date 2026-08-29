@@ -19,21 +19,26 @@ public sealed class Bot8016Strategy(IOptions<Bot8016Options> options, ILogger<Bo
         "BOT8016 Alligator",
         "Alligator/MA200 entry with BOT8016 protection lifecycle.");
 
-    public Task<StrategyDecision> DecideAsync(StrategyContext context, CancellationToken cancellationToken)
+    public Task<StrategyDecision> DecideAsync(StrategyContext context, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ct.ThrowIfCancellationRequested();
+        
         var side = context.Signal.Side;
+        
         if (side == PositionSide.Long && !_options.EnableLong)
             return Task.FromResult(StrategyDecision.Block(side, "LONG is disabled."));
+       
         if (side == PositionSide.Short && !_options.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
 
-        var sideLimit = context.RuntimeConfiguration?.OrderSideLimit ?? _options.PositionSideLimit;
+        var sideLimit = context.RuntimeConfiguration?.OrderSideLimit ?? _options.PositionSideLimit;     
         var sameSideCount = context.ActivePositions.Count(x => x.Side == side);
+       
         if (sameSideCount >= sideLimit)
             return Task.FromResult(StrategyDecision.Block(side, $"ORDER_SIDE_LIMIT reached ({sameSideCount}/{sideLimit})."));
 
         logger.LogInformation("BOT8016 accepted pre-evaluated Alligator signal. Side = {Side}, ActiveSameSide = {Count}, Limit = {Limit}", side, sameSideCount, sideLimit);
+        
         return Task.FromResult(StrategyDecision.Open(side,
             context.Signal.Metadata.TryGetValue("reason", out var reason) && !string.IsNullOrWhiteSpace(reason)
                 ? reason

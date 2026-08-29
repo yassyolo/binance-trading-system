@@ -10,7 +10,6 @@ public sealed class TelegramOptionsValidator : IValidateOptions<TelegramOptions>
             return ValidateOptionsResult.Success;
 
         var e = new List<string>();
-
         if (string.IsNullOrWhiteSpace(options.BotToken))
             e.Add("BotToken is required when Telegram notifications are enabled.");
        

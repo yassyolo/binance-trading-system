@@ -7,7 +7,7 @@ using TradingSystem.RiskManagement.Models;
 namespace TradingSystem.RiskManagement.Services;
 
 public sealed class ConfiguredRiskOrderSizingProvider(
-    IBotRuntimeConfigurationProvider runtimeConfigurationProvider,
+    IBotRuntimeConfigurationProvider configProvider,
     IOptions<CentralRiskOptions> options) 
     : IRiskOrderSizingProvider
 {
@@ -15,10 +15,8 @@ public sealed class ConfiguredRiskOrderSizingProvider(
 
     public async Task<RiskOrderSize?> GetAsync(string botName, CancellationToken ct)
     {
-        var runtime = await runtimeConfigurationProvider.GetAsync(botName, ct);
-        if (runtime is not null 
-            && runtime.Quantity > 0 
-            && runtime.Leverage > 0)
+        var runtime = await configProvider.GetAsync(botName, ct);
+        if (runtime is not null && runtime.Quantity > 0 && runtime.Leverage > 0)
             return new RiskOrderSize(runtime.Quantity, runtime.Leverage, null);
 
         return _options.BotProfiles.TryGetValue(botName, out var profile)

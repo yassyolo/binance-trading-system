@@ -157,10 +157,7 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
              data, 
              raw_payload)
             VALUES
-            (@event_id, @event_type, @occurred_at_utc, @environment, @correlation_id,
-             @bot_name, @strategy_version, @symbol, @position_id, @order_id, @side,
-             @status, @price, @quantity, @realized_pnl, @reason, CAST(@data AS jsonb),
-             @raw_payload)
+            (@event_id, @event_type, @occurred_at_utc, @environment, @correlation_id, @bot_name, @strategy_version, @symbol, @position_id, @order_id, @side, @status, @price, @quantity, @realized_pnl, @reason, CAST(@data AS jsonb), @raw_payload)
             ON CONFLICT (event_id) DO NOTHING;
             """;
 

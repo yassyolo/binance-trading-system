@@ -194,9 +194,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception,
-                "Live position projection persistence failed. Bot = {Bot}, Position = {Position}",
-                position.BotName, position.ShortId);
+            logger.LogError(exception,"Live position projection persistence failed. Bot = {Bot}, Position = {Position}", position.BotName, position.ShortId);
         }
     }
 
@@ -259,9 +257,9 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            var configuration = await configurations.GetAsync(botName, ct);
-            if (configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment))
-                return configuration.Environment.Trim();
+            var config = await configurations.GetAsync(botName, ct);
+            if (config is not null && !string.IsNullOrWhiteSpace(config.Environment))
+                return config.Environment.Trim();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -269,9 +267,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception,
-                "Runtime environment could not be resolved for {Bot}. Falling back to observability environment.",
-                botName);
+            logger.LogWarning(exception, "Runtime environment could not be resolved for {Bot}. Falling back to observability environment.", botName);
         }
 
         return fallbackEnvironment.EnvironmentName;

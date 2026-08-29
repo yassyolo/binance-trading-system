@@ -30,8 +30,7 @@ public sealed class BollingerState
 
         foreach (var band in _options.Bands)
         {
-            var values = _candles
-                .TakeLast(band.Length)
+            var values = _candles.TakeLast(band.Length)
                 .Select(x => band.Source.Equals("open", StringComparison.OrdinalIgnoreCase) ? x.Open : x.Close)
                 .ToArray();
 

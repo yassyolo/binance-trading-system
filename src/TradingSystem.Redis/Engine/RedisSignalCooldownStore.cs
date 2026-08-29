@@ -13,9 +13,9 @@ public sealed class RedisSignalCooldownStore(
     IClock clock) 
     : ISignalCooldownStore
 {  
-    private readonly IDatabase _db  =  redis.GetDatabase();
+    private readonly IDatabase _db = redis.GetDatabase();
     
-    public async Task<TimeSpan?> GetRemainingAsync(string botName,  string symbol,  PositionSide side,  DateTime nowUtc,  CancellationToken ct)
+    public async Task<TimeSpan?> GetRemainingAsync(string botName, string symbol, PositionSide side,  DateTime nowUtc,  CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         
@@ -25,10 +25,9 @@ public sealed class RedisSignalCooldownStore(
         if (!value.HasValue) 
             return null;
         
-        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture,  out var ms)) 
+        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ms)) 
         { 
-            await _db.KeyDeleteAsync(key);
-            
+            await _db.KeyDeleteAsync(key);    
             return null;
         }
         

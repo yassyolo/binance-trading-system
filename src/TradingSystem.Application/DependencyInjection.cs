@@ -21,7 +21,6 @@ public static class DependencyInjection
     public static IServiceCollection AddTradingApplication(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<TradingEngineOptions>().Bind(configuration.GetSection(TradingEngineOptions.SectionName)).ValidateOnStart();
-
         services.AddSingleton<IValidateOptions<TradingEngineOptions>, TradingEngineOptionsValidator>();
 
         services.AddSingleton<TradingStrategyRegistry>();

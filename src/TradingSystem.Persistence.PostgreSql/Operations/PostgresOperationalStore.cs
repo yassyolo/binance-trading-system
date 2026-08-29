@@ -14,11 +14,17 @@ public sealed class PostgresOperationalStore(
     {
         const string sql = """
             insert into trading_dashboard.service_heartbeats
-                (component, instance_id, version, environment, status, started_at_utc,
-                 last_seen_at_utc, stale_after_seconds, details)
+                (component, 
+                 instance_id, 
+                 version, 
+                 environment, 
+                 status, 
+                 started_at_utc,
+                 last_seen_at_utc, 
+                 stale_after_seconds, 
+                 details)
             values
-                (@ServiceName, @InstanceId, @Version, @Environment, @Status, @StartedAtUtc,
-                 @LastSeenAtUtc, @StaleAfterSeconds, cast(@Details as jsonb))
+                (@ServiceName, @InstanceId, @Version, @Environment, @Status, @StartedAtUtc, @LastSeenAtUtc, @StaleAfterSeconds, cast(@Details as jsonb))
             on conflict(component, instance_id) do update set
                 version = excluded.version,
                 environment = excluded.environment,

@@ -12,7 +12,8 @@ namespace TradingSystem.Operations.Workers;
 public sealed class ServiceHeartbeatWorker(
     IServiceHeartbeatStore store,
     IOptions<ServiceHeartbeatOptions> options,
-    ILogger<ServiceHeartbeatWorker> logger) : BackgroundService
+    ILogger<ServiceHeartbeatWorker> logger) 
+    : BackgroundService
 {
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;
     private readonly string _instanceId = $"{Environment.MachineName}-{Environment.ProcessId}";
@@ -31,6 +32,7 @@ public sealed class ServiceHeartbeatWorker(
                 try
                 {
                     var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+                   
                     var details = new Dictionary<string, string>
                     {
                         ["processId"] = Environment.ProcessId.ToString(),

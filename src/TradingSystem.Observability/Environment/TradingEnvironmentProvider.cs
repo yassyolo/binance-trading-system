@@ -14,7 +14,6 @@ public sealed class TradingEnvironmentProvider(
         get
         {
             var environmentOverride = System.Environment.GetEnvironmentVariable("TRADING_ENVIRONMENT")?.Trim();
-
             if (!string.IsNullOrWhiteSpace(environmentOverride))
                 return environmentOverride;
 

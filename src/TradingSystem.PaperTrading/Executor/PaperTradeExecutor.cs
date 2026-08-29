@@ -173,9 +173,7 @@ public sealed class PaperTradeExecutor(
             closedAtUtc,
             ct);
 
-        await TryRecordDomainPositionEventAsync(
-            position,
-            TradingEventTypes.PositionClosed,
+        await TryRecordDomainPositionEventAsync(position, TradingEventTypes.PositionClosed,
             new
             {
                 position.ShortId,
@@ -225,14 +223,9 @@ public sealed class PaperTradeExecutor(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(
-                exception,
-                "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}",
-                eventType,
-                position.BotName,
-                position.ShortId);
+            logger.LogError(ex, "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}", eventType, position.BotName, position.ShortId);
         }
     }
 

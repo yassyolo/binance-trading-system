@@ -8,4 +8,4 @@ public sealed record StrategyPluginDescriptor(
     string AssemblyName, 
     bool IsBuiltIn, 
     IReadOnlyCollection<string> SupportedSymbols, 
-    string? Description  =  null);
+    string? Description = null);

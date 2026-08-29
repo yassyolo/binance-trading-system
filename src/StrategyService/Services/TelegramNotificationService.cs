@@ -15,21 +15,18 @@ public sealed class TelegramNotificationService(
         if (!_o.Enabled)
         {
             logger.LogWarning("Telegram notifications are disabled.");
-
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_o.BotToken))
         {
             logger.LogWarning("Telegram BotToken is missing.");
-
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_o.ChatId))
         {
             logger.LogWarning("Telegram ChatId is missing.");
-
             return;
         }
 
@@ -43,7 +40,6 @@ public sealed class TelegramNotificationService(
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Telegram returned HTTP {StatusCode}. Response: {Response}", (int)response.StatusCode, responseBody);
-
                 return;
             }
 

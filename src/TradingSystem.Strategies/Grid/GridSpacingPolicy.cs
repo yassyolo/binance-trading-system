@@ -31,7 +31,7 @@ public sealed class GridSpacingPolicy
 
         var newestTakeProfit = sameSidePositions[0].TakeProfitPrice;
         if (newestTakeProfit <= 0)
-            return PolicyDecision.Block("Newest p has an invalid take-profit price.");
+            return PolicyDecision.Block("Newest position has an invalid take-profit price.");
 
         if (side == PositionSide.Long)
         {

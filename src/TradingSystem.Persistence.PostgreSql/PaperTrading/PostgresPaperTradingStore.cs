@@ -93,6 +93,7 @@ public sealed class PostgresPaperTradingStore(
             """;
 
         await using var connection = await connections.OpenAsync(ct);
+       
         var rows = await connection.QueryAsync<PaperTradingPosition>(
             new CommandDefinition(
                 BaseSelect + where,

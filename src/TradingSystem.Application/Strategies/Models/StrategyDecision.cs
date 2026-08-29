@@ -5,12 +5,12 @@ namespace TradingSystem.Application.Strategies.Models;
 
 public sealed record StrategyDecision
 {
-    private StrategyDecision(StrategyDecisionType type,  PositionSide side,  string reason,  IReadOnlyCollection<string>? positionsToClose  =  null)
+    private StrategyDecision(StrategyDecisionType type, PositionSide side, string reason, IReadOnlyCollection<string>? positionsToClose = null)
     {
-        Type  =  type;
-        Side  =  side;
-        Reason  =  reason;
-        PositionsToClose  =  positionsToClose ?? Array.Empty<string>();
+        Type = type;
+        Side = side;
+        Reason = reason;
+        PositionsToClose = positionsToClose ?? [];
     }
 
     public StrategyDecisionType Type { get; }

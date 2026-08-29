@@ -48,9 +48,9 @@ public sealed class PostgresBotRuntimeConfigurationStore(
        
         return (await connection.QueryAsync<BotRuntimeConfiguration>(
             new CommandDefinition(
-            Projection + " where updated_at_utc > @changedSinceUtc order by updated_at_utc", 
-            new { changedSinceUtc }, 
-            cancellationToken: ct)))
-            .AsList();
+                Projection + " where updated_at_utc > @changedSinceUtc " +
+                "order by updated_at_utc", 
+                new { changedSinceUtc }, 
+                cancellationToken: ct))).AsList();
     }
 }

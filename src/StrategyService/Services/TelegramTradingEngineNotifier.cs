@@ -20,31 +20,24 @@ public sealed class TelegramTradingEngineNotifier(
         {
             return telegram.SendAsync(
                 $"""
-                ❌ EXECUTION FAILED
-
-                Bot: {signal.BotName}
-                Symbol: {signal.Symbol}
-                Side: {signal.Side.ToString().ToUpperInvariant()}
-
-                Reason:
-                {NormalizeReason(result.Reason)}
-
-                Position: {result.ShortId ?? "-"}
-                Source: {NormalizeSource(signal.Source)}
-                """,
+                    ❌ EXECUTION FAILED
+                    Bot: {signal.BotName}
+                    Symbol: {signal.Symbol}
+                    Side: {signal.Side.ToString().ToUpperInvariant()}
+                    Reason: {NormalizeReason(result.Reason)}
+                    Position: {result.ShortId ?? "-"}
+                    Source: {NormalizeSource(signal.Source)}
+                    """,
                 ct);
         }
 
         return telegram.SendAsync(
             $"""
             🟢 POSITION OPENED
-
             Bot: {signal.BotName}
             Symbol: {signal.Symbol}
             Side: {signal.Side.ToString().ToUpperInvariant()}
-
-            {NormalizeReason(result.Reason)}
-
+            Reason: {NormalizeReason(result.Reason)}
             Position: {result.ShortId ?? "-"}
             Source: {NormalizeSource(signal.Source)}
             """,
@@ -55,13 +48,10 @@ public sealed class TelegramTradingEngineNotifier(
         => telegram.SendAsync(
             $"""
             🚨 TRADING ERROR
-
             Bot: {signal.BotName}
             Symbol: {signal.Symbol}
             Side: {signal.Side.ToString().ToUpperInvariant()}
-
-            {exception.Message}
-
+            Exception: {exception.Message}
             Signal: {signal.SignalId}
             Source: {NormalizeSource(signal.Source)}
             """,

@@ -14,7 +14,7 @@ public sealed class PrometheusMetricServerWorker(
     private readonly PrometheusOptions _options = options.Value;
     private KestrelMetricServer? _server;
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken ct)
     {
         if (!_options.Enabled)
             return Task.CompletedTask;
@@ -24,7 +24,7 @@ public sealed class PrometheusMetricServerWorker(
        
         logger.LogInformation("Prometheus metrics endpoint started on port {Port}{Url}", _options.Port, _options.Url);
         
-        return Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+        return Task.Delay(Timeout.InfiniteTimeSpan, ct);
     }
 
     public override async Task StopAsync(CancellationToken ct)
