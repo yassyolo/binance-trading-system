@@ -191,53 +191,51 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
         using (var document = JsonDocument.Parse(currentModeJson))
         {
-            if (document.RootElement.TryGetProperty("dualSidePosition", out var dualSidePosition) &&
-                dualSidePosition.ValueKind is JsonValueKind.True)
-            {
+            if (document.RootElement.TryGetProperty("dualSidePosition", out var dualSidePosition) 
+                && dualSidePosition.ValueKind is JsonValueKind.True)
                 return;
-            }
         }
 
         try
         {
-            _ = await SendSignedAsync(
-                HttpMethod.Post,
+            _ = await SendSignedAsync(HttpMethod.Post,
                 "fapi/v1/positionSide/dual",
                 new() { ["dualSidePosition"] = "true" },
                 ct);
         }
         catch (BinanceApiException ex) when (IsNoNeedToChangePositionSide(ex))
-        {
-            // Binance -4059 means the requested position mode is already active.
-        }
+        {}
     }
 
     public async Task SetLeverageAsync(string symbol, int leverage, CancellationToken ct)
-        => _ = await SendSignedAsync(HttpMethod.Post, "fapi/v1/leverage", new() { ["symbol"] = NormalizeSymbol(symbol), ["leverage"] = leverage.ToString(CultureInfo.InvariantCulture) }, ct);
+        => _ = await SendSignedAsync(HttpMethod.Post, 
+                "fapi/v1/leverage", 
+                new() { ["symbol"] = NormalizeSymbol(symbol), ["leverage"] = leverage.ToString(CultureInfo.InvariantCulture) },
+                ct);
 
     public async Task<IReadOnlyCollection<BinancePositionRisk>> GetPositionRiskAsync(string symbol, CancellationToken ct)
     {
         using var document = JsonDocument.Parse(
-            await SendSignedAsync(
-                HttpMethod.Get, 
+            await SendSignedAsync(HttpMethod.Get, 
                 "fapi/v2/positionRisk", 
                 new() { ["symbol"] = NormalizeSymbol(symbol) },
                 ct));
         
         return document.RootElement.EnumerateArray()
-            .Select(element => new BinancePositionRisk
+            .Select(e => new BinancePositionRisk
             {
-                Symbol = StringValue(element, "symbol"),
-                PositionSide = StringValue(element, "positionSide"),
-                PositionAmount = NumberValue(element, "positionAmt"),
-                EntryPrice = NumberValue(element, "entryPrice"),
-                MarkPrice = NumberValue(element, "markPrice")
+                Symbol = StringValue(e, "symbol"),
+                PositionSide = StringValue(e, "positionSide"),
+                PositionAmount = NumberValue(e, "positionAmt"),
+                EntryPrice = NumberValue(e, "entryPrice"),
+                MarkPrice = NumberValue(e, "markPrice")
             }).ToArray();
     }
 
     private async Task<string> SendUnsignedAsync(string endpoint, Dictionary<string, string> parameters, CancellationToken ct)
     {
         using var response = await _httpClient.GetAsync($"{endpoint}?{BuildQueryString(parameters)}", ct);
+       
         return await ReadResponseAsync(response, endpoint, ct);
     }
 
@@ -279,19 +277,13 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         {
             var requestStartedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            using var document = JsonDocument.Parse(
-                await SendUnsignedAsync(
-                    "fapi/v1/time",
-                    new(),
-                    ct));
+            using var document = JsonDocument.Parse(await SendUnsignedAsync("fapi/v1/time", new(), ct));
 
             var requestCompletedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            if (!document.RootElement.TryGetProperty("serverTime", out var serverTimeElement) ||
-                !serverTimeElement.TryGetInt64(out var serverTime))
-            {
+            if (!document.RootElement.TryGetProperty("serverTime", out var serverTimeElement) 
+                || !serverTimeElement.TryGetInt64(out var serverTime))
                 throw new InvalidOperationException("Binance server time response does not contain a valid serverTime.");
-            }
 
             var localMidpoint = requestStartedAt + ((requestCompletedAt - requestStartedAt) / 2);
             Interlocked.Exchange(ref _serverTimeOffsetMilliseconds, serverTime - localMidpoint);
@@ -317,12 +309,13 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     private string Sign(string query)
     {
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_options.SecretKey));
+       
         return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(query))).ToLowerInvariant();
     }
 
     private static string BuildQueryString(IEnumerable<KeyValuePair<string, string>> parameters)
         => string.Join("&", parameters.OrderBy(p => p.Key, StringComparer.Ordinal)
-            .Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+            .Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
 
     private static string NormalizeSymbol(string symbol)
     {
@@ -377,17 +370,17 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     private static BinanceOrderResult ParseOrder(string json)
     {
         using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
+        var r = document.RootElement;
 
         return new BinanceOrderResult
         {
-            Symbol = StringValue(root, "symbol"),
-            ClientOrderId = StringValue(root, "clientOrderId"),
-            OrderId = FlexibleString(root, "orderId"),
-            Status = StringValue(root, "status"),
-            AveragePrice = NumberValue(root, "avgPrice"),
-            ExecutedQuantity = NumberValue(root, "executedQty"),
-            CumulativeQuoteQuantity = NumberValue(root, "cumQuote")
+            Symbol = StringValue(r, "symbol"),
+            ClientOrderId = StringValue(r, "clientOrderId"),
+            OrderId = FlexibleString(r, "orderId"),
+            Status = StringValue(r, "status"),
+            AveragePrice = NumberValue(r, "avgPrice"),
+            ExecutedQuantity = NumberValue(r, "executedQty"),
+            CumulativeQuoteQuantity = NumberValue(r, "cumQuote")
         };
     }
 

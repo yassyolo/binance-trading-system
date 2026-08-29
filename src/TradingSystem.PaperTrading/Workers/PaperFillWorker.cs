@@ -37,22 +37,22 @@ public sealed class PaperFillWorker(
             { }
             catch (Exception ex) 
             { 
-                logger.LogError(ex,  "Paper fill cycle failed."); 
+                logger.LogError(ex, "Paper fill cycle failed."); 
             }
         }
     }
 
     private async Task ProcessAsync(CancellationToken ct)
     {
-        var positions  =  await store.GetOpenAsync(ct);
+        var positions = await store.GetOpenAsync(ct);
         
         foreach (var group in positions.GroupBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase))
         {
-            var markPrice  =  await prices.GetMarkPriceAsync(group.Key,  ct);
+            var markPrice = await prices.GetMarkPriceAsync(group.Key,  ct);
             
             foreach (var position in group)
             {
-                var reason  =  ResolveCloseReason(position,  markPrice);           
+                var reason = ResolveCloseReason(position,  markPrice);           
                 if (reason is null) 
                     continue;
                 

@@ -83,7 +83,7 @@ public sealed class PaperPositionCloseWorker(
 
         if (markPrice <= 0)
         {
-            logger.LogWarning("Paper position evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}", symbol, markPrice);
+            logger.LogWarning("Paper p evaluation skipped because mark price is invalid. Symbol = {Symbol}, MarkPrice = {MarkPrice}", symbol, markPrice);
             return;
         }
 
@@ -95,53 +95,43 @@ public sealed class PaperPositionCloseWorker(
         }
     }
 
-    private async Task ProcessPositionAsync(PaperTradingPosition position, decimal markPrice, CancellationToken ct)
+    private async Task ProcessPositionAsync(PaperTradingPosition p, decimal markPrice, CancellationToken ct)
     {
-        if (!HasValidExitLevels(position))
+        if (!HasValidExitLevels(p))
         {
-            logger.LogError("Paper position has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
-                position.BotName,
-                position.ShortId,
-                position.Side,
-                position.EntryPrice,
-                position.TakeProfitPrice,
-                position.StopLossPrice);
+            logger.LogError("Paper p has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
+                p.BotName,
+                p.ShortId,
+                p.Side,
+                p.EntryPrice,
+                p.TakeProfitPrice,
+                p.StopLossPrice);
             return;
         }
 
-        var closeReason = ResolveCloseReason(position, markPrice);
+        var closeReason = ResolveCloseReason(p, markPrice);
         if (closeReason is null)
             return;
 
         logger.LogInformation("Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
             "Side = {Side}, MarkPrice = {MarkPrice}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, Reason = {Reason}",
-            position.BotName,
-            position.ShortId,
-            position.Symbol,
-            position.Side,
+            p.BotName,
+            p.ShortId,
+            p.Symbol,
+            p.Side,
             markPrice,
-            position.TakeProfitPrice,
-            position.StopLossPrice,
+            p.TakeProfitPrice,
+            p.StopLossPrice,
             closeReason);
 
-        var result = await executor.CloseAtPriceAsync(position.BotName, position.ShortId, markPrice, closeReason, ct);
+        var result = await executor.CloseAtPriceAsync(p.BotName, p.ShortId, markPrice, closeReason, ct);
         if (result.Succeeded)
         {
-            logger.LogInformation("Paper p closed successfully. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}",
-                position.BotName,
-                position.ShortId,
-                markPrice,
-                closeReason);
-
+            logger.LogInformation("Paper position closed successfully. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}", p.BotName, p.ShortId, markPrice, closeReason);
             return;
         }
 
-        logger.LogWarning("Paper p close failed. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}, Result = {Result}",
-            position.BotName,
-            position.ShortId,
-            markPrice,
-            closeReason,
-            result.Reason);
+        logger.LogWarning("Paper position close failed. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}, Result = {Result}", p.BotName, p.ShortId, markPrice, closeReason, result.Reason);
     }
 
     private static bool HasValidExitLevels(PaperTradingPosition position)

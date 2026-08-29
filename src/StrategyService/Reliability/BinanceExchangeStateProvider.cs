@@ -16,8 +16,7 @@ public sealed class BinanceExchangeStateProvider(
 
         await Task.WhenAll(positionsTask, normalOpenOrdersTask, algoOrdersTask);
 
-        var positions = (await positionsTask)
-            .Where(x => x.PositionAmount != 0)
+        var positions = (await positionsTask).Where(x => x.PositionAmount != 0)
             .Select(x => new ExchangePositionSnapshot(x.Symbol, x.PositionSide, Math.Abs(x.PositionAmount), x.EntryPrice))
             .ToArray();
 

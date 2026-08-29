@@ -36,14 +36,9 @@ public sealed class BinanceTpOnlyPositionService(
             parentId,
             ct);
 
-        var filled = await safeOrders.WaitForFillAsync(
-            symbol,
-            parent,
-            parentId,
-            ct);
+        var filled = await safeOrders.WaitForFillAsync(symbol, parent, parentId, ct);
 
         var entry = ResolvePrice(filled);
-
         if (entry <= 0)
             throw new InvalidOperationException($"Filled order '{filled.OrderId}' has no valid price.");
 

@@ -19,8 +19,8 @@ namespace TradingSystem.PaperTrading.Executor;
 
 public sealed class PaperTradeExecutor(
     IPaperTradingStore store,
-    IMarketPriceProvider prices,
-    IBotRuntimeConfigurationProvider configurations,
+    IMarketPriceProvider markPriceProvider,
+    IBotRuntimeConfigurationProvider configProvider,
     ITradingPipelineRecorder history,
     ITradingEventStore eventStore,
     ITradingSignalContextAccessor signalContext,
@@ -41,7 +41,7 @@ public sealed class PaperTradeExecutor(
         if (openPositions.Count >= _options.MaximumOpenPositions)
             return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
 
-        var config = await configurations.GetAsync(botName, ct);
+        var config = await configProvider.GetAsync(botName, ct);
         if (config is null)
             return TradeExecutionResult.Failure($"Runtime config for {botName} was not found.");
 
@@ -49,8 +49,7 @@ public sealed class PaperTradeExecutor(
             return TradeExecutionResult.Failure($"Invalid paper trading quantity configured for {botName}.");
 
         var normalizedSymbol = symbol.ToUpperInvariant();
-        var markPrice = await prices.GetMarkPriceAsync(normalizedSymbol, ct);
-
+        var markPrice = await markPriceProvider.GetMarkPriceAsync(normalizedSymbol, ct);
         if (markPrice <= 0)
             return TradeExecutionResult.Failure($"Invalid mark price for {normalizedSymbol}.");
 
@@ -110,7 +109,7 @@ public sealed class PaperTradeExecutor(
             position.OpenedAtUtc,
             ct);
 
-        return TradeExecutionResult.Success(position.ShortId, $"Paper position opened at {entryPrice}.");
+        return TradeExecutionResult.Success(position.ShortId, $"Paper p opened at {entryPrice}.");
     }
 
     public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
@@ -121,7 +120,7 @@ public sealed class PaperTradeExecutor(
         if (validationResult is not null)
             return validationResult;
 
-        var markPrice = await prices.GetMarkPriceAsync(position!.Symbol, ct);
+        var markPrice = await markPriceProvider.GetMarkPriceAsync(position!.Symbol, ct);
         if (markPrice <= 0)
             return TradeExecutionResult.Failure($"Invalid mark price for {position.Symbol}.");
 
@@ -131,7 +130,7 @@ public sealed class PaperTradeExecutor(
     public async Task<TradeExecutionResult> CloseAtPriceAsync(string botName, string shortId, decimal triggerPrice, string reason, CancellationToken ct)
     {
         if (triggerPrice <= 0)
-            return TradeExecutionResult.Failure("Paper position trigger price must be positive.");
+            return TradeExecutionResult.Failure("Paper p trigger price must be positive.");
 
         var position = await store.GetAsync(botName, shortId, ct);
        
@@ -161,7 +160,7 @@ public sealed class PaperTradeExecutor(
             ct);
 
         if (!closed)
-            return TradeExecutionResult.Failure("Paper position changed concurrently; close was not applied.");
+            return TradeExecutionResult.Failure("Paper p changed concurrently; close was not applied.");
 
         await TryRecordPositionClosedAsync(
             position,
@@ -195,7 +194,7 @@ public sealed class PaperTradeExecutor(
 
 
     private async Task TryRecordDomainPositionEventAsync(
-        PaperTradingPosition position,
+        PaperTradingPosition p,
         string eventType,
         object payload,
         DateTime occurredAtUtc,
@@ -207,16 +206,16 @@ public sealed class PaperTradeExecutor(
                 new AppendTradingEvent(
                     EventType: eventType,
                     AggregateType: "PaperPosition",
-                    AggregateId: position.ShortId,
+                    AggregateId: p.ShortId,
                     Payload: payload,
                     OccurredAtUtc: occurredAtUtc,
-                    BotName: position.BotName,
-                    Symbol: position.Symbol,
-                    PositionId: position.ShortId,
-                    SignalId: position.SignalId,
-                    CorrelationId: position.SignalId ?? position.ShortId,
-                    CausationId: position.SignalId,
-                    Actor: position.Source),
+                    BotName: p.BotName,
+                    Symbol: p.Symbol,
+                    PositionId: p.ShortId,
+                    SignalId: p.SignalId,
+                    CorrelationId: p.SignalId ?? p.ShortId,
+                    CausationId: p.SignalId,
+                    Actor: p.Source),
                 ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -225,34 +224,34 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}", eventType, position.BotName, position.ShortId);
+            logger.LogError(ex, "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
         }
     }
 
-    private async Task TryRecordPositionOpenedAsync(PaperTradingPosition position, CancellationToken ct)
+    private async Task TryRecordPositionOpenedAsync(PaperTradingPosition p, CancellationToken ct)
     {
         try
         {
-            await history.UpsertPositionAsync(CreateOpenHistoryRecord(position), ct);
+            await history.UpsertPositionAsync(CreateOpenHistoryRecord(p), ct);
 
             await history.RecordPositionEventAsync(
                 new PositionEventHistoryRecord(
-                    PositionId: ToHistoryPositionId(position.PositionId),
-                    BotName: position.BotName,
+                    PositionId: ToHistoryPositionId(p.PositionId),
+                    BotName: p.BotName,
                     EventType: "PAPER_POSITION_OPENED",
                     Status: "Open",
-                    OccurredAtUtc: position.OpenedAtUtc,
-                    Price: position.EntryPrice,
-                    Quantity: position.Quantity,
+                    OccurredAtUtc: p.OpenedAtUtc,
+                    Price: p.EntryPrice,
+                    Quantity: p.Quantity,
                     Details: new Dictionary<string, object?>
                     {
-                        ["shortId"] = position.ShortId,
-                        ["symbol"] = position.Symbol,
-                        ["side"] = position.Side.ToString(),
-                        ["takeProfitPrice"] = position.TakeProfitPrice,
-                        ["stopLossPrice"] = position.StopLossPrice,
-                        ["entryFee"] = position.EntryFee,
-                        ["source"] = position.Source
+                        ["shortId"] = p.ShortId,
+                        ["symbol"] = p.Symbol,
+                        ["side"] = p.Side.ToString(),
+                        ["takeProfitPrice"] = p.TakeProfitPrice,
+                        ["stopLossPrice"] = p.StopLossPrice,
+                        ["entryFee"] = p.EntryFee,
+                        ["source"] = p.Source
                     }),
                 ct);
         }
@@ -264,9 +263,9 @@ public sealed class PaperTradeExecutor(
         {
             logger.LogError(
                 exception,
-                "Paper position was opened, but its history record could not be persisted. Bot = {Bot}, Position = {Position}",
-                position.BotName,
-                position.ShortId);
+                "Paper p was opened, but its history record could not be persisted. Bot = {Bot}, Position = {Position}",
+                p.BotName,
+                p.ShortId);
         }
     }
 
@@ -323,35 +322,35 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Paper position was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
+            logger.LogError(exception, "Paper p was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
         }
     }
 
-    private static PositionHistoryRecord CreateOpenHistoryRecord(PaperTradingPosition position)
+    private static PositionHistoryRecord CreateOpenHistoryRecord(PaperTradingPosition p)
     {
         return new PositionHistoryRecord(
-            PositionId: ToHistoryPositionId(position.PositionId),
-            SignalId: position.SignalId,
-            BotName: position.BotName,
-            StrategyVersion: position.StrategyVersion,
-            Symbol: position.Symbol,
-            Side: position.Side.ToString(),
-            Source: position.Source,
+            PositionId: ToHistoryPositionId(p.PositionId),
+            SignalId: p.SignalId,
+            BotName: p.BotName,
+            StrategyVersion: p.StrategyVersion,
+            Symbol: p.Symbol,
+            Side: p.Side.ToString(),
+            Source: p.Source,
             Environment: PaperEnvironment,
             Status: "Open",
-            Quantity: position.Quantity,
-            EntryPrice: position.EntryPrice,
-            TakeProfitPrice: position.TakeProfitPrice,
-            OpenedAtUtc: position.OpenedAtUtc,
+            Quantity: p.Quantity,
+            EntryPrice: p.EntryPrice,
+            TakeProfitPrice: p.TakeProfitPrice,
+            OpenedAtUtc: p.OpenedAtUtc,
             ClosedAtUtc: null,
             RealizedPnl: null,
-            Fees: position.EntryFee,
+            Fees: p.EntryFee,
             CloseReason: null,
             Metadata: new Dictionary<string, object?>
             {
-                ["shortId"] = position.ShortId,
-                ["stopLossPrice"] = position.StopLossPrice,
-                ["entryFee"] = position.EntryFee
+                ["shortId"] = p.ShortId,
+                ["stopLossPrice"] = p.StopLossPrice,
+                ["entryFee"] = p.EntryFee
             });
     }
 
@@ -396,16 +395,16 @@ public sealed class PaperTradeExecutor(
     private static TradeExecutionResult? ValidatePositionForClose(PaperTradingPosition? position, string shortId)
     {
         if (position is null)
-            return TradeExecutionResult.Failure($"Paper position {shortId} was not found.");
+            return TradeExecutionResult.Failure($"Paper p {shortId} was not found.");
 
         if (position.Status == PaperPositionStatus.Closed)
-            return TradeExecutionResult.Success(shortId, "Paper position is already closed.");
+            return TradeExecutionResult.Success(shortId, "Paper p is already closed.");
 
         if (position.Status != PaperPositionStatus.Open)
-            return TradeExecutionResult.Failure($"Paper position {shortId} is not open.");
+            return TradeExecutionResult.Failure($"Paper p {shortId} is not open.");
 
         if (position.Quantity <= 0)
-            return TradeExecutionResult.Failure($"Paper position {shortId} has invalid quantity.");
+            return TradeExecutionResult.Failure($"Paper p {shortId} has invalid quantity.");
 
         return null;
     }
@@ -413,11 +412,7 @@ public sealed class PaperTradeExecutor(
     private decimal ResolveTakeProfitPrice(decimal entryPrice, PositionSide side, decimal? takeProfitDistance)
     {
         if (takeProfitDistance is > 0)
-        {
-            return side == PositionSide.Long
-                ? entryPrice + takeProfitDistance.Value
-                : entryPrice - takeProfitDistance.Value;
-        }
+            return side == PositionSide.Long ? entryPrice + takeProfitDistance.Value : entryPrice - takeProfitDistance.Value;
 
         return ApplyPercent(entryPrice, side, _options.DefaultTakeProfitPercent, favorable: true);
     }
@@ -425,13 +420,9 @@ public sealed class PaperTradeExecutor(
     internal decimal ApplySlippage(decimal price, PositionSide side, bool opening)
     {
         var slippageRate = _options.SlippagePercent / 100m;
-        var isBuyOperation = opening 
-            ? side == PositionSide.Long 
-            : side == PositionSide.Short;
+        var isBuyOperation = opening  ? side == PositionSide.Long  : side == PositionSide.Short;
 
-        return isBuyOperation
-            ? price * (1m + slippageRate)
-            : price * (1m - slippageRate);
+        return isBuyOperation ? price * (1m + slippageRate) : price * (1m - slippageRate);
     }
 
     internal decimal CalculateFee(decimal price, decimal quantity)
@@ -442,20 +433,12 @@ public sealed class PaperTradeExecutor(
             ? (exitPrice - position.EntryPrice) * position.Quantity
             : (position.EntryPrice - exitPrice) * position.Quantity;
 
-    private static decimal ApplyPercent(
-        decimal price,
-        PositionSide side,
-        decimal percent,
-        bool favorable)
+    private static decimal ApplyPercent(decimal price, PositionSide side, decimal percent, bool favorable)
     {
         var change = price * percent / 100m;
-        var shouldIncrease = favorable
-            ? side == PositionSide.Long
-            : side == PositionSide.Short;
+        var shouldIncrease = favorable ? side == PositionSide.Long : side == PositionSide.Short;
 
-        return shouldIncrease
-            ? price + change
-            : price - change;
+        return shouldIncrease ? price + change : price - change;
     }
 
     private static string NormalizeSource(string? source)

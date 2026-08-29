@@ -6,27 +6,27 @@ public sealed class BinanceFuturesOptionsValidator : IValidateOptions<BinanceFut
 {
     public ValidateOptionsResult Validate(string? name, BinanceFuturesOptions options)
     {
-        var errors = new List<string>();
+        var e = new List<string>();
 
-        if (!Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri) ||
-            (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
-            errors.Add("BinanceFutures:BaseUrl must be an absolute HTTP or HTTPS URI.");
+        if (!Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri) 
+            || (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+            e.Add("BinanceFutures:BaseUrl must be an absolute HTTP or HTTPS URI.");
 
         if (options.ReceiveWindow is < 1 or > 60_000)
-            errors.Add("BinanceFutures:ReceiveWindow must be between 1 and 60000.");
+            e.Add("BinanceFutures:ReceiveWindow must be between 1 and 60000.");
 
         if (options.ExchangeInfoCacheDuration <= TimeSpan.Zero)
-            errors.Add("BinanceFutures:ExchangeInfoCacheDuration must be greater than zero.");
+            e.Add("BinanceFutures:ExchangeInfoCacheDuration must be greater than zero.");
 
         if (options.RequireSignedOperations)
         {
             if (string.IsNullOrWhiteSpace(options.ApiKey))
-                errors.Add("BinanceFutures:ApiKey is required for signed operations.");
+                e.Add("BinanceFutures:ApiKey is required for signed operations.");
 
             if (string.IsNullOrWhiteSpace(options.SecretKey))
-                errors.Add("BinanceFutures:SecretKey is required for signed operations.");
+                e.Add("BinanceFutures:SecretKey is required for signed operations.");
         }
 
-        return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+        return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);
     }
 }

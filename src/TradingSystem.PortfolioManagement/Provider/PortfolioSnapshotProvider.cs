@@ -36,6 +36,7 @@ public sealed class PortfolioSnapshotProvider(
             return cached;
 
         await _gate.WaitAsync(ct);
+       
         try
         {
             now = clock.UtcNow;
@@ -91,38 +92,34 @@ public sealed class PortfolioSnapshotProvider(
             .ToArray();
 
         var unrealizedPnl = positions.Sum(x => x.UnrealizedPnl);
-        var performance = await performanceSource.GetAsync(
-            unrealizedPnl,
-            _options.InitialEquity,
-            now,
-            ct);
+        
+        var performance = await performanceSource.GetAsync(unrealizedPnl, _options.InitialEquity, now, ct);
 
         var equity = _options.InitialEquity + performance.RealizedPnlToday + unrealizedPnl;
         var peak = Math.Max(performance.PeakEquityToday, equity);
         var drawdown = Math.Max(peak - equity, 0m);
         var drawdownPercent = peak <= 0 ? 0m : drawdown / peak * 100m;
 
-        var symbolSnapshots = positions
-            .GroupBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new SymbolExposureSnapshot(
-                group.Key,
-                group.Count(),
-                group.Where(x => x.Side == PositionSide.Long).Sum(x => x.Notional),
-                group.Where(x => x.Side == PositionSide.Short).Sum(x => x.Notional),
-                group.Sum(x => x.Notional),
-                group.Sum(x => x.SignedNotional),
-                group.Sum(x => x.UnrealizedPnl)))
+        var symbolSnapshots = positions.GroupBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SymbolExposureSnapshot(
+                g.Key,
+                g.Count(),
+                g.Where(x => x.Side == PositionSide.Long).Sum(x => x.Notional),
+                g.Where(x => x.Side == PositionSide.Short).Sum(x => x.Notional),
+                g.Sum(x => x.Notional),
+                g.Sum(x => x.SignedNotional),
+                g.Sum(x => x.UnrealizedPnl)))
             .OrderBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var botSnapshots = positions.GroupBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new BotExposureSnapshot(
-                group.Key,
-                group.Count(),
-                group.Sum(x => x.Notional),
-                group.Sum(x => x.SignedNotional),
-                group.Sum(x => x.UnrealizedPnl),
-                group.Sum(x => x.EstimatedInitialMargin)))
+            .Select(g => new BotExposureSnapshot(
+                g.Key,
+                g.Count(),
+                g.Sum(x => x.Notional),
+                g.Sum(x => x.SignedNotional),
+                g.Sum(x => x.UnrealizedPnl),
+                g.Sum(x => x.EstimatedInitialMargin)))
             .OrderBy(x => x.BotName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -162,6 +159,7 @@ public sealed class PortfolioSnapshotProvider(
         });
 
         var positionsByBot = await Task.WhenAll(tasks);
+        
         return positionsByBot.SelectMany(x => x).ToArray();
     }
 
@@ -224,19 +222,19 @@ public sealed class PortfolioSnapshotProvider(
         throw new InvalidOperationException($"Could not build {operation} after {attempts} i(s). Risk evaluation must fail closed.", lastError);
     }
 
-    private PortfolioPositionSnapshot MapRedisPosition(BotPosition position, decimal markPrice)
+    private PortfolioPositionSnapshot MapRedisPosition(BotPosition p, decimal markPrice)
     {
-        var entryPrice = position.EntryPrice ?? markPrice;
-        var quantity = position.RemainingQuantity;
+        var entryPrice = p.EntryPrice ?? markPrice;
+        var quantity = p.RemainingQuantity;
         var notional = markPrice * quantity;
-        var direction = position.Side == PositionSide.Long ? 1m : -1m;
+        var direction = p.Side == PositionSide.Long ? 1m : -1m;
         var unrealizedPnl = (markPrice - entryPrice) * quantity * direction;
 
         return new PortfolioPositionSnapshot(
-            position.BotName,
-            position.ShortId,
-            position.Symbol,
-            position.Side,
+            p.BotName,
+            p.ShortId,
+            p.Symbol,
+            p.Side,
             quantity,
             entryPrice,
             markPrice,
@@ -244,29 +242,28 @@ public sealed class PortfolioSnapshotProvider(
             notional * direction,
             unrealizedPnl,
             notional / _options.DefaultLeverage,
-            position.ParentFilledAtUtc ?? position.CreatedAtUtc);
+            p.ParentFilledAtUtc ?? p.CreatedAtUtc);
     }
 
-    private PortfolioPositionSnapshot MapPaperPosition(PaperPortfolioPosition position, decimal markPrice)
+    private PortfolioPositionSnapshot MapPaperPosition(PaperPortfolioPosition p, decimal markPrice)
     {
-        var notional = markPrice * position.Quantity;
-        var direction = position.Side == PositionSide.Long ? 1m : -1m;
-        var unrealizedPnl =
-            (markPrice - position.EntryPrice) * position.Quantity * direction;
+        var notional = markPrice * p.Quantity;
+        var direction = p.Side == PositionSide.Long ? 1m : -1m;
+        var unrealizedPnl = (markPrice - p.EntryPrice) * p.Quantity * direction;
 
         return new PortfolioPositionSnapshot(
-            position.BotName,
-            position.ShortId,
-            position.Symbol,
-            position.Side,
-            position.Quantity,
-            position.EntryPrice,
+            p.BotName,
+            p.ShortId,
+            p.Symbol,
+            p.Side,
+            p.Quantity,
+            p.EntryPrice,
             markPrice,
             notional,
             notional * direction,
             unrealizedPnl,
             notional / _options.DefaultLeverage,
-            position.OpenedAtUtc);
+            p.OpenedAtUtc);
     }
 
     private PortfolioSnapshot Empty(DateTime now) => new(

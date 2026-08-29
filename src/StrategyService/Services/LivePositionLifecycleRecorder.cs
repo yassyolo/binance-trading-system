@@ -11,8 +11,8 @@ using TradingSystem.Observability.Pipeline;
 namespace StrategyService.Services;
 
 public sealed class LivePositionLifecycleRecorder(
-    IPositionStore positions,
-    IBotRuntimeConfigurationProvider configurations,
+    IPositionStore positionStore,
+    IBotRuntimeConfigurationProvider configProvider,
     ITradingPipelineRecorder history,
     ITradingEventStore eventStore,
     ITradingEnvironmentProvider fallbackEnvironment,
@@ -38,7 +38,7 @@ public sealed class LivePositionLifecycleRecorder(
             position.Quantity,
             new Dictionary<string, object?>
             {
-                ["environment"] = environment,
+                ["env"] = environment,
                 ["signalId"] = signalId,
                 ["source"] = position.Source,
                 ["takeProfitPrice"] = position.TpPrice
@@ -56,7 +56,7 @@ public sealed class LivePositionLifecycleRecorder(
 
     public async Task RecordClosedAsync(string botName, string shortId, string? reason, CancellationToken ct)
     {
-        var position = await positions.GetAsync(botName, shortId, ct);
+        var position = await positionStore.GetAsync(botName, shortId, ct);
         if (position is null || !position.Closed)
             return;
 
@@ -76,7 +76,7 @@ public sealed class LivePositionLifecycleRecorder(
             position.Quantity,
             new Dictionary<string, object?>
             {
-                ["environment"] = environment,
+                ["env"] = environment,
                 ["reason"] = reason ?? position.CloseStatus,
                 ["remainingQuantity"] = position.RemainingQuantity
             }), ct);
@@ -150,8 +150,8 @@ public sealed class LivePositionLifecycleRecorder(
     }
 
     private async Task PersistProjectionBestEffortAsync(
-        BotPosition position,
-        string environment,
+        BotPosition p,
+        string env,
         string? signalId,
         string strategyVersion,
         string? closeReasonOverride,
@@ -160,32 +160,32 @@ public sealed class LivePositionLifecycleRecorder(
         try
         {
             await history.UpsertPositionAsync(new PositionHistoryRecord(
-                PositionId: position.ShortId,
+                PositionId: p.ShortId,
                 SignalId: signalId,
-                BotName: position.BotName,
+                BotName: p.BotName,
                 StrategyVersion: strategyVersion,
-                Symbol: position.Symbol,
-                Side: position.Side.ToString(),
-                Source: position.Source,
-                Environment: environment,
-                Status: position.Status.ToString(),
-                Quantity: position.Quantity,
-                EntryPrice: position.EntryPrice,
-                TakeProfitPrice: position.TpPrice,
-                OpenedAtUtc: position.ParentFilledAtUtc ?? position.CreatedAtUtc,
-                ClosedAtUtc: position.ClosedAtUtc,
+                Symbol: p.Symbol,
+                Side: p.Side.ToString(),
+                Source: p.Source,
+                Environment: env,
+                Status: p.Status.ToString(),
+                Quantity: p.Quantity,
+                EntryPrice: p.EntryPrice,
+                TakeProfitPrice: p.TpPrice,
+                OpenedAtUtc: p.ParentFilledAtUtc ?? p.CreatedAtUtc,
+                ClosedAtUtc: p.ClosedAtUtc,
                 RealizedPnl: null,
                 Fees: null,
-                CloseReason: closeReasonOverride ?? position.CloseStatus,
+                CloseReason: closeReasonOverride ?? p.CloseStatus,
                 Metadata: new Dictionary<string, object?>
                 {
-                    ["remainingQuantity"] = position.RemainingQuantity,
-                    ["protectiveActive"] = position.ProtectiveActive,
-                    ["tpStatus"] = position.TpStatus,
-                    ["slStatus"] = position.SlStatus,
-                    ["stop3Status"] = position.Stop3Status,
-                    ["closeOrderId"] = position.CloseOrderId,
-                    ["mode"] = position.Mode.ToString()
+                    ["remainingQuantity"] = p.RemainingQuantity,
+                    ["protectiveActive"] = p.ProtectiveActive,
+                    ["tpStatus"] = p.TpStatus,
+                    ["slStatus"] = p.SlStatus,
+                    ["stop3Status"] = p.Stop3Status,
+                    ["closeOrderId"] = p.CloseOrderId,
+                    ["mode"] = p.Mode.ToString()
                 }), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -194,7 +194,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception,"Live position projection persistence failed. Bot = {Bot}, Position = {Position}", position.BotName, position.ShortId);
+            logger.LogError(exception,"Live p projection persistence failed. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
         }
     }
 
@@ -208,18 +208,16 @@ public sealed class LivePositionLifecycleRecorder(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception,
-                "Live position history event persistence failed. Bot = {Bot}, Position = {Position}",
-                record.BotName, record.PositionId);
+            logger.LogError(ex, "Live p history event persistence failed. Bot = {Bot}, Position = {Position}", record.BotName, record.PositionId);
         }
     }
 
     private async Task AppendLifecycleBestEffortAsync(
-        BotPosition position,
+        BotPosition p,
         string eventType,
-        string environment,
+        string env,
         string? signalId,
         DateTime occurredAtUtc,
         object payload,
@@ -230,26 +228,24 @@ public sealed class LivePositionLifecycleRecorder(
             await eventStore.AppendAsync(new AppendTradingEvent(
                 EventType: eventType,
                 AggregateType: "Position",
-                AggregateId: position.ShortId,
+                AggregateId: p.ShortId,
                 Payload: payload,
                 OccurredAtUtc: occurredAtUtc,
-                BotName: position.BotName,
-                Symbol: position.Symbol,
-                PositionId: position.ShortId,
+                BotName: p.BotName,
+                Symbol: p.Symbol,
+                PositionId: p.ShortId,
                 SignalId: signalId,
-                CorrelationId: signalId ?? position.ShortId,
-                Actor: position.Source ?? "strategy",
-                Metadata: new Dictionary<string, object?> { ["environment"] = environment }), ct);
+                CorrelationId: signalId ?? p.ShortId,
+                Actor: p.Source ?? "strategy",
+                Metadata: new Dictionary<string, object?> { ["env"] = env }), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception,
-                "Live position EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}",
-                eventType, position.BotName, position.ShortId);
+            logger.LogError(ex, "Live position EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
         }
     }
 
@@ -257,7 +253,7 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            var config = await configurations.GetAsync(botName, ct);
+            var config = await configProvider.GetAsync(botName, ct);
             if (config is not null && !string.IsNullOrWhiteSpace(config.Environment))
                 return config.Environment.Trim();
         }
@@ -267,7 +263,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Runtime environment could not be resolved for {Bot}. Falling back to observability environment.", botName);
+            logger.LogWarning(exception, "Runtime env could not be resolved for {Bot}. Falling back to observability env.", botName);
         }
 
         return fallbackEnvironment.EnvironmentName;

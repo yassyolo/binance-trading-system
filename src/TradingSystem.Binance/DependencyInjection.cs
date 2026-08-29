@@ -36,25 +36,11 @@ public static class DependencyInjection
         AddCommonOptions(services, configuration);
 
         services.AddHttpClient<IHistoricalCandleSource, BinanceHistoricalCandleSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
+        services.AddHttpClient<IHistoricalCandleRangeSource, BinanceHistoricalCandleRangeSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
+        services.AddHttpClient<IBinanceFuturesMarketClient, BinanceFuturesMarketClient>().ConfigureHttpClient(ConfigureBinanceHttpClient);
+        services.AddHttpClient<IBinanceFuturesOrderClient, BinanceFuturesOrderClient>().ConfigureHttpClient(ConfigureBinanceHttpClient);
 
-        services.AddHttpClient<IHistoricalCandleRangeSource, BinanceHistoricalCandleRangeSource>()
-            .ConfigureHttpClient(ConfigureBinanceHttpClient);
-
-        services.AddHttpClient<
-                IBinanceFuturesMarketClient,
-                BinanceFuturesMarketClient>()
-            .ConfigureHttpClient(ConfigureBinanceHttpClient);
-
-        services
-            .AddHttpClient<
-                IBinanceFuturesOrderClient,
-                BinanceFuturesOrderClient>()
-            .ConfigureHttpClient(ConfigureBinanceHttpClient);
-
-        services.AddSingleton<
-            IMarketPriceProvider,
-            BinanceMarketPriceProvider>();
-
+        services.AddSingleton<IMarketPriceProvider, BinanceMarketPriceProvider>();
         services.AddSingleton<BinanceExchangeInfoService>();
         services.AddSingleton<SafeBinanceOrderService>();
 
@@ -66,29 +52,13 @@ public static class DependencyInjection
         return services;
     }
 
-    private static void AddCommonOptions(
-        IServiceCollection services,
-        IConfiguration configuration)
+    private static void AddCommonOptions(IServiceCollection services, IConfiguration configuration)
     {
-        services
-            .AddOptions<BinanceFuturesOptions>()
-            .Bind(configuration.GetSection(
-                BinanceFuturesOptions.SectionName))
-            .ValidateOnStart();
+        services.AddOptions<BinanceFuturesOptions>().Bind(configuration.GetSection(BinanceFuturesOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<BinanceFuturesOptions>, BinanceFuturesOptionsValidator>();
 
-        services.AddSingleton<
-            IValidateOptions<BinanceFuturesOptions>,
-            BinanceFuturesOptionsValidator>();
-
-        services
-            .AddOptions<BinanceRetryOptions>()
-            .Bind(configuration.GetSection(
-                BinanceRetryOptions.SectionName))
-            .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<BinanceRetryOptions>,
-            BinanceRetryOptionsValidator>();
+        services.AddOptions<BinanceRetryOptions>().Bind(configuration.GetSection(BinanceRetryOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<BinanceRetryOptions>, BinanceRetryOptionsValidator>();
 
         services.AddSingleton<BinanceRetryService>();
     }

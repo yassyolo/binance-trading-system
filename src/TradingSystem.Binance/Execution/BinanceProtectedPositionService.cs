@@ -40,14 +40,9 @@ public sealed class BinanceProtectedPositionService(
             pId,
             ct);
 
-        var filled = await safeOrders.WaitForFillAsync(
-            symbol,
-            parent,
-            pId,
-            ct);
+        var filled = await safeOrders.WaitForFillAsync(symbol, parent, pId, ct);
 
         var entry = Price(filled);
-
         if (entry <= 0)
             throw new InvalidOperationException("Entry order has no fill price.");
 

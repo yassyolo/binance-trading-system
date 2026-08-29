@@ -15,9 +15,9 @@ public sealed class ConfiguredRiskOrderSizingProvider(
 
     public async Task<RiskOrderSize?> GetAsync(string botName, CancellationToken ct)
     {
-        var runtime = await configProvider.GetAsync(botName, ct);
-        if (runtime is not null && runtime.Quantity > 0 && runtime.Leverage > 0)
-            return new RiskOrderSize(runtime.Quantity, runtime.Leverage, null);
+        var config = await configProvider.GetAsync(botName, ct);
+        if (config is not null && config.Quantity > 0 && config.Leverage > 0)
+            return new RiskOrderSize(config.Quantity, config.Leverage, null);
 
         return _options.BotProfiles.TryGetValue(botName, out var profile)
             ? new RiskOrderSize(profile.Quantity, profile.Leverage, profile.MaximumNotional)

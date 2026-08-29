@@ -18,12 +18,9 @@ public sealed class PaperTradingController(
     [HttpGet("account")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAccountAsync(
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAccountAsync(CancellationToken ct)
     {
-        var result = await store.GetAccountAsync(
-            options.Value.InitialBalance,
-            cancellationToken);
+        var result = await store.GetAccountAsync(options.Value.InitialBalance, ct);
 
         return Ok(result);
     }
@@ -53,12 +50,9 @@ public sealed class PaperTradingController(
     [HttpPost("reset")]
     [Authorize(Policy = "Administrator")]
     [EnableRateLimiting("dangerous")]
-    public async Task<IActionResult> ResetAsync(
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> ResetAsync(CancellationToken ct)
     {
-        await store.ResetAsync(
-            DashboardUserName,
-            cancellationToken);
+        await store.ResetAsync(DashboardUserName, ct);
 
         return Accepted();
     }

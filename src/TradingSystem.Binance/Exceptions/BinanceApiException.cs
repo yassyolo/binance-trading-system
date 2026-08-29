@@ -12,5 +12,6 @@ public sealed class BinanceApiException : Exception
     }
 
     public HttpStatusCode StatusCode { get; }
+    
     public string ResponseBody { get; }
 }

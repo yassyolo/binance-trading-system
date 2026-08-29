@@ -7,123 +7,86 @@ using TradingSystem.Binance.Orders.Contracts;
 namespace TradingSystem.Binance.Startup;
 
 public sealed class BinanceStartupService(
-    IEnumerable<IBinanceTradingConfiguration> configurations,
-    IBinanceFuturesOrderClient orders,
-    IOptions<BinanceFuturesOptions> binanceOptions,
+    IEnumerable<IBinanceTradingConfiguration> binanceConfigs,
+    IBinanceFuturesOrderClient ordersClient,
+    IOptions<BinanceFuturesOptions> options,
     ILogger<BinanceStartupService> logger)
     : IHostedService
 {
-    private readonly BinanceFuturesOptions _binanceOptions =
-        binanceOptions.Value;
+    private readonly BinanceFuturesOptions _options = options.Value;
 
     public async Task StartAsync(CancellationToken ct)
     {
-        if (!_binanceOptions.RequireSignedOperations)
+        if (!_options.RequireSignedOperations)
         {
-            logger.LogInformation(
-                "Binance signed startup operations are disabled. " +
-                "Hedge mode and leverage configuration will be skipped.");
-
+            logger.LogInformation("Binance signed startup operations are disabled. Hedge mode and leverage c will be skipped.");
             return;
         }
 
         await TrySetHedgeModeAsync(ct);
 
-        var configurationsBySymbol = configurations
-            .Where(configuration =>
-                !string.IsNullOrWhiteSpace(configuration.Symbol))
-            .GroupBy(configuration =>
-                configuration.Symbol.Trim().ToUpperInvariant())
+        var configurationsBySymbol = binanceConfigs.Where(c => !string.IsNullOrWhiteSpace(c.Symbol))
+            .GroupBy(c => c.Symbol.Trim().ToUpperInvariant())
             .ToArray();
 
         foreach (var symbolGroup in configurationsBySymbol)
         {
             ct.ThrowIfCancellationRequested();
 
-            var leverages = symbolGroup
-                .Select(configuration => configuration.Leverage)
-                .Distinct()
-                .ToArray();
-
+            var leverages = symbolGroup.Select(c => c.Leverage).Distinct().ToArray();
             if (leverages.Length == 0)
                 continue;
 
             if (leverages.Length > 1)
             {
-                logger.LogWarning(
-                    "Bots configured different leverage values for {Symbol}: {Leverages}. " +
-                    "Binance leverage is account-wide per symbol; using the highest configured value.",
+                logger.LogWarning("Bots configured different leverage values for {Symbol}: {Leverages}. " +
+                    "Binance leverage is account-wide per symbol; using the highest configured x.",
                     symbolGroup.Key,
-                    string.Join(
-                        ", ",
-                        leverages.OrderBy(value => value)));
+                    string.Join(", ", leverages.OrderBy(x => x)));
             }
 
             var leverage = leverages.Max();
 
-            await TrySetLeverageAsync(
-                symbolGroup.Key,
-                leverage,
-                ct);
+            await TrySetLeverageAsync(symbolGroup.Key, leverage, ct);
         }
     }
 
     public Task StopAsync(CancellationToken ct)
-    {
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 
     private async Task TrySetHedgeModeAsync(CancellationToken ct)
     {
         try
         {
-            await orders.SetHedgeModeAsync(ct);
+            await ordersClient.SetHedgeModeAsync(ct);
 
-            logger.LogInformation(
-                "Binance hedge mode verified.");
+            logger.LogInformation("Binance hedge mode verified.");
         }
-        catch (OperationCanceledException)
-            when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(
-                exception,
-                "Could not verify or enable Binance hedge mode.");
+            logger.LogWarning(ex, "Could not verify or enable Binance hedge mode.");
         }
     }
 
-    private async Task TrySetLeverageAsync(
-        string symbol,
-        int leverage,
-        CancellationToken ct)
+    private async Task TrySetLeverageAsync(string symbol, int leverage, CancellationToken ct)
     {
         try
         {
-            await orders.SetLeverageAsync(
-                symbol,
-                leverage,
-                ct);
+            await ordersClient.SetLeverageAsync(symbol, leverage, ct);
 
-            logger.LogInformation(
-                "Binance leverage set. Symbol = {Symbol}, Leverage = {Leverage}",
-                symbol,
-                leverage);
+            logger.LogInformation("Binance leverage set. Symbol = {Symbol}, Leverage = {Leverage}", symbol, leverage);
         }
-        catch (OperationCanceledException)
-            when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(
-                exception,
-                "Could not set leverage. Symbol = {Symbol}, Leverage = {Leverage}",
-                symbol,
-                leverage);
+            logger.LogWarning(ex, "Could not set leverage. Symbol = {Symbol}, Leverage = {Leverage}", symbol, leverage);
         }
     }
 }

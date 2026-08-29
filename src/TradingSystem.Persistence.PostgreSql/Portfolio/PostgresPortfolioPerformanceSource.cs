@@ -11,14 +11,11 @@ public sealed class PostgresPortfolioPerformanceSource(
     ILogger<PostgresPortfolioPerformanceSource> logger)
     : IPortfolioPerformanceSource
 {
-    public async Task<PortfolioPerformanceSnapshot> GetAsync(
-        decimal currentUnrealizedPnl,
-        decimal startingEquity,
-        DateTime asOfUtc,
-        CancellationToken ct)
+    public async Task<PortfolioPerformanceSnapshot> GetAsync(decimal currentUnrealizedPnl, decimal startingEquity, DateTime asOfUtc, CancellationToken ct)
     {
         const string sql = """
-            select coalesce(realized_pnl, 0)
+            select 
+                coalesce(realized_pnl, 0)
             from trading_history.positions
             where closed_at_utc >= @DayStartUtc
               and closed_at_utc < @DayEndUtc
@@ -29,22 +26,18 @@ public sealed class PostgresPortfolioPerformanceSource(
         var dayStartUtc = asOfUtc.Date;
         var dayEndUtc = dayStartUtc.AddDays(1);
 
-        await using var connection =
-            await connectionFactory.OpenAsync(ct);
+        await using var connection =  await connectionFactory.OpenAsync(ct);
 
-        var closedPnls = (
-            await connection.QueryAsync<decimal>(
-                new CommandDefinition(
-                    sql,
-                    new
-                    {
-                        DayStartUtc = dayStartUtc,
-                        DayEndUtc = dayEndUtc
-                    },
-                    commandTimeout:
-                        connectionFactory.CommandTimeoutSeconds,
-                    cancellationToken: ct)))
-            .AsList();
+        var closedPnls = (await connection.QueryAsync<decimal>(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                    DayStartUtc = dayStartUtc,
+                    DayEndUtc = dayEndUtc
+                },
+                commandTimeout: connectionFactory.CommandTimeoutSeconds,
+                cancellationToken: ct))).AsList();
 
         var realizedToday = closedPnls.Sum();
         var runningEquity = startingEquity;
@@ -55,35 +48,16 @@ public sealed class PostgresPortfolioPerformanceSource(
         {
             runningEquity += pnl;
 
-            peakEquity = Math.Max(
-                peakEquity,
-                runningEquity);
+            peakEquity = Math.Max(peakEquity, runningEquity);
 
-            consecutiveLosses = pnl < 0
-                ? consecutiveLosses + 1
-                : 0;
+            consecutiveLosses = pnl < 0 ? consecutiveLosses + 1 : 0;
         }
 
-        var currentEquity =
-            startingEquity +
-            realizedToday +
-            currentUnrealizedPnl;
+        var currentEquity = startingEquity + realizedToday + currentUnrealizedPnl;
+        peakEquity = Math.Max(peakEquity, currentEquity);
 
-        peakEquity = Math.Max(
-            peakEquity,
-            currentEquity);
+        logger.LogDebug("Portfolio performance loaded. RealizedToday = {RealizedToday}, ConsecutiveLosses = {ConsecutiveLosses}", realizedToday, consecutiveLosses);
 
-        logger.LogDebug(
-            "Portfolio performance loaded. " +
-            "RealizedToday = {RealizedToday}, " +
-            "ConsecutiveLosses = {ConsecutiveLosses}",
-            realizedToday,
-            consecutiveLosses);
-
-        return new PortfolioPerformanceSnapshot(
-            realizedToday,
-            peakEquity,
-            consecutiveLosses,
-            asOfUtc);
+        return new PortfolioPerformanceSnapshot(realizedToday, peakEquity, consecutiveLosses, asOfUtc);
     }
 }

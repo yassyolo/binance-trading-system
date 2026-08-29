@@ -17,16 +17,28 @@ public sealed class PostgresPaperTradingStore(
     {
         const string sql = """
             insert into trading_paper.positions
-                (position_id, short_id, signal_id, strategy_version, bot_name, symbol, side,
-                 quantity, entry_price, take_profit_price, stop_loss_price, entry_fee,
-                 status, source, opened_at_utc, version)
+                (position_id, 
+                 short_id, 
+                 signal_id, 
+                 strategy_version,
+                 bot_name, 
+                 symbol, 
+                 side,
+                 quantity,
+                 entry_price, 
+                 take_profit_price, 
+                 stop_loss_price, 
+                 entry_fee,
+                 status,
+                 source, 
+                 opened_at_utc,
+                 version)
             values
-                (@PositionId, @ShortId, @SignalId, @StrategyVersion, @BotName, @Symbol, @Side,
-                 @Quantity, @EntryPrice, @TakeProfitPrice, @StopLossPrice, @EntryFee,
-                 @Status, @Source, @OpenedAtUtc, @Version);
+                (@PositionId, @ShortId, @SignalId, @StrategyVersion, @BotName, @Symbol, @Side, @Quantity, @EntryPrice, @TakeProfitPrice, @StopLossPrice, @EntryFee, @Status, @Source, @OpenedAtUtc, @Version);
             """;
 
         await using var connection = await connections.OpenAsync(ct);
+        
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             Map(position),
@@ -66,14 +78,15 @@ public sealed class PostgresPaperTradingStore(
     async Task<IReadOnlyCollection<PaperPortfolioPosition>> IPaperPortfolioPositionSource.GetOpenAsync(CancellationToken ct)
     {
         var positions = await GetOpenAsync(ct);
-        return positions.Select(position => new PaperPortfolioPosition(
-            position.BotName,
-            position.ShortId,
-            position.Symbol,
-            position.Side,
-            position.Quantity,
-            position.EntryPrice,
-            position.OpenedAtUtc)).ToArray();
+       
+        return positions.Select(p => new PaperPortfolioPosition(
+            p.BotName,
+            p.ShortId,
+            p.Symbol,
+            p.Side,
+            p.Quantity,
+            p.EntryPrice,
+            p.OpenedAtUtc)).ToArray();
     }
 
     public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(
@@ -158,19 +171,22 @@ public sealed class PostgresPaperTradingStore(
     public async Task<PaperTradingAccount> GetAccountAsync(decimal initialBalance, CancellationToken ct)
     {
         const string sql = """
-            select coalesce(sum(realized_pnl), 0) RealizedPnl,
-                   coalesce(sum(entry_fee + coalesce(exit_fee, 0)), 0) Fees,
-                   count(*) filter(where status = 1)::int OpenPositions,
-                   count(*) filter(where status = 2)::int ClosedPositions
+            select 
+                coalesce(sum(realized_pnl), 0) RealizedPnl,
+                coalesce(sum(entry_fee + coalesce(exit_fee, 0)), 0) Fees,
+                count(*) filter(where status = 1)::int OpenPositions,
+                count(*) filter(where status = 2)::int ClosedPositions
             from trading_paper.positions
             where archived = false;
             """;
 
         await using var connection = await connections.OpenAsync(ct);
-        var row = await connection.QuerySingleAsync<AccountRow>(new CommandDefinition(
-            sql,
-            commandTimeout: connections.CommandTimeoutSeconds,
-            cancellationToken: ct));
+       
+        var row = await connection.QuerySingleAsync<AccountRow>(
+            new CommandDefinition(
+                sql,
+                commandTimeout: connections.CommandTimeoutSeconds,
+                cancellationToken: ct));
 
         return new PaperTradingAccount(
             initialBalance,
@@ -185,24 +201,31 @@ public sealed class PostgresPaperTradingStore(
     public async Task ResetAsync(string actor, CancellationToken ct)
     {
         const string sql = """
-            insert into trading_paper.reset_events(actor, reset_at_utc, positions_archived)
+            insert into trading_paper.reset_events
+            (actor, 
+             reset_at_utc, 
+             positions_archived)
             select @actor, now(), count(*)
             from trading_paper.positions
             where archived = false;
 
             update trading_paper.positions
-            set archived = true
+            set 
+                archived = true
             where archived = false;
             """;
 
         await using var connection = await connections.OpenAsync(ct);
+        
         await using var transaction = await connection.BeginTransactionAsync(ct);
+        
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new { actor },
             transaction,
             commandTimeout: connections.CommandTimeoutSeconds,
             cancellationToken: ct));
+       
         await transaction.CommitAsync(ct);
     }
 

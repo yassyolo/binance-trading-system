@@ -8,10 +8,11 @@ using TradingSystem.Prometheus.PrometheusMetrics;
 namespace TradingSystem.Prometheus.Workers;
 
 public sealed class PortfolioMetricsWorker(
-    IPortfolioSnapshotProvider portfolio,
+    IPortfolioSnapshotProvider portfolioProvider,
     TradingMetrics metrics,
     IOptions<PrometheusOptions> options,
-    ILogger<PortfolioMetricsWorker> logger) : BackgroundService
+    ILogger<PortfolioMetricsWorker> logger) 
+    : BackgroundService
 {
     private readonly PrometheusOptions _options = options.Value;
     private readonly HashSet<(string Bot, string Symbol, string Side)> _knownPositionLabels = [];
@@ -22,14 +23,13 @@ public sealed class PortfolioMetricsWorker(
         if (!_options.Enabled)
             return;
 
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_options.PortfolioRefreshSeconds));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.PortfolioRefreshSeconds));
 
         do
         {
             try
             {
-                var snapshot = await portfolio.GetSnapshotAsync(stoppingToken);
+                var snapshot = await portfolioProvider.GetSnapshotAsync(stoppingToken);
                 
                 metrics.PortfolioEquity.Set((double)snapshot.Equity);
                 metrics.PortfolioUnrealizedPnl.Set((double)snapshot.UnrealizedPnl);
@@ -71,7 +71,7 @@ public sealed class PortfolioMetricsWorker(
             {
                 metrics.ProcessingFailures.WithLabels("portfolio_metrics", "-", ex.GetType().Name).Inc();
                 
-                logger.LogError(ex, "Prometheus portfolio refresh failed.");
+                logger.LogError(ex, "Prometheus portfolioProvider refresh failed.");
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
