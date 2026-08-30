@@ -23,15 +23,14 @@ public sealed class UserStreamEventProcessor(
             using var document = JsonDocument.Parse(raw);
             var root = document.RootElement;
 
-            if (!root.TryGetProperty("e", out var eventProperty) ||
-                eventProperty.ValueKind != JsonValueKind.String ||
-                string.IsNullOrWhiteSpace(eventProperty.GetString()))
+            if (!root.TryGetProperty("e", out var eventProperty) 
+                || eventProperty.ValueKind != JsonValueKind.String 
+                || string.IsNullOrWhiteSpace(eventProperty.GetString()))
             {
                 logger.LogWarning("Binance user-stream message has no valid event type.");
                 return;
             }
 
-            var eventType = eventProperty.GetString()!;
             var envelope = new UserStreamEnvelope
             {
                 HubTimestampUtc = time.GetUtcNow().UtcDateTime,
@@ -42,6 +41,7 @@ public sealed class UserStreamEventProcessor(
             if (_options.PublishRaw)
                 await publisher.PublishAsync(RedisChannels.UserStreamRaw, envelope, ct);
 
+            var eventType = eventProperty.GetString()!;
             switch (eventType)
             {
                 case "ORDER_TRADE_UPDATE":

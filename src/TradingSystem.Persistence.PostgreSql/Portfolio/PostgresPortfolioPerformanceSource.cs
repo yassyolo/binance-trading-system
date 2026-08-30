@@ -31,11 +31,7 @@ public sealed class PostgresPortfolioPerformanceSource(
         var closedPnls = (await connection.QueryAsync<decimal>(
             new CommandDefinition(
                 sql,
-                new
-                {
-                    DayStartUtc = dayStartUtc,
-                    DayEndUtc = dayEndUtc
-                },
+                new { DayStartUtc = dayStartUtc, DayEndUtc = dayEndUtc },
                 commandTimeout: connectionFactory.CommandTimeoutSeconds,
                 cancellationToken: ct))).AsList();
 

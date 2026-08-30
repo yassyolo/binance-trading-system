@@ -12,7 +12,7 @@ using TradingSystem.Domain.Positions;
 namespace TradingSystem.Binance.Execution;
 
 public sealed class BinanceProtectedPositionService(
-    IBinanceFuturesOrderClient orders,
+    IBinanceFuturesOrderClient ordersClient,
     SafeBinanceOrderService safeOrders,
     BinanceExchangeInfoService exchange,
     IClock clock,
@@ -57,11 +57,10 @@ public sealed class BinanceProtectedPositionService(
         var tp = await exchange.RoundPriceAsync(symbol, tpRaw, ct);
         var sl = await exchange.RoundPriceAsync(symbol, slRaw, ct);
         var tpQty = await exchange.RoundQuantityAsync(symbol, quantity / 2m, ct);
-
         if (tpQty <= 0)
             throw new InvalidOperationException("Partial TP quantity is below Binance minimum.");
 
-        var tpOrder = await orders.PlaceLimitOrderAsync(
+        var tpOrder = await ordersClient.PlaceLimitOrderAsync(
             symbol,
             BinanceOrderSide.Close(side),
             BinanceOrderSide.Position(side),
@@ -72,7 +71,7 @@ public sealed class BinanceProtectedPositionService(
 
         try
         {
-            var slOrder = await orders.PlaceStopMarketAlgoOrderAsync(
+            var slOrder = await ordersClient.PlaceStopMarketAlgoOrderAsync(
                 symbol,
                 BinanceOrderSide.Close(side),
                 BinanceOrderSide.Position(side),
@@ -179,14 +178,11 @@ public sealed class BinanceProtectedPositionService(
     {
         try
         {
-            await orders.CancelOrderAsync(symbol, orderId, ct);
+            await ordersClient.CancelOrderAsync(symbol, orderId, ct);
         }
         catch (BinanceApiException ex) when (IsUnknownOrder(ex))
         {
-            logger.LogInformation(
-                "Standard Binance order was already absent while cancelling. Symbol = {Symbol} OrderId = {OrderId}",
-                symbol,
-                orderId);
+            logger.LogInformation("Standard Binance order was already absent while cancelling. Symbol = {Symbol} OrderId = {OrderId}", symbol, orderId);
         }
     }
 
@@ -194,7 +190,7 @@ public sealed class BinanceProtectedPositionService(
     {
         try
         {
-            await orders.CancelAlgoOrderAsync(symbol, orderId, ct);
+            await ordersClient.CancelAlgoOrderAsync(symbol, orderId, ct);
         }
         catch (BinanceApiException ex) when (IsUnknownOrder(ex))
         {

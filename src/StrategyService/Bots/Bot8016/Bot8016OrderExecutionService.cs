@@ -19,23 +19,19 @@ public sealed class Bot8016OrderExecutionService(
     public async Task<BotPosition> OpenAsync(Bot8016EntrySignal signal, CancellationToken ct)
     {
         var shortId = Guid.NewGuid().ToString("N")[..8];
-        var parentClientId = CreateClientId("P", shortId);
-        var tpClientId = CreateClientId("TP", shortId);
-        var slClientId = CreateClientId("SL", shortId);
+        var pId = CreateClientId("P", shortId);
+        var tpId = CreateClientId("TP", shortId);
+        var slId = CreateClientId("SL", shortId);
 
         var parent = await safeOrders.SafePlaceMarketOrderAsync(
             _options.Symbol,
             ToEntrySide(signal.Side),
             ToPositionSide(signal.Side),
             _options.Quantity,
-            parentClientId,
+            pId,
             ct);
 
-        var filled = await safeOrders.WaitForFillAsync(
-            _options.Symbol,
-            parent,
-            parentClientId,
-            ct);
+        var filled = await safeOrders.WaitForFillAsync(_options.Symbol, parent, pId, ct);
 
         var entryPrice = ResolveEntryPrice(filled);
         if (entryPrice <= 0)
@@ -68,7 +64,7 @@ public sealed class Bot8016OrderExecutionService(
             ToPositionSide(signal.Side),
             tpQuantity,
             tpPrice,
-            tpClientId,
+            tpId,
             ct);
 
         try
@@ -79,7 +75,7 @@ public sealed class Bot8016OrderExecutionService(
                 ToPositionSide(signal.Side),
                 _options.Quantity,
                 slPrice,
-                slClientId,
+                slId,
                 ct);
 
             return new BotPosition
@@ -92,14 +88,14 @@ public sealed class Bot8016OrderExecutionService(
                 EntryPrice = entryPrice,
                 Quantity = _options.Quantity,
                 RemainingQuantity = _options.Quantity,
-                ParentClientId = parentClientId,
+                ParentClientId = pId,
                 ParentOrderId = filled.OrderId,
                 ParentFilledAtUtc = DateTime.UtcNow,
-                TpClientId = tpClientId,
+                TpClientId = tpId,
                 TpOrderId = tp.OrderId,
                 TpPrice = tpPrice,
                 TpStatus = tp.Status,
-                SlClientId = slClientId,
+                SlClientId = slId,
                 SlOrderId = sl.AlgoOrderId,
                 SlPrice = slPrice,
                 SlStatus = sl.Status,

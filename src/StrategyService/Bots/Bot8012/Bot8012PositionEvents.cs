@@ -8,7 +8,8 @@ namespace StrategyService.Bots.Bot8012;
 
 public sealed class Bot8012OrderEventHandler(
     IOptions<Bot8012Options> options, 
-    IPositionStore store, IClock clock, 
+    IPositionStore positionStore, 
+    IClock clock, 
     ILogger<Bot8012OrderEventHandler> logger)
     :IBotOrderEventHandler
 {
@@ -18,26 +19,26 @@ public sealed class Bot8012OrderEventHandler(
     
     public async Task HandleTpFilledAsync(string id, decimal qty, CancellationToken ct)
     {
-        var p = await store.GetAsync(BotName, id, ct);
-        
-        if(p is null)
+        var position = await positionStore.GetAsync(BotName, id, ct);    
+        if(position is null)
             return;
         
-        p.MarkTpFilled(qty, clock.UtcNow);
+        position.MarkTpFilled(qty, clock.UtcNow);
         
-        await store.SaveAsync(p, ct);logger.LogInformation("TP filled. Bot = {Bot} Position = {Position}", BotName, id);
+        await positionStore.SaveAsync(position, ct);
+        
+        logger.LogInformation("TP filled. Bot = {Bot} Position = {Position}", BotName, id);
     }
 
     public async Task HandleTpTerminalAsync(string id, string status, CancellationToken ct)
     {
-        var p = await store.GetAsync(BotName, id, ct);
-
-        if (p is null || p.Closed)
+        var position = await positionStore.GetAsync(BotName, id, ct);
+        if (position is null || position.Closed)
             return;
 
-        p.MarkTpOrderTerminal(status, clock.UtcNow);
+        position.MarkTpOrderTerminal(status, clock.UtcNow);
 
-        await store.SaveAsync(p, ct);
+        await positionStore.SaveAsync(position, ct);
     }
 
     public Task HandleSlTriggeredAsync(string id, CancellationToken ct) 

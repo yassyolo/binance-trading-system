@@ -9,7 +9,7 @@ public static class ClientWebSocketFactory
     {
         ArgumentNullException.ThrowIfNull(options);
         
-        var socket  =  new ClientWebSocket();
+        var socket = new ClientWebSocket();
        
         socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(Math.Max(1, options.KeepAliveIntervalSeconds));
         

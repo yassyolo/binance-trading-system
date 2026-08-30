@@ -38,18 +38,6 @@ public sealed class BinanceRetryService(
         }
     }
 
-    public async Task ExecuteAsync(string operationName, Func<CancellationToken, Task> operation, CancellationToken ct)
-    {
-        await ExecuteAsync<object?>(
-            operationName,
-            async ct =>
-            {
-                await operation(ct).ConfigureAwait(false);
-                return null;
-            },
-            ct).ConfigureAwait(false);
-    }
-
     internal static bool IsTransient(Exception exception, CancellationToken callerToken)
     {
         if (exception is OperationCanceledException)

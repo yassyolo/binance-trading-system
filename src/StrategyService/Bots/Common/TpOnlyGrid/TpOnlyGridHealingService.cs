@@ -7,9 +7,9 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 
 public abstract class TpOnlyGridHealingService<TOptions>(
     TOptions options,
-    IPositionStore store,
-    IClock clock) : IBotHealingService
-    where TOptions : class, ITpOnlyGridBotOptions
+    IPositionStore positionStore,
+    IClock clock) 
+    : IBotHealingService where TOptions : class, ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
 
@@ -18,20 +18,17 @@ public abstract class TpOnlyGridHealingService<TOptions>(
         if (!options.EnableHealing || !snapshot.Symbol.Equals(options.Symbol, StringComparison.OrdinalIgnoreCase))
             return;
 
-        var activeClientIds = snapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var positions = await positionStore.GetAllAsync(BotName, ct);
 
-        var positions = await store.GetAllAsync(BotName, ct);
-
-        var positionsWithMissingTakeProfit = positions.Where(position =>
-            !position.Closed &&
-            !string.IsNullOrWhiteSpace(position.TpClientId) &&
-            !activeClientIds.Contains(position.TpClientId));
+        var positionsWithMissingTakeProfit = positions.Where(p => !p.Closed 
+            && !string.IsNullOrWhiteSpace(p.TpClientId) 
+            && !snapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase).Contains(p.TpClientId));
 
         foreach (var position in positionsWithMissingTakeProfit)
         {
             position.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
             
-            await store.SaveAsync(position, ct);
+            await positionStore.SaveAsync(position, ct);
         }
     }
 }

@@ -7,34 +7,31 @@ using TradingSystem.Persistence.PostgreSql.Connections;
 namespace TradingSystem.Persistence.PostgreSql.Operations;
 
 public sealed class OperationalAlertCandidateSource(
-    ITradingDbConnectionFactory factory) : IAlertCandidateSource
+    ITradingDbConnectionFactory factory)
+    : IAlertCandidateSource
 {
     public string SourcePrefix => "operational:";
 
-    public async Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(
-        CancellationToken ct)
+    public async Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(CancellationToken ct)
     {
         await using var connection = await factory.OpenAsync(ct);
         var result = new List<AlertCandidate>();
 
-        var stale = await connection.QueryAsync<(
-            string Component,
-            string InstanceId,
-            DateTime LastSeenUtc)>(new CommandDefinition(
+        var stale = await connection.QueryAsync<(string Component, string InstanceId, DateTime LastSeenUtc)>(new CommandDefinition(
             """
                 with latest as (
-                    select component,
-                           instance_id,
-                           last_seen_at_utc,
-                           stale_after_seconds,
-                           row_number() over(
-                               partition by component
-                               order by last_seen_at_utc desc, instance_id desc) as rn
+                    select 
+                        component,
+                        instance_id,
+                        last_seen_at_utc,
+                        stale_after_seconds,
+                        row_number() over(partition by component order by last_seen_at_utc desc, instance_id desc) as rn
                     from trading_dashboard.service_heartbeats
                 )
-                select component Component,
-                       instance_id InstanceId,
-                       last_seen_at_utc LastSeenUtc
+                select 
+                    component Component,
+                    instance_id InstanceId,
+                    last_seen_at_utc LastSeenUtc
                 from latest
                 where rn = 1
                   and last_seen_at_utc + make_interval(secs => stale_after_seconds) < now();
@@ -53,18 +50,15 @@ public sealed class OperationalAlertCandidateSource(
                 ["lastSeenUtc"] = item.LastSeenUtc.ToString("O")
             })));
 
-        var findings = await connection.QueryAsync<(
-            Guid Id,
-            string? BotName,
-            string? PositionId,
-            string FindingType,
-            string Details)>(new CommandDefinition(
+        var findings = await connection.QueryAsync<(Guid Id, string? BotName, string? PositionId, string FindingType, string Details)>(
+            new CommandDefinition(
             """
-                select id Id,
-                       bot_name BotName,
-                       short_id PositionId,
-                       finding_type FindingType,
-                       details Details
+                select 
+                    id Id,
+                    bot_name BotName,
+                    short_id PositionId,
+                    finding_type FindingType,
+                    details Details
                 from trading.reconciliation_findings
                 where severity = 'Critical' and not resolved;
                 """,

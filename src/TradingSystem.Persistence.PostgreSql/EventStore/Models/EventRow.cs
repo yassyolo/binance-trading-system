@@ -23,7 +23,8 @@ public sealed record EventRow(
     string MetadataJson)
 {
     public StoredTradingEvent ToStored()
-        => new(GlobalPosition,
+        => new(
+            GlobalPosition,
             new EventEnvelope(
                 EventId,
                 EventType,

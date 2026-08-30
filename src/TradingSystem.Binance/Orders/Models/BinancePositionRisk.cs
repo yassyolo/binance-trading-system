@@ -1,4 +1,4 @@
-namespace TradingSystem.Binance.Positions;
+namespace TradingSystem.Binance.Orders.Models;
 
 public sealed record BinancePositionRisk
 {
@@ -11,6 +11,4 @@ public sealed record BinancePositionRisk
     public decimal EntryPrice { get; init; }
     
     public decimal MarkPrice { get; init; }
-    
-    public bool IsOpen => PositionAmount != 0;
 }

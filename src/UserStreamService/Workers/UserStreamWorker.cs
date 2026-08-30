@@ -8,37 +8,30 @@ namespace UserStreamService.Workers;
 
 public sealed class UserStreamWorker(
     IBinanceListenKeyClient listenKeys,
-    IBinanceUserStreamClient stream,
-    UserStreamEventProcessor processor,
-    HealingPublisher healing,
+    IBinanceUserStreamClient streamClient,
+    UserStreamEventProcessor eventProcessor,
+    HealingPublisher healingPublisher,
     IOptions<BinanceUserStreamOptions> binanceOptions,
-    IOptions<UserStreamServiceOptions> serviceOptions,
+    IOptions<UserStreamServiceOptions> userStreamOptions,
     TimeProvider time,
     ILogger<UserStreamWorker> logger)
     : BackgroundService
 {
     private readonly object _sync = new();
     private readonly BinanceUserStreamOptions _binanceOptions = binanceOptions.Value;
-    private readonly UserStreamServiceOptions _serviceOptions = serviceOptions.Value;
+    private readonly UserStreamServiceOptions _serviceOptions = userStreamOptions.Value;
 
     private string? _listenKey;
     private DateTimeOffset? _disconnectedAtUtc;
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // A process restart can miss Redis Pub/Sub events that happened while the
-        // process was down. Treat the first successful connection as a recovery
-        // boundary and publish the same REST healing snapshot used after reconnect.
         lock (_sync)
         {
-            _disconnectedAtUtc =
-                time.GetUtcNow() -
-                TimeSpan.FromSeconds(Math.Max(0, _serviceOptions.MinDowntimeForHealingSeconds));
+            _disconnectedAtUtc = time.GetUtcNow() - TimeSpan.FromSeconds(Math.Max(0, _serviceOptions.MinDowntimeForHealingSeconds));
         }
 
-        return Task.WhenAll(
-            StreamLoopAsync(stoppingToken),
-            KeepAliveLoopAsync(stoppingToken));
+        return Task.WhenAll(StreamLoopAsync(stoppingToken), KeepAliveLoopAsync(stoppingToken));
     }
 
     private async Task StreamLoopAsync(CancellationToken ct)
@@ -52,11 +45,7 @@ public sealed class UserStreamWorker(
                 lock (_sync)
                     _listenKey = listenKey;
 
-                await stream.RunAsync(
-                    listenKey,
-                    processor.ProcessAsync,
-                    OnConnectedAsync,
-                    ct);
+                await streamClient.RunAsync(listenKey, eventProcessor.ProcessAsync, OnConnectedAsync, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -64,7 +53,7 @@ public sealed class UserStreamWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Binance user stream failed.");
+                logger.LogError(ex, "Binance user streamClient failed.");
             }
             finally
             {
@@ -76,23 +65,19 @@ public sealed class UserStreamWorker(
             }
 
             if (!ct.IsCancellationRequested)
-                await Task.Delay(
-                    TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds),
-                    ct);
+                await Task.Delay(TimeSpan.FromSeconds(_serviceOptions.ReconnectDelaySeconds), ct);
         }
     }
 
     private async Task KeepAliveLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_binanceOptions.ListenKeyKeepAliveSeconds));
 
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
                 string? listenKey;
-
                 lock (_sync)
                     listenKey = _listenKey;
 
@@ -114,8 +99,7 @@ public sealed class UserStreamWorker(
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
+        {}
     }
 
     private async Task OnConnectedAsync(CancellationToken ct)
@@ -128,17 +112,15 @@ public sealed class UserStreamWorker(
             _disconnectedAtUtc = null;
         }
 
-        logger.LogInformation("Binance user stream connected.");
+        logger.LogInformation("Binance user streamClient connected.");
 
         if (disconnectedAtUtc is null)
             return;
 
         var downtime = time.GetUtcNow() - disconnectedAtUtc.Value;
 
-        logger.LogInformation(
-            "Publishing post-connect healing snapshot. DowntimeSeconds = {DowntimeSeconds}",
-            Math.Round(downtime.TotalSeconds, 1));
+        logger.LogInformation("Publishing post-connect healingPublisher snapshot. DowntimeSeconds = {DowntimeSeconds}", Math.Round(downtime.TotalSeconds, 1));
 
-        await healing.PublishAfterReconnectAsync(downtime, ct);
+        await healingPublisher.PublishAfterReconnectAsync(downtime, ct);
     }
 }

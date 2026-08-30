@@ -1,5 +1,6 @@
 using Dapper;
 using TradingSystem.Persistence.PostgreSql.Connections;
+using TradingSystem.Persistence.PostgreSql.Reliability.Models;
 using TradingSystem.Reconciliation.Contracts;
 using TradingSystem.Reconciliation.Models;
 
@@ -36,18 +37,12 @@ public sealed class PostgresReconciliationFindingStore(
 
         var currentFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var finding in result.Findings)
+        foreach (var f in result.Findings)
         {
-            var fingerprint = Fingerprint(
-                finding.BotName,
-                finding.Symbol,
-                finding.ShortId,
-                finding.Type.ToString());
-
+            var fingerprint = Fingerprint(f.BotName, f.Symbol, f.ShortId, f.Type.ToString());
             currentFingerprints.Add(fingerprint);
 
-            var existingIds = (await connection.QueryAsync<Guid>(
-                new CommandDefinition(
+            var existingIds = (await connection.QueryAsync<Guid>(new CommandDefinition(
                 """
                 SELECT id
                 FROM trading.reconciliation_findings
@@ -60,10 +55,10 @@ public sealed class PostgresReconciliationFindingStore(
                 """,
                 new
                 {
-                    Bot = finding.BotName,
-                    finding.Symbol,
-                    Short = finding.ShortId,
-                    Type = finding.Type.ToString()
+                    Bot = f.BotName,
+                    f.Symbol,
+                    Short = f.ShortId,
+                    Type = f.Type.ToString()
                 },
                 transaction,
                 cancellationToken: ct))).AsList();
@@ -86,34 +81,21 @@ public sealed class PostgresReconciliationFindingStore(
                         auto_heal_allowed,
                         resolved,
                         resolved_at_utc)
-                    VALUES(
-                        @Id,
-                        @Run,
-                        @At,
-                        @Bot,
-                        @Symbol,
-                        @Short,
-                        @Type,
-                        @Severity,
-                        @Details,
-                        @Action,
-                        @Auto,
-                        false,
-                        null);
+                    VALUES(@Id, @Run, @At, @Bot, @Symbol, @Short, @Type, @Severity, @Details, @Action, @Auto, false, null);
                     """,
                     new
                     {
-                        finding.Id,
+                        f.Id,
                         Run = runId,
-                        At = finding.DetectedAtUtc,
-                        Bot = finding.BotName,
-                        finding.Symbol,
-                        Short = finding.ShortId,
-                        Type = finding.Type.ToString(),
-                        Severity = finding.Severity.ToString(),
-                        finding.Details,
-                        Action = finding.SuggestedAction.ToString(),
-                        Auto = finding.AutoHealAllowed
+                        At = f.DetectedAtUtc,
+                        Bot = f.BotName,
+                        f.Symbol,
+                        Short = f.ShortId,
+                        Type = f.Type.ToString(),
+                        Severity = f.Severity.ToString(),
+                        f.Details,
+                        Action = f.SuggestedAction.ToString(),
+                        Auto = f.AutoHealAllowed
                     },
                     transaction,
                     cancellationToken: ct));
@@ -138,11 +120,11 @@ public sealed class PostgresReconciliationFindingStore(
                 {
                     Id = canonicalId,
                     Run = runId,
-                    At = finding.DetectedAtUtc,
-                    Severity = finding.Severity.ToString(),
-                    finding.Details,
-                    Action = finding.SuggestedAction.ToString(),
-                    Auto = finding.AutoHealAllowed
+                    At = f.DetectedAtUtc,
+                    Severity = f.Severity.ToString(),
+                    f.Details,
+                    Action = f.SuggestedAction.ToString(),
+                    Auto = f.AutoHealAllowed
                 },
                 transaction,
                 cancellationToken: ct));
@@ -166,18 +148,16 @@ public sealed class PostgresReconciliationFindingStore(
             }
         }
 
-        // Resolve an issue only after a complete reconciliation run evaluated its symbol
-        // and that issue no longer appears in the current snapshot. A successfully healed
-        // issue therefore becomes resolved on the next cycle.
         if (result.EvaluatedSymbols.Count > 0)
         {
             var unresolved = (await connection.QueryAsync<UnresolvedFindingRow>(new CommandDefinition(
                 """
-                SELECT id,
-                       bot_name AS BotName,
-                       symbol AS Symbol,
-                       short_id AS ShortId,
-                       finding_type AS FindingType
+                SELECT 
+                    id,
+                    bot_name AS BotName,
+                    symbol AS Symbol,
+                    short_id AS ShortId,
+                    finding_type AS FindingType
                 FROM trading.reconciliation_findings
                 WHERE NOT resolved
                   AND symbol = ANY(@Symbols);
@@ -187,9 +167,8 @@ public sealed class PostgresReconciliationFindingStore(
                 cancellationToken: ct))).AsList();
 
             var idsToResolve = unresolved
-                .Where(row => !currentFingerprints.Contains(
-                    Fingerprint(row.BotName, row.Symbol, row.ShortId, row.FindingType)))
-                .Select(row => row.Id)
+                .Where(r => !currentFingerprints.Contains(Fingerprint(r.BotName, r.Symbol, r.ShortId, r.FindingType)))
+                .Select(r => r.Id)
                 .ToArray();
 
             if (idsToResolve.Length > 0)
@@ -197,7 +176,8 @@ public sealed class PostgresReconciliationFindingStore(
                 await connection.ExecuteAsync(new CommandDefinition(
                     """
                     UPDATE trading.reconciliation_findings
-                    SET resolved = true,
+                    SET 
+                        resolved = true,
                         resolved_at_utc = COALESCE(resolved_at_utc, @ResolvedAt)
                     WHERE id = ANY(@Ids);
                     """,
@@ -240,11 +220,4 @@ public sealed class PostgresReconciliationFindingStore(
             symbol.Trim().ToUpperInvariant(),
             shortId?.Trim().ToUpperInvariant() ?? string.Empty,
             findingType.Trim().ToUpperInvariant());
-
-    private sealed record UnresolvedFindingRow(
-        Guid Id,
-        string BotName,
-        string Symbol,
-        string? ShortId,
-        string FindingType);
 }

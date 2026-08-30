@@ -9,7 +9,7 @@ using UserStreamService.Configuration;
 namespace UserStreamService.Services;
 
 public sealed class HealingPublisher(
-    IBinanceOrdersSnapshotProvider snapshots,
+    IBinanceOrdersSnapshotProvider snapshotProvider,
     IRedisMessagePublisher publisher,
     IOptions<UserStreamServiceOptions> options,
     TimeProvider time,
@@ -42,7 +42,7 @@ public sealed class HealingPublisher(
             {
                 ct.ThrowIfCancellationRequested();
 
-                var snapshot = await snapshots.GetAsync(symbol, ct);
+                var snapshot = await snapshotProvider.GetAsync(symbol, ct);
                 var activeClientIds = Collect(snapshot.NormalOrders, snapshot.AlgoOrders);
 
                 var message = new HealingSnapshotMessage

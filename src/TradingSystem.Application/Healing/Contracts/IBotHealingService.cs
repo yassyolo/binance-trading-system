@@ -6,5 +6,5 @@ public interface IBotHealingService
 {
     string BotName { get; }
     
-    Task HealAsync(HealingSnapshotMessage snapshot,  CancellationToken ct);
+    Task HealAsync(HealingSnapshotMessage snapshot, CancellationToken ct);
 }

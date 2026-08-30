@@ -182,11 +182,7 @@ public sealed class PostgresPaperTradingStore(
 
         await using var connection = await connections.OpenAsync(ct);
        
-        var row = await connection.QuerySingleAsync<AccountRow>(
-            new CommandDefinition(
-                sql,
-                commandTimeout: connections.CommandTimeoutSeconds,
-                cancellationToken: ct));
+        var row = await connection.QuerySingleAsync<AccountRow>(new CommandDefinition(sql, commandTimeout: connections.CommandTimeoutSeconds, cancellationToken: ct));
 
         return new PaperTradingAccount(
             initialBalance,

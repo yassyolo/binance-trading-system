@@ -1,5 +1,4 @@
 using TradingSystem.Binance.Orders.Models;
-using TradingSystem.Binance.Positions;
 
 namespace TradingSystem.Binance.Orders.Contracts;
 

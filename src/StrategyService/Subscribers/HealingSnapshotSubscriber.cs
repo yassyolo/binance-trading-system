@@ -71,7 +71,7 @@ public sealed class HealingSnapshotSubscriber(
         }
     }
 
-    private async Task ProcessSafelyAsync(string raw, CancellationToken token)
+    private async Task ProcessSafelyAsync(string raw, CancellationToken ct)
     {
         try
         {
@@ -84,20 +84,20 @@ public sealed class HealingSnapshotSubscriber(
 
             foreach (var service in registry.ForSymbol(snapshot.Symbol))
             {
-                token.ThrowIfCancellationRequested();
-                await service.HealAsync(snapshot, token);
+                ct.ThrowIfCancellationRequested();
+                
+                await service.HealAsync(snapshot, ct);
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
+        catch (JsonException jsonEx)
         {
+            logger.LogWarning(jsonEx, "Invalid healing snapshot JSON. Payload = {Payload}", raw);
         }
-        catch (JsonException exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Invalid healing snapshot JSON. Payload = {Payload}", raw);
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(exception, "Healing snapshot processing failed.");
+            logger.LogError(ex, "Healing snapshot processing failed.");
         }
     }
 
@@ -108,7 +108,6 @@ public sealed class HealingSnapshotSubscriber(
             await Task.Delay(RetryDelay, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
+        {}
     }
 }

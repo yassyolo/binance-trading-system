@@ -33,31 +33,20 @@ namespace TradingSystem.Persistence.PostgreSql;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddPostgresTradingHistory(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddPostgresTradingHistory(this IServiceCollection services, IConfiguration configuration)
     {
-        var options = configuration
-            .GetSection(PostgresTradingHistoryOptions.SectionName)
-            .Get<PostgresTradingHistoryOptions>() ?? new();
+        var options = configuration.GetSection(PostgresTradingHistoryOptions.SectionName).Get<PostgresTradingHistoryOptions>() ?? new();
 
         if (string.IsNullOrWhiteSpace(options.ConnectionStringName))
-            throw new InvalidOperationException(
-                "TradingHistory ConnectionStringName is required.");
+            throw new InvalidOperationException("TradingHistory ConnectionStringName is required.");
 
         if (options.CommandTimeoutSeconds <= 0)
-            throw new InvalidOperationException(
-                "TradingHistory CommandTimeoutSeconds must be positive.");
+            throw new InvalidOperationException("TradingHistory CommandTimeoutSeconds must be positive.");
 
-        var connectionString = configuration.GetConnectionString(
-            options.ConnectionStringName)
-            ?? throw new InvalidOperationException(
-                $"Missing connection string '{options.ConnectionStringName}'.");
+        var connectionString = configuration.GetConnectionString(options.ConnectionStringName)
+            ?? throw new InvalidOperationException($"Missing connection string '{options.ConnectionStringName}'.");
 
-        services.AddSingleton<ITradingDbConnectionFactory>(
-            new NpgsqlTradingDbConnectionFactory(
-                connectionString,
-                Math.Max(1, options.CommandTimeoutSeconds)));
+        services.AddSingleton<ITradingDbConnectionFactory>(new NpgsqlTradingDbConnectionFactory(connectionString, Math.Max(1, options.CommandTimeoutSeconds)));
 
         RegisterTradingHistory(services);
         RegisterAnalytics(services);
@@ -102,9 +91,9 @@ public static class DependencyInjection
     private static void RegisterOperations(IServiceCollection services)
     {
         services.AddSingleton<PostgresOperationalStore>();
-        services.AddSingleton<IServiceHeartbeatStore>(serviceProvider => serviceProvider.GetRequiredService<PostgresOperationalStore>());
-        services.AddSingleton<IAlertStore>(serviceProvider => serviceProvider.GetRequiredService<PostgresOperationalStore>());
-        services.AddSingleton<IAuditLog>(serviceProvider => serviceProvider.GetRequiredService<PostgresOperationalStore>());
+        services.AddSingleton<IServiceHeartbeatStore>(sp => sp.GetRequiredService<PostgresOperationalStore>());
+        services.AddSingleton<IAlertStore>(sp => sp.GetRequiredService<PostgresOperationalStore>());
+        services.AddSingleton<IAuditLog>(sp => sp.GetRequiredService<PostgresOperationalStore>());
         services.AddSingleton<IAlertCandidateSource, OperationalAlertCandidateSource>();
     }
 
@@ -115,39 +104,27 @@ public static class DependencyInjection
         services.AddSingleton<IPortfolioPerformanceSource, PostgresPortfolioPerformanceSource>();
     }
 
-    private static void RegisterPaperTrading(
-        IServiceCollection services)
+    private static void RegisterPaperTrading(IServiceCollection services)
     {
         services.RemoveAll<IPaperTradingStore>();
         services.RemoveAll<IPaperPortfolioPositionSource>();
 
         services.AddSingleton<PostgresPaperTradingStore>();
-
-        services.AddSingleton<IPaperTradingStore>(
-            serviceProvider =>
-                serviceProvider.GetRequiredService<
-                    PostgresPaperTradingStore>());
-
-        services.AddSingleton<IPaperPortfolioPositionSource>(
-            serviceProvider =>
-                serviceProvider.GetRequiredService<
-                    PostgresPaperTradingStore>());
+        services.AddSingleton<IPaperTradingStore>(sp => sp.GetRequiredService<PostgresPaperTradingStore>());
+        services.AddSingleton<IPaperPortfolioPositionSource>(sp => sp.GetRequiredService<PostgresPaperTradingStore>());
     }
 
-    private static void RegisterEventStore(
-        IServiceCollection services)
+    private static void RegisterEventStore(IServiceCollection services)
     {
-        services.AddSingleton<ITradingEventStore,
-            PostgresTradingEventStore>();
-
+        services.AddSingleton<ITradingEventStore, PostgresTradingEventStore>();
         services.AddSingleton<ITradingTimelineReader, TradingTimelineReader>();
     }
 
     private static void RegisterReplayEngine(IServiceCollection services)
     {
         services.AddSingleton<PostgresReplayStore>();
-        services.AddSingleton<IReplayJobStore>(serviceProvider => serviceProvider.GetRequiredService<PostgresReplayStore>());
-        services.AddSingleton<IReplayEventSource>(serviceProvider => serviceProvider.GetRequiredService<PostgresReplayStore>());
+        services.AddSingleton<IReplayJobStore>(sp => sp.GetRequiredService<PostgresReplayStore>());
+        services.AddSingleton<IReplayEventSource>(sp => sp.GetRequiredService<PostgresReplayStore>());
         services.AddSingleton<IReplayStrategyEvaluator, RecordedStrategyEvaluator>();
         services.AddSingleton<ReplayEngine.Engine.ReplayEngine>();
     }

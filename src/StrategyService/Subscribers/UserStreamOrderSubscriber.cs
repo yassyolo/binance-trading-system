@@ -19,13 +19,13 @@ namespace StrategyService.Subscribers;
 public sealed class UserStreamOrderSubscriber(
     IConnectionMultiplexer redis,
     IEnumerable<IBotOrderEventHandler> handlers,
-    IEventDeduplicationStore deduplication,
+    IEventDeduplicationStore eventDeduplication,
     ITradingPipelineRecorder history,
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
     ITradingEnvironmentProvider environment,
     IBotRuntimeConfigurationProvider configurations,
-    LivePositionLifecycleRecorder lifecycle,
+    LivePositionLifecycleRecorder positionLifecycle,
     ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
@@ -94,17 +94,17 @@ public sealed class UserStreamOrderSubscriber(
     {
         try
         {
-            using var document = JsonDocument.Parse(raw);
+            using var doc = JsonDocument.Parse(raw);
             
-            var binance = document.RootElement.TryGetProperty("binance", out var wrapper)
+            var binance = doc.RootElement.TryGetProperty("binance", out var wrapper)
                 ? wrapper
-                : document.RootElement;
+                : doc.RootElement;
 
             var eventType = GetString(binance, "e");
             if (eventType is not ("ORDER_TRADE_UPDATE" or "ALGO_UPDATE"))
                 return;
 
-            var order = binance.TryGetProperty("options", out var node)
+            var order = binance.TryGetProperty("_options", out var node)
                 ? node
                 : binance.TryGetProperty("ao", out node)
                     ? node
@@ -115,11 +115,9 @@ public sealed class UserStreamOrderSubscriber(
                            ?? GetString(order, "clientAlgoId")
                            ?? GetString(order, "caid");
 
-            if (!BinanceClientOrderId.TryParse(clientId, out var bot, out var role, out var shortId) ||
-                !_handlers.TryGetValue(bot, out var handler))
-            {
+            if (!BinanceClientOrderId.TryParse(clientId, out var bot, out var role, out var shortId) 
+                || !_handlers.TryGetValue(bot, out var handler))
                 return;
-            }
 
             var status = GetString(order, "X")
                          ?? GetString(order, "orderStatus")
@@ -136,8 +134,7 @@ public sealed class UserStreamOrderSubscriber(
             var price = GetDecimal(order, "p");
            
             var key = $"{eventType}:{orderId}:{clientId}:{status}:{executed.ToString(CultureInfo.InvariantCulture)}";
-
-            if (!await deduplication.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
+            if (!await eventDeduplication.TryBeginAsync(key, TimeSpan.FromHours(24), ct))
                 return;
 
             metrics.OrderEvents.WithLabels(bot, symbol, role, status ?? "unknown").Inc();
@@ -194,7 +191,7 @@ public sealed class UserStreamOrderSubscriber(
             else if (role is "S3" or "STOP3" && IsTriggered(status))
                 await handler.HandleStop3TriggeredAsync(shortId, ct);
 
-            await lifecycle.RecordClosedAsync(bot, shortId, status, ct);
+            await positionLifecycle.RecordClosedAsync(bot, shortId, status, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -217,8 +214,8 @@ public sealed class UserStreamOrderSubscriber(
             : environment.EnvironmentName;
     }
 
-    private static bool IsTriggered(string? status) =>
-        status is "FILLED" or "FINISHED" or "TRIGGERED";
+    private static bool IsTriggered(string? status)
+        => status is "FILLED" or "FINISHED" or "TRIGGERED";
 
     private static string? GetString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value)

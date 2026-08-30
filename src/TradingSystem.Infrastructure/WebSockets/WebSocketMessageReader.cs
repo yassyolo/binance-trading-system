@@ -20,6 +20,7 @@ public static class WebSocketMessageReader
         try
         {
             using var stream = new MemoryStream();
+            
             while (true)
             {
                 var result = await socket.ReceiveAsync(buffer.AsMemory(), ct);

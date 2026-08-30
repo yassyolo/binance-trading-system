@@ -12,10 +12,10 @@ namespace TradingSystem.Reconciliation.Services;
 public sealed class PositionReconciliationService(
     IOptions<ReconciliationOptions> options,
     IPositionStore localStore,
-    IExchangeStateProvider exchange,
+    IExchangeStateProvider exchangeStateProvider,
     IHealingActionExecutor healer,
-    IReconciliationFindingStore findingStore,
-    IBotRuntimeConfigurationProvider runtimeConfigurations)
+    IReconciliationFindingStore reconciliationFindingStore,
+    IBotRuntimeConfigurationProvider configProvider)
 {
     private readonly ReconciliationOptions _options = options.Value;
 
@@ -30,10 +30,10 @@ public sealed class PositionReconciliationService(
         {
             var emptyResult = new ReconciliationRunResult(startedAtUtc, DateTime.UtcNow, findings, 0)
             {
-                EvaluatedSymbols = Array.Empty<string>()
+                EvaluatedSymbols = []
             };
 
-            await findingStore.SaveRunAsync(emptyResult, ct);
+            await reconciliationFindingStore.SaveRunAsync(emptyResult, ct);
             
             return emptyResult;
         }
@@ -42,12 +42,12 @@ public sealed class PositionReconciliationService(
         {
             ct.ThrowIfCancellationRequested();
 
-            var remote = await exchange.GetAsync(symbol, ct);
+            var remotePositions = await exchangeStateProvider.GetAsync(symbol, ct);
             var localPositions = await LoadLocalPositionsAsync(symbol, liveBots, ct);
 
-            DetectPositionQuantityFindings(symbol, localPositions, remote.Positions, findings);
-            DetectLocalPositionAndProtectiveOrderFindings(localPositions, remote, findings);
-            DetectOrphanOrders(symbol, localPositions, remote.Orders, findings);
+            DetectPositionQuantityFindings(symbol, localPositions, remotePositions.Positions, findings);
+            DetectLocalPositionAndProtectiveOrderFindings(localPositions, remotePositions, findings);
+            DetectOrphanOrders(symbol, localPositions, remotePositions.Orders, findings);
 
             evaluatedSymbols.Add(symbol);
         }
@@ -59,7 +59,7 @@ public sealed class PositionReconciliationService(
             EvaluatedSymbols = evaluatedSymbols
         };
 
-        await findingStore.SaveRunAsync(result, ct);
+        await reconciliationFindingStore.SaveRunAsync(result, ct);
 
         return result;
     }
@@ -72,15 +72,13 @@ public sealed class PositionReconciliationService(
         {
             ct.ThrowIfCancellationRequested();
 
-            var config = await runtimeConfigurations.GetAsync(bot, ct);
+            var config = await configProvider.GetAsync(bot, ct);
             if (config is null)
                 continue;
 
-            if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-                config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
-            {
+            if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) 
+                || config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
                 result.Add(bot);
-            }
         }
 
         return result;
@@ -96,8 +94,7 @@ public sealed class PositionReconciliationService(
 
             var positions = await localStore.GetAllAsync(bot, ct);
 
-            result.AddRange(positions.Where(p =>!p.Closed 
-                && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
+            result.AddRange(positions.Where(p =>!p.Closed  && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
         }
 
         return result;
@@ -112,10 +109,9 @@ public sealed class PositionReconciliationService(
         foreach (var side in new[] { "Long", "Short" })
         {
             var localForSide = localPositions.Where(p => p.Side.ToString().Equals(side, StringComparison.OrdinalIgnoreCase)).ToArray();
-            var localQuantity = localForSide.Sum(position => Math.Abs(position.RemainingQuantity));
+            var localQuantity = localForSide.Sum(p => Math.Abs(p.RemainingQuantity));
 
-            var remoteQuantity = remotePositions
-                .Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) 
+            var remoteQuantity = remotePositions.Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) 
                     && p.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
                 .Sum(p => Math.Abs(p.Quantity));
 
@@ -149,7 +145,7 @@ public sealed class PositionReconciliationService(
                 null,
                 ReconciliationFindingType.QuantityMismatch,
                 ReconciliationSeverity.Critical,
-                $"Aggregated {side} quantity mismatch. Local = {localQuantity}, exchange = {remoteQuantity}.",
+                $"Aggregated {side} quantity mismatch. Local = {localQuantity}, exchangeStateProvider = {remoteQuantity}.",
                 HealingActionType.RequestManualReview,
                 false));
         }
@@ -164,51 +160,51 @@ public sealed class PositionReconciliationService(
             .GroupBy(o => o.ClientOrderId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var position in localPositions)
+        foreach (var p in localPositions)
         {
-            var hasRelatedOrder = EnumerateClientOrderIds(position).Any(ordersByClientId.ContainsKey);
+            var hasRelatedOrder = EnumerateClientOrderIds(p).Any(ordersByClientId.ContainsKey);
 
             var hasRemoteSidePosition = remote.Positions.Any(p =>
-                p.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase) &&
-                p.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) &&
-                Math.Abs(p.Quantity) > _options.QuantityTolerance);
+                p.Symbol.Equals(p.Symbol, StringComparison.OrdinalIgnoreCase) 
+                && p.Side.Equals(p.Side.ToString(), StringComparison.OrdinalIgnoreCase) 
+                && Math.Abs(p.Quantity) > _options.QuantityTolerance);
 
             if (!hasRemoteSidePosition && !hasRelatedOrder)
             {
                 findings.Add(ReconciliationFinding.New(
-                    position,
+                    p,
                     ReconciliationFindingType.StaleLocalPosition,
                     ReconciliationSeverity.Warning,
-                    "Local p has no exchange p or related open orders.",
+                    "Local position has no exchangeStateProvider p or related open orders.",
                     HealingActionType.DeleteStaleLocalPosition,
                     _options.AutoHealStaleLocalPositions));
               
                 continue;
             }
 
-            if (!position.TpExecuted &&
-                !string.IsNullOrWhiteSpace(position.TpClientId) &&
-                !ordersByClientId.ContainsKey(position.TpClientId))
+            if (!p.TpExecuted
+                && !string.IsNullOrWhiteSpace(p.TpClientId) 
+                && !ordersByClientId.ContainsKey(p.TpClientId))
             {
                 findings.Add(ReconciliationFinding.New(
-                    position,
+                    p,
                     ReconciliationFindingType.MissingTakeProfit,
                     ReconciliationSeverity.Critical,
-                    "Expected take-profit o is missing.",
+                    "Expected take-profit order is missing.",
                     HealingActionType.RecreateTakeProfit,
                     _options.AutoHealProtectiveOrders));
             }
 
-            if (position.ProtectiveActive &&
-                !position.SlExecuted &&
-                !string.IsNullOrWhiteSpace(position.SlClientId) &&
-                !ordersByClientId.ContainsKey(position.SlClientId))
+            if (p.ProtectiveActive 
+                && !p.SlExecuted 
+                && !string.IsNullOrWhiteSpace(p.SlClientId)
+                && !ordersByClientId.ContainsKey(p.SlClientId))
             {
                 findings.Add(ReconciliationFinding.New(
-                    position,
+                    p,
                     ReconciliationFindingType.MissingStopLoss,
                     ReconciliationSeverity.Critical,
-                    "Expected stop-loss o is missing.",
+                    "Expected stop-loss order is missing.",
                     HealingActionType.RecreateStopLoss,
                     _options.AutoHealProtectiveOrders));
             }
@@ -234,7 +230,7 @@ public sealed class PositionReconciliationService(
                 null,
                 ReconciliationFindingType.OrphanExchangeOrder,
                 ReconciliationSeverity.Critical,
-                $"Exchange o '{order.ClientOrderId}' is not represented in local state.",
+                $"Exchange order '{order.ClientOrderId}' is not represented in local state.",
                 HealingActionType.RequestManualReview,
                 false));
         }
@@ -266,7 +262,7 @@ public sealed class PositionReconciliationService(
             position.CloseClientId
         };
 
-        return values.Where(value => !string.IsNullOrWhiteSpace(value))!;
+        return values.Where(v => !string.IsNullOrWhiteSpace(v))!;
     }
 
     private static string ResolveBot(string clientOrderId)

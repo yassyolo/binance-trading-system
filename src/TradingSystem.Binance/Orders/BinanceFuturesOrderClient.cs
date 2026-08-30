@@ -8,7 +8,6 @@ using TradingSystem.Binance.Configuration;
 using TradingSystem.Binance.Exceptions;
 using TradingSystem.Binance.Orders.Contracts;
 using TradingSystem.Binance.Orders.Models;
-using TradingSystem.Binance.Positions;
 
 namespace TradingSystem.Binance.Orders;
 
@@ -81,8 +80,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     }
 
     public async Task<BinanceOrderResult> GetOrderAsync(string symbol, string orderId, CancellationToken ct)
-        => ParseOrder(await SendSignedAsync(
-            HttpMethod.Get,
+        => ParseOrder(await SendSignedAsync(HttpMethod.Get,
             "fapi/v1/order",
             new()
             {
@@ -92,8 +90,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
             ct));
 
     public async Task<BinanceOrderResult> GetOrderByClientOrderIdAsync(string symbol, string clientOrderId, CancellationToken ct)
-        => ParseOrder(await SendSignedAsync(
-            HttpMethod.Get,
+        => ParseOrder(await SendSignedAsync(HttpMethod.Get,
             "fapi/v1/order",
             new()
             {
@@ -159,16 +156,22 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
     public async Task<BinanceSymbolFilters> GetSymbolFiltersAsync(string symbol, CancellationToken ct)
     {
         var normalizedSymbol = NormalizeSymbol(symbol);
-        using var document = JsonDocument.Parse(await SendUnsignedAsync("fapi/v1/exchangeInfo", new() { ["symbol"] = normalizedSymbol }, ct));
+        
+        using var document = JsonDocument.Parse(
+            await SendUnsignedAsync(
+                "fapi/v1/exchangeInfo", 
+                new() { ["symbol"] = normalizedSymbol }, 
+                ct));
+       
         var symbolElement = document.RootElement.GetProperty("symbols").EnumerateArray()
-            .FirstOrDefault(element => StringValue(element, "symbol").Equals(normalizedSymbol, StringComparison.OrdinalIgnoreCase));
-
+            .FirstOrDefault(e => StringValue(e, "symbol")
+            .Equals(normalizedSymbol, StringComparison.OrdinalIgnoreCase));
         if (symbolElement.ValueKind == JsonValueKind.Undefined)
             throw new InvalidOperationException($"Binance exchange info does not contain symbol '{normalizedSymbol}'.");
 
         var filters = symbolElement.GetProperty("filters").EnumerateArray().ToArray();
-        var priceFilter = filters.FirstOrDefault(element => StringValue(element, "filterType") == "PRICE_FILTER");
-        var lotSizeFilter = filters.FirstOrDefault(element => StringValue(element, "filterType") == "LOT_SIZE");
+        var priceFilter = filters.FirstOrDefault(e => StringValue(e, "filterType") == "PRICE_FILTER");
+        var lotSizeFilter = filters.FirstOrDefault(e => StringValue(e, "filterType") == "LOT_SIZE");
 
         if (priceFilter.ValueKind == JsonValueKind.Undefined || lotSizeFilter.ValueKind == JsonValueKind.Undefined)
             throw new InvalidOperationException($"Required exchange filters are missing for symbol '{normalizedSymbol}'.");
@@ -183,8 +186,7 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
 
     public async Task SetHedgeModeAsync(CancellationToken ct)
     {
-        var currentModeJson = await SendSignedAsync(
-            HttpMethod.Get,
+        var currentModeJson = await SendSignedAsync(HttpMethod.Get,
             "fapi/v1/positionSide/dual",
             new(),
             ct);
@@ -411,14 +413,10 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
         return NumberValue(document.RootElement, "markPrice");
     }
 
-    public async Task<IReadOnlyCollection<BinanceTradeFill>> GetTradeFillsForOrderAsync(
-        string symbol,
-        string orderId,
-        CancellationToken ct)
+    public async Task<IReadOnlyCollection<BinanceTradeFill>> GetTradeFillsForOrderAsync(string symbol, string orderId, CancellationToken ct)
     {
         using var document = JsonDocument.Parse(
-            await SendSignedAsync(
-                HttpMethod.Get,
+            await SendSignedAsync(HttpMethod.Get,
                 "fapi/v1/userTrades",
                 new()
                 {
@@ -427,15 +425,14 @@ public sealed class BinanceFuturesOrderClient : IBinanceFuturesOrderClient
                 },
                 ct));
 
-        return document.RootElement
-            .EnumerateArray()
-            .Select(element => new BinanceTradeFill
+        return document.RootElement.EnumerateArray()
+            .Select(r => new BinanceTradeFill
             {
-                Symbol = StringValue(element, "symbol"),
-                OrderId = FlexibleString(element, "orderId"),
-                Price = NumberValue(element, "price"),
-                Quantity = NumberValue(element, "qty"),
-                QuoteQuantity = NumberValue(element, "quoteQty")
+                Symbol = StringValue(r, "symbol"),
+                OrderId = FlexibleString(r, "orderId"),
+                Price = NumberValue(r, "price"),
+                Quantity = NumberValue(r, "qty"),
+                QuoteQuantity = NumberValue(r, "quoteQty")
             })
             .ToArray();
     }

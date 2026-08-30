@@ -7,7 +7,9 @@ using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.BotRuntime;
 
-public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory) : IBotCommandQueue
+public sealed class PostgresBotCommandQueue(
+    ITradingDbConnectionFactory factory)
+    : IBotCommandQueue
 {
     public async Task<IReadOnlyCollection<BotCommand>> ClaimPendingAsync(string workerId, int batchSize, TimeSpan processingTimeout, CancellationToken ct)
     {
@@ -88,20 +90,18 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
                 error = @error, 
                 next_attempt_at_utc = 
                     case 
-                    when @retryable then now() + make_interval(secs  =>  least(300,  power(2,  greatest(attempt_count, 1))::int)) 
-                    else next_attempt_at_utc 
+                        when @retryable then now() + make_interval(secs  =>  least(300,  power(2,  greatest(attempt_count, 1))::int)) 
+                        else next_attempt_at_utc 
                     end, 
                 completed_at_utc = 
                     case 
-                    when @retryable 
-                    then null 
-                    else now() 
+                        when @retryable  then null 
+                        else now() 
                     end,
                 completed_by_worker_id = 
                     case 
-                    when @retryable 
-                    then completed_by_worker_id 
-                    else @workerId 
+                        when @retryable then completed_by_worker_id 
+                        else @workerId 
                     end,
                 processing_worker_id = null
             where command_id = @commandId 
@@ -109,14 +109,7 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
                 and status = 'Processing'
             """
             , 
-            new
-            {
-                commandId,
-                workerId, 
-                error, 
-                retryable, 
-                status 
-            }, 
+            new { commandId, workerId, error, retryable, status }, 
             cancellationToken: ct));
     }
 
@@ -140,13 +133,7 @@ public sealed class PostgresBotCommandQueue(ITradingDbConnectionFactory factory)
                 and processing_worker_id = @workerId 
                 and status = 'Processing'
             """,
-            new
-            {
-                commandId, 
-                workerId, 
-                status, 
-                error 
-            }, 
+            new { commandId, workerId, status, error }, 
             cancellationToken: ct));
     }
 

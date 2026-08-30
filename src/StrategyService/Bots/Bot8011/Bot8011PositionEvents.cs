@@ -11,7 +11,7 @@ namespace StrategyService.Bots.Bot8011;
 
 public sealed class Bot8011PositionEvents(
     IOptions<Bot8011Options> options,
-    IPositionStore positions,
+    IPositionStore positionStore,
     IPositionLockProvider locks, 
     Bot8011Stop3OrderService stop3, 
     SafeBinanceOrderService safe, 
@@ -25,63 +25,63 @@ public sealed class Bot8011PositionEvents(
     
     public async Task HandleTpFilledAsync(string id, decimal qty, CancellationToken ct)
     {
-        await using var l = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);
-        if(l is null)
+        await using var @lock = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);
+        if(@lock is null)
             return;
         
-        var p = await positions.GetAsync(BotName, id, ct);
-        if(p is null || p.Closed || p.TpExecuted)
+        var position = await positionStore.GetAsync(BotName, id, ct);
+        if(position is null || position.Closed || position.TpExecuted)
             return;
         
         var now = clock.UtcNow;
-        p.MarkTpFilled(qty, now);
+        position.MarkTpFilled(qty, now);
         
-        if(p.RemainingQuantity <= 0)
+        if(position.RemainingQuantity <= 0)
         {
-            p.MarkClosed("TP_FULL_EXIT", now);
-            await positions.SaveAsync(p, ct);
+            position.MarkClosed("TP_FULL_EXIT", now);
+            await positionStore.SaveAsync(position, ct);
             
             return;
         }
         
-        p.Stop3Pending = true;
-        p.Status = PositionStatus.Stop3Pending;
+        position.Stop3Pending = true;
+        position.Status = PositionStatus.Stop3Pending;
         
-        await positions.SaveAsync(p, ct);
+        await positionStore.SaveAsync(position, ct);
         
         try
         {
-            var x = await stop3.CreateInitialAsync(p, p.RemainingQuantity, ct);p.Stop3ClientId = x.ClientAlgoId;
+            var x = await stop3.CreateInitialAsync(position, position.RemainingQuantity, ct);position.Stop3ClientId = x.ClientAlgoId;
             
-            p.Stop3OrderId = x.AlgoOrderId;
-            p.Stop3Initial = p.Stop3Current = p.Stop3Previous = x.TriggerPrice;
-            p.Stop3Status = x.Status;
-            p.Stop3Created = true;
-            p.Stop3Pending = false;
-            p.Status = PositionStatus.Stop3Active;
+            position.Stop3OrderId = x.AlgoOrderId;
+            position.Stop3Initial = position.Stop3Current = position.Stop3Previous = x.TriggerPrice;
+            position.Stop3Status = x.Status;
+            position.Stop3Created = true;
+            position.Stop3Pending = false;
+            position.Status = PositionStatus.Stop3Active;
             
-            await positions.SaveAsync(p, ct);
+            await positionStore.SaveAsync(position, ct);
             
-            if(!string.IsNullOrWhiteSpace(p.SlOrderId))
+            if(!string.IsNullOrWhiteSpace(position.SlOrderId))
             {
-                await safe.SafeCancelAlgoAsync(p.Symbol, p.SlOrderId, p.SlClientId, ct);
+                await safe.SafeCancelAlgoAsync(position.Symbol, position.SlOrderId, position.SlClientId, ct);
                 
-                p.SlStatus = "CANCELED";
-                await positions.SaveAsync(p, ct);
+                position.SlStatus = "CANCELED";
+                await positionStore.SaveAsync(position, ct);
             }
         }
         catch
         {
-            p.Stop3Pending = true;
-            p.Stop3Created = false;
-            p.ProtectiveActive = true;
+            position.Stop3Pending = true;
+            position.Stop3Created = false;
+            position.ProtectiveActive = true;
             
-            await positions.SaveAsync(p, ct);
+            await positionStore.SaveAsync(position, ct);
             
             throw;
         }
         
-        await history.RecordPositionEventAsync(new(p.ShortId, p.BotName, "TakeProfitFilled", "Filled", now, p.TpPrice, qty), ct);
+        await history.RecordPositionEventAsync(new(position.ShortId, position.BotName, "TakeProfitFilled", "Filled", now, position.TpPrice, qty), ct);
     }
     
     public Task HandleTpTerminalAsync(string id, string status, CancellationToken ct) 
@@ -95,13 +95,13 @@ public sealed class Bot8011PositionEvents(
     
     async Task Close(string id, string reason, CancellationToken ct)
     {
-        await using var l = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);
-        if(l is null)
+        await using var @lock = await locks.TryAcquireAsync(BotName, id, TimeSpan.FromSeconds(30), ct);
+        if(@lock is null)
             return;
         
-        var p = await positions.GetAsync(BotName, id, ct);
-        if(p is null || p.Closed
-            )return;
+        var p = await positionStore.GetAsync(BotName, id, ct);
+        if(p is null || p.Closed)
+            return;
         
         var now = clock.UtcNow;
         
@@ -110,7 +110,16 @@ public sealed class Bot8011PositionEvents(
         p.TrailingInProgress = false;
         p.MarkClosed(reason, now);
         
-        await positions.SaveAsync(p, ct);
-        await history.RecordPositionEventAsync(new(p.ShortId, p.BotName, reason, "Closed", now, p.Stop3Current, p.RemainingQuantity), ct);
+        await positionStore.SaveAsync(p, ct);
+        
+        await history.RecordPositionEventAsync(
+            new(p.ShortId, 
+                p.BotName, 
+                reason, 
+                "Closed", 
+                now, 
+                p.Stop3Current, 
+                p.RemainingQuantity),
+            ct);
     }
 }

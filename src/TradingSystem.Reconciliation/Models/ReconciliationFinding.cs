@@ -6,11 +6,14 @@ namespace TradingSystem.Reconciliation.Models;
 public sealed record ReconciliationFinding(
     Guid Id,
     DateTime DetectedAtUtc,
-    string BotName, string Symbol,
+    string BotName, 
+    string Symbol,
     string? ShortId,
     ReconciliationFindingType Type,
     ReconciliationSeverity Severity,
-    string Details, HealingActionType SuggestedAction, bool AutoHealAllowed)
+    string Details,
+    HealingActionType SuggestedAction, 
+    bool AutoHealAllowed)
 {
     public static ReconciliationFinding New(
         BotPosition position,

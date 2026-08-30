@@ -6,35 +6,33 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 
 public abstract class TpOnlyGridOrderEventHandler<TOptions>(
     TOptions options, 
-    IPositionStore store, 
-    IClock clock):
-    IBotOrderEventHandler where TOptions:class, 
-    ITpOnlyGridBotOptions
+    IPositionStore positionStore, 
+    IClock clock)
+    : IBotOrderEventHandler where TOptions : class
+    , ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
     
     public async Task HandleTpFilledAsync(string id, decimal qty, CancellationToken ct)
     {
-        var p = await store.GetAsync(BotName, id, ct);
-        
-        if(p is null || p.Closed)
+        var position = await positionStore.GetAsync(BotName, id, ct);  
+        if(position is null || position.Closed)
             return;
         
-        p.MarkTpFilled(qty, clock.UtcNow);
+        position.MarkTpFilled(qty, clock.UtcNow);
         
-        await store.SaveAsync(p, ct);
+        await positionStore.SaveAsync(position, ct);
     }
  
     public async Task HandleTpTerminalAsync(string id, string status, CancellationToken ct)
     {
-        var p = await store.GetAsync(BotName, id, ct);
-        
-        if (p is null || p.Closed) 
+        var position = await positionStore.GetAsync(BotName, id, ct);  
+        if (position is null || position.Closed) 
             return;
        
-        p.MarkTpOrderTerminal(status, clock.UtcNow);
+        position.MarkTpOrderTerminal(status, clock.UtcNow);
        
-        await store.SaveAsync(p, ct);
+        await positionStore.SaveAsync(position, ct);
     }
     
     public Task HandleSlTriggeredAsync(string id, CancellationToken ct) 

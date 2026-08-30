@@ -35,11 +35,7 @@ public sealed class SafeBinanceOrderService(
         }
     }
 
-    public async Task<BinanceOrderResult> WaitForFillAsync(
-        string symbol,
-        BinanceOrderResult submittedOrder,
-        string clientOrderId,
-        CancellationToken ct)
+    public async Task<BinanceOrderResult> WaitForFillAsync(string symbol, BinanceOrderResult submittedOrder, string clientOrderId, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.Add(FillWaitTimeout);
         Exception? lastLookupException = null;
@@ -71,15 +67,11 @@ public sealed class SafeBinanceOrderService(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                lastLookupException = exception;
+                lastLookupException = ex;
 
-                logger.LogWarning(
-                    exception,
-                    "Order status lookup failed. Falling back to client order id. Symbol = {Symbol}, ClientOrderId = {ClientOrderId}",
-                    symbol,
-                    clientOrderId);
+                logger.LogWarning(ex, "Order status lookup failed. Falling back to client order id. Symbol = {Symbol}, ClientOrderId = {ClientOrderId}", symbol, clientOrderId);
 
                 try
                 {
@@ -109,14 +101,12 @@ public sealed class SafeBinanceOrderService(
                 if (resolved is not null)
                     return resolved;
 
-                throw new TimeoutException(
-                    $"Binance order '{clientOrderId}' is FILLED but authoritative fill economics could not be resolved.");
+                throw new TimeoutException($"Binance order '{clientOrderId}' is FILLED but authoritative fill economics could not be resolved.");
             }
 
             ThrowIfTerminal(recovered);
 
-            throw new TimeoutException(
-                $"Order '{clientOrderId}' was found on Binance but was not filled within {FillWaitTimeout.TotalSeconds:0} seconds. Status = {recovered.Status}.");
+            throw new TimeoutException($"Order '{clientOrderId}' was found on Binance but was not filled within {FillWaitTimeout.TotalSeconds:0} seconds. Status = {recovered.Status}.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -126,11 +116,9 @@ public sealed class SafeBinanceOrderService(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            throw new TimeoutException(
-                $"Could not resolve final Binance state for client order '{clientOrderId}'.",
-                lastLookupException ?? exception);
+            throw new TimeoutException($"Could not resolve final Binance state for client order '{clientOrderId}'.", lastLookupException ?? ex);
         }
     }
 
@@ -200,20 +188,12 @@ public sealed class SafeBinanceOrderService(
             (!string.IsNullOrWhiteSpace(clientAlgoId) && o.ClientAlgoId == clientAlgoId));
     }
 
-    private async Task<BinanceOrderResult?> ResolveFilledOrderDetailsAsync(
-        string symbol,
-        BinanceOrderResult order,
-        string clientOrderId,
-        CancellationToken ct)
+    private async Task<BinanceOrderResult?> ResolveFilledOrderDetailsAsync(string symbol, BinanceOrderResult order, string clientOrderId, CancellationToken ct)
     {
         if (HasUsableFillEconomics(order))
             return order;
 
-        logger.LogWarning(
-            "Binance order is FILLED but fill economics are incomplete. Re-querying authoritative state. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}",
-            symbol,
-            order.OrderId,
-            clientOrderId);
+        logger.LogWarning("Binance order is FILLED but fill economics are incomplete. Re-querying authoritative state. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}", symbol, order.OrderId, clientOrderId);
 
         BinanceOrderResult refreshed;
 
@@ -250,8 +230,7 @@ public sealed class SafeBinanceOrderService(
 
             var averagePrice = quoteQuantity / executedQuantity;
 
-            logger.LogInformation(
-                "Recovered authoritative Binance fill economics from user trades. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}, AveragePrice = {AveragePrice}, ExecutedQuantity = {ExecutedQuantity}",
+            logger.LogInformation("Recovered authoritative Binance fill economics from user trades. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}, AveragePrice = {AveragePrice}, ExecutedQuantity = {ExecutedQuantity}",
                 symbol,
                 order.OrderId,
                 clientOrderId,
@@ -276,31 +255,22 @@ public sealed class SafeBinanceOrderService(
         }
     }
 
-    private async Task<BinanceOrderResult> RecoverOrderByClientIdAsync(
-        string symbol,
-        string clientOrderId,
-        Exception originalException,
-        CancellationToken ct)
+    private async Task<BinanceOrderResult> RecoverOrderByClientIdAsync(string symbol, string clientOrderId, Exception originalException, CancellationToken ct)
     {
         Exception? lastException = originalException;
 
-        for (var attempt = 1; attempt <= 3; attempt++)
+        for (var i = 1; i <= 3; i++)
         {
             ct.ThrowIfCancellationRequested();
 
-            if (attempt > 1)
+            if (i > 1)
                 await Task.Delay(RecoveryDelay, ct);
 
             try
             {
                 var recovered = await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
 
-                logger.LogInformation(
-                    "Recovered Binance order after uncertain submit outcome. Symbol = {Symbol}, ClientOrderId = {ClientOrderId}, OrderId = {OrderId}, Status = {Status}",
-                    symbol,
-                    clientOrderId,
-                    recovered.OrderId,
-                    recovered.Status);
+                logger.LogInformation("Recovered Binance order after uncertain submit outcome. Symbol = {Symbol}, ClientOrderId = {ClientOrderId}, OrderId = {OrderId}, Status = {Status}", symbol, clientOrderId, recovered.OrderId, recovered.Status);
 
                 return recovered;
             }
@@ -311,13 +281,11 @@ public sealed class SafeBinanceOrderService(
             catch (Exception exception)
             {
                 lastException = exception;
-                logger.LogWarning(exception, "Could not recover Binance order by client order id. Attempt = {Attempt}/3", attempt);
+                logger.LogWarning(exception, "Could not recover Binance order by client order id. Attempt = {Attempt}/3", i);
             }
         }
 
-        throw new InvalidOperationException(
-            $"Binance market order outcome is unknown for client order '{clientOrderId}'. Automatic resubmission is intentionally disabled to avoid duplicate exposure.",
-            lastException);
+        throw new InvalidOperationException($"Binance market order outcome is unknown for client order '{clientOrderId}'. Automatic resubmission is intentionally disabled to avoid duplicate exposure.", lastException);
     }
 
     private static bool IsFilled(BinanceOrderResult order)

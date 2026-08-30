@@ -3,7 +3,7 @@ using TradingSystem.Binance.Market.Contracts;
 
 namespace TradingSystem.Binance.Market;
 
-public sealed class BinanceMarketPriceProvider(
+public sealed class BinanceMarkPriceProvider(
     IBinanceFuturesMarketClient client) 
     : IMarketPriceProvider
 {

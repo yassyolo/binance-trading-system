@@ -82,17 +82,10 @@ public sealed class BotPosition
             return;
 
         var currentRemaining = RemainingQuantity > 0 ? RemainingQuantity : Quantity;
-
         if (executedQuantity > currentRemaining)
-        {
-            throw new InvalidOperationException(
-                $"TP executed quantity {executedQuantity} exceeds remaining quantity {currentRemaining}.");
-        }
+            throw new InvalidOperationException($"TP executed quantity {executedQuantity} exceeds remaining quantity {currentRemaining}.");
 
         RemainingQuantity = currentRemaining - executedQuantity;
-
-        // This method is called only for a FILLED TP order event.
-        // TpExecuted describes the TP order, not whether the entire position is closed.
         TpExecuted = true;
         TpStatus = "FILLED";
         TpFilledAtUtc = occurredAtUtc;
@@ -110,6 +103,7 @@ public sealed class BotPosition
     public void MarkTpOrderTerminal(string status, DateTime occurredAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(status);
+       
         TpStatus = status;
         ProtectiveActive = false;
         UpdatedAtUtc = occurredAtUtc;
@@ -149,6 +143,7 @@ public sealed class BotPosition
     public void MarkClosed(string reason, DateTime occurredAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        
         Closed = true;
         RemainingQuantity = 0;
         ProtectiveActive = false;

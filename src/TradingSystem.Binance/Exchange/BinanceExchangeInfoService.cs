@@ -5,64 +5,52 @@ using TradingSystem.Binance.Orders.Models;
 
 namespace TradingSystem.Binance.Exchange;
 
-public sealed class BinanceExchangeInfoService
+public sealed class BinanceExchangeInfoService(
+    IBinanceFuturesOrderClient ordersClient,
+    IOptions<BinanceFuturesOptions> options)
 {
     private sealed record CacheEntry(BinanceSymbolFilters Filters, DateTime ExpiresAtUtc);
 
-    private readonly IBinanceFuturesOrderClient _orders;
-    private readonly BinanceFuturesOptions _options;
+    private readonly BinanceFuturesOptions _options = options.Value;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CacheEntry> _filtersCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public BinanceExchangeInfoService(
-        IBinanceFuturesOrderClient orders,
-        IOptions<BinanceFuturesOptions> options)
-    {
-        _orders = orders;
-        _options = options.Value;
-    }
-
-    public async Task<decimal> RoundPriceAsync(
-        string symbol,
-        decimal price,
-        CancellationToken ct)
+    public async Task<decimal> RoundPriceAsync(string symbol, decimal price, CancellationToken ct)
     {
         var filters = await GetFiltersAsync(symbol, ct);
+       
         return QuantizeDown(price, filters.TickSize);
     }
 
-    public async Task<decimal> RoundQuantityAsync(
-        string symbol,
-        decimal quantity,
-        CancellationToken ct)
+    public async Task<decimal> RoundQuantityAsync(string symbol, decimal quantity, CancellationToken ct)
     {
         var filters = await GetFiltersAsync(symbol, ct);
         var rounded = QuantizeDown(quantity, filters.StepSize);
+        
         return rounded < filters.MinQuantity ? 0 : rounded;
     }
 
-    public async Task<BinanceSymbolFilters> GetFiltersAsync(
-        string symbol,
-        CancellationToken ct)
+    public async Task<BinanceSymbolFilters> GetFiltersAsync(string symbol, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var now = DateTime.UtcNow;
 
-        if (_cache.TryGetValue(normalizedSymbol, out var cached) && cached.ExpiresAtUtc > now)
+        if (_filtersCache.TryGetValue(normalizedSymbol, out var cached) && cached.ExpiresAtUtc > now)
             return cached.Filters;
 
         await _gate.WaitAsync(ct);
+       
         try
         {
             now = DateTime.UtcNow;
-            if (_cache.TryGetValue(normalizedSymbol, out cached) && cached.ExpiresAtUtc > now)
+            if (_filtersCache.TryGetValue(normalizedSymbol, out cached) && cached.ExpiresAtUtc > now)
                 return cached.Filters;
 
-            var filters = await _orders.GetSymbolFiltersAsync(normalizedSymbol, ct);
-            _cache[normalizedSymbol] = new CacheEntry(
-                filters,
-                now.Add(_options.ExchangeInfoCacheDuration));
+            var filters = await ordersClient.GetSymbolFiltersAsync(normalizedSymbol, ct);
+           
+            _filtersCache[normalizedSymbol] = new CacheEntry(filters, now.Add(_options.ExchangeInfoCacheDuration));
 
             return filters;
         }

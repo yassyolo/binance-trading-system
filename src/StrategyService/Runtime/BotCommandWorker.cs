@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Runtime.Configuration;
-using StrategyService.Services;
 using System.Text.Json;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Positions.Contracts;
@@ -15,7 +14,7 @@ using TradingSystem.Operations.Models;
 namespace StrategyService.Runtime;
 
 public sealed class BotCommandWorker(
-    IBotCommandQueue queue,
+    IBotCommandQueue commandQueue,
     IBotRuntimeStateStore stateStore,
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
@@ -29,7 +28,7 @@ public sealed class BotCommandWorker(
     private readonly BotRuntimeOptions _options = options.Value;
     private readonly string _workerId = $"{Environment.MachineName}:{Guid.NewGuid():N}";
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         if (!_options.Enabled)
         {
@@ -43,9 +42,9 @@ public sealed class BotCommandWorker(
         {
             try
             {
-                await ProcessBatchAsync(stoppingToken);
+                await ProcessBatchAsync(ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
@@ -54,16 +53,12 @@ public sealed class BotCommandWorker(
                 logger.LogError(exception, "Bot command batch failed. Worker = {WorkerId}", _workerId);
             }
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        while (await timer.WaitForNextTickAsync(ct));
     }
 
     private async Task ProcessBatchAsync(CancellationToken ct)
     {
-        var commands = await queue.ClaimPendingAsync(
-            _workerId,
-            _options.CommandBatchSize,
-            TimeSpan.FromSeconds(Math.Max(10, _options.CommandProcessingTimeoutSeconds)),
-            ct);
+        var commands = await commandQueue.ClaimPendingAsync(_workerId, _options.CommandBatchSize, TimeSpan.FromSeconds(Math.Max(10, _options.CommandProcessingTimeoutSeconds)), ct);
 
         foreach (var command in commands)
         {
@@ -71,7 +66,7 @@ public sealed class BotCommandWorker(
             {
                 await ProcessAsync(command, ct);
                 
-                await queue.CompleteAsync(command.CommandId, _workerId, ct);
+                await commandQueue.CompleteAsync(command.CommandId, _workerId, ct);
                 
                 await TryAuditAsync(command, "Completed", null);
 
@@ -79,7 +74,7 @@ public sealed class BotCommandWorker(
             }
             catch (UnsupportedBotCommandException exception)
             {
-                await queue.RejectAsync(command.CommandId, _workerId, exception.Message, ct);
+                await commandQueue.RejectAsync(command.CommandId, _workerId, exception.Message, ct);
                 
                 await TryAuditAsync(command, "Rejected", exception.Message);
 
@@ -89,7 +84,7 @@ public sealed class BotCommandWorker(
             {
                 var retryable = !IsPermanentFailure(ex) && command.AttemptCount < _options.MaximumCommandAttempts;
 
-                await queue.FailAsync(command.CommandId, _workerId, ex.Message, retryable, ct);
+                await commandQueue.FailAsync(command.CommandId, _workerId, ex.Message, retryable, ct);
 
                 if (!retryable)
                     await TryAuditAsync(command, "Failed", ex.Message);

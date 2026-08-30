@@ -6,7 +6,7 @@ namespace StrategyService.Reliability;
 
 public sealed class ReconciliationWorker(
     IOptions<ReconciliationOptions> options,
-    PositionReconciliationService positionReconciliation,
+    PositionReconciliationService positionReconciliationService,
     ILogger<ReconciliationWorker> logger) 
     : BackgroundService
 {
@@ -21,7 +21,7 @@ public sealed class ReconciliationWorker(
         {
             try
             {
-                var result = await positionReconciliation.RunAsync(ct);
+                var result = await positionReconciliationService.RunAsync(ct);
 
                 logger.LogInformation("Reconciliation completed. Findings = {Findings}, Healed = {Healed}", result.Findings.Count, result.HealedCount);
             }

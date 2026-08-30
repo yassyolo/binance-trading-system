@@ -9,5 +9,4 @@ public interface ITradingHistoryQueryService
     Task<TradingSummary> GetSummaryAsync(string botName, string environment, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
     
     Task<IReadOnlyCollection<BlockReasonSummary>> GetBlockReasonsAsync(string botName, string environment, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
-
 }

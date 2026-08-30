@@ -6,15 +6,13 @@ using TradingSystem.Binance.UserStream.Models;
 namespace TradingSystem.Binance.UserStream;
 
 public sealed class BinanceOrdersSnapshotProvider(
-    IBinanceFuturesOrderClient orders)
+    IBinanceFuturesOrderClient orderClient)
     : IBinanceOrdersSnapshotProvider
 {
-    public async Task<BinanceOrdersSnapshot> GetAsync(
-        string symbol,
-        CancellationToken ct)
+    public async Task<BinanceOrdersSnapshot> GetAsync(string symbol, CancellationToken ct)
     {
-        var normalOrdersTask = orders.GetOpenOrdersAsync(symbol, ct);
-        var algoOrdersTask = orders.GetOpenAlgoOrdersAsync(symbol, ct);
+        var normalOrdersTask = orderClient.GetOpenOrdersAsync(symbol, ct);
+        var algoOrdersTask = orderClient.GetOpenAlgoOrdersAsync(symbol, ct);
 
         await Task.WhenAll(normalOrdersTask, algoOrdersTask);
 
@@ -23,6 +21,6 @@ public sealed class BinanceOrdersSnapshotProvider(
 
         return new BinanceOrdersSnapshot(
             normalOrders.Select(o => JsonSerializer.SerializeToElement(o)).ToArray(),
-            algoOrders.Select(order => JsonSerializer.SerializeToElement(order)).ToArray());
+            algoOrders.Select(o => JsonSerializer.SerializeToElement(o)).ToArray());
     }
 }

@@ -137,7 +137,23 @@ public sealed class PostgresTradingEventStore(
                  actor, 
                  payload, 
                  metadata)
-            SELECT @EventId,  @EventType,  @EventVersion,  @AggregateType,  @AggregateId,  next_version.value, @OccurredAtUtc,  @BotName,  @Symbol,  @PositionId,  @SignalId,  @CorrelationId,  @CausationId,  @Actor,  CAST(@Payload AS jsonb),  CAST(@Metadata AS jsonb)
+            SELECT 
+                @EventId, 
+                @EventType,  
+                @EventVersion,  
+                @AggregateType,  
+                @AggregateId,  
+                next_version.value,
+                @OccurredAtUtc,  
+                @BotName,  
+                @Symbol,  
+                @PositionId,  
+                @SignalId, 
+                @CorrelationId,  
+                @CausationId,  
+                @Actor,  
+                CAST(@Payload AS jsonb),  
+                CAST(@Metadata AS jsonb)
             FROM next_version
             RETURNING 
                 global_position AS GlobalPosition,  
@@ -190,23 +206,36 @@ public sealed class PostgresTradingEventStore(
     {
         var take = Math.Clamp(query.Take, 1, 500);
         var skip = Math.Max(0, query.Skip);
+        
         const string sql = """
-            SELECT global_position AS GlobalPosition,  event_id AS EventId,  event_type AS EventType, 
-                   event_version AS EventVersion,  aggregate_type AS AggregateType,  aggregate_id AS AggregateId, 
-                   aggregate_version AS AggregateVersion,  occurred_at_utc AS OccurredAtUtc, 
-                   recorded_at_utc AS RecordedAtUtc,  bot_name AS BotName,  symbol AS Symbol, 
-                   position_id AS PositionId,  signal_id AS SignalId,  correlation_id AS CorrelationId, 
-                   causation_id AS CausationId,  actor AS Actor,  payload::text AS PayloadJson, 
-                   metadata::text AS MetadataJson
+            SELECT 
+                global_position AS GlobalPosition,  
+                event_id AS EventId,  
+                event_type AS EventType, 
+                event_version AS EventVersion,  
+                aggregate_type AS AggregateType, 
+                aggregate_id AS AggregateId, 
+                aggregate_version AS AggregateVersion, 
+                occurred_at_utc AS OccurredAtUtc, 
+                recorded_at_utc AS RecordedAtUtc,  
+                bot_name AS BotName,  
+                symbol AS Symbol, 
+                position_id AS PositionId,  
+                signal_id AS SignalId, 
+                correlation_id AS CorrelationId, 
+                causation_id AS CausationId, 
+                actor AS Actor,  
+                payload::text AS PayloadJson, 
+                metadata::text AS MetadataJson
             FROM trading_event_store.events
-            WHERE (@AggregateType IS NULL OR aggregate_type  =  @AggregateType)
-              AND (@AggregateId IS NULL OR aggregate_id  =  @AggregateId)
-              AND (@BotName IS NULL OR bot_name  =  @BotName)
-              AND (@Symbol IS NULL OR symbol  =  @Symbol)
-              AND (@PositionId IS NULL OR position_id  =  @PositionId)
-              AND (@SignalId IS NULL OR signal_id  =  @SignalId)
-              AND (@CorrelationId IS NULL OR correlation_id  =  @CorrelationId)
-              AND (@EventType IS NULL OR event_type  =  @EventType)
+            WHERE (@AggregateType IS NULL OR aggregate_type = @AggregateType)
+              AND (@AggregateId IS NULL OR aggregate_id = @AggregateId)
+              AND (@BotName IS NULL OR bot_name = @BotName)
+              AND (@Symbol IS NULL OR symbol = @Symbol)
+              AND (@PositionId IS NULL OR position_id = @PositionId)
+              AND (@SignalId IS NULL OR signal_id = @SignalId)
+              AND (@CorrelationId IS NULL OR correlation_id = @CorrelationId)
+              AND (@EventType IS NULL OR event_type = @EventType)
               AND (@FromUtc IS NULL OR occurred_at_utc >= @FromUtc)
               AND (@ToUtc IS NULL OR occurred_at_utc <= @ToUtc)
               AND (@AfterGlobalPosition IS NULL OR global_position > @AfterGlobalPosition)
@@ -214,6 +243,7 @@ public sealed class PostgresTradingEventStore(
             OFFSET @Skip LIMIT @Take;
             """;
         await using var connection = await connections.OpenAsync(ct);
+        
         var rows = await connection.QueryAsync<EventRow>(new CommandDefinition(sql, new
         {
             query.AggregateType,
@@ -230,26 +260,57 @@ public sealed class PostgresTradingEventStore(
             Skip = skip,
             Take = take
         }, cancellationToken: ct));
+        
         return rows.Select(x => x.ToStored()).ToArray();
     }
 
-    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType, string aggregateId, long afterVersion, int take, CancellationToken ct)
+    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(
+        string aggregateType, 
+        string aggregateId, 
+        long afterVersion, 
+        int take, 
+        CancellationToken ct)
     {
         const string sql = """
-            SELECT global_position AS GlobalPosition,  event_id AS EventId,  event_type AS EventType, 
-                   event_version AS EventVersion,  aggregate_type AS AggregateType,  aggregate_id AS AggregateId, 
-                   aggregate_version AS AggregateVersion,  occurred_at_utc AS OccurredAtUtc, 
-                   recorded_at_utc AS RecordedAtUtc,  bot_name AS BotName,  symbol AS Symbol, 
-                   position_id AS PositionId,  signal_id AS SignalId,  correlation_id AS CorrelationId, 
-                   causation_id AS CausationId,  actor AS Actor,  payload::text AS PayloadJson, 
-                   metadata::text AS MetadataJson
+            SELECT 
+                global_position AS GlobalPosition,  
+                event_id AS EventId, 
+                event_type AS EventType, 
+                event_version AS EventVersion, 
+                aggregate_type AS AggregateType, 
+                aggregate_id AS AggregateId, 
+                aggregate_version AS AggregateVersion, 
+                occurred_at_utc AS OccurredAtUtc, 
+                recorded_at_utc AS RecordedAtUtc, 
+                bot_name AS BotName,  
+                symbol AS Symbol, 
+                position_id AS PositionId,  
+                signal_id AS SignalId, 
+                correlation_id AS CorrelationId, 
+                causation_id AS CausationId,  
+                actor AS Actor,  
+                payload::text AS PayloadJson, 
+                metadata::text AS MetadataJson
             FROM trading_event_store.events
-            WHERE aggregate_type  =  @AggregateType AND aggregate_id  =  @AggregateId AND aggregate_version > @AfterVersion
+            WHERE aggregate_type = @AggregateType 
+                AND aggregate_id = @AggregateId 
+                AND aggregate_version > @AfterVersion
             ORDER BY aggregate_version ASC LIMIT @Take;
             """;
+        
         await using var connection = await connections.OpenAsync(ct);
-        var rows = await connection.QueryAsync<EventRow>(new CommandDefinition(sql, new
-        { AggregateType = aggregateType, AggregateId = aggregateId, AfterVersion = Math.Max(0, afterVersion), Take = Math.Clamp(take, 1, 1000) }, cancellationToken: ct));
+       
+        var rows = await connection.QueryAsync<EventRow>(new CommandDefinition(
+            sql, 
+            new
+            { 
+                AggregateType = aggregateType, 
+                AggregateId = aggregateId, 
+                AfterVersion = Math.Max(0, afterVersion), 
+                Take = Math.Clamp(take, 1, 1000) 
+            }, 
+            cancellationToken: ct));
+        
         return rows.Select(x => x.ToStored()).ToArray();
     }
 }

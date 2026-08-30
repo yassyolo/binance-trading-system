@@ -27,9 +27,7 @@ public sealed class Bot8016PositionLifecycleService(
     {
         if (await IsPaperAsync(cancellationToken))
         {
-            logger.LogDebug(
-                "BOT8016 ignored Binance TP fill handling because the bot is in Paper environment. ShortId = {ShortId}",
-                shortId);
+            logger.LogDebug("BOT8016 ignored Binance TP fill handling because the bot is in Paper environment. ShortId = {ShortId}", shortId);
             return;
         }
 
@@ -161,13 +159,13 @@ public sealed class Bot8016PositionLifecycleService(
 
     private async Task<bool> IsPaperAsync(CancellationToken cancellationToken)
     {
-        var configuration = await runtimeConfigurations.GetAsync(_options.BotName, cancellationToken);
-        if (configuration is null)
+        var config = await runtimeConfigurations.GetAsync(_options.BotName, cancellationToken);
+        if (config is null)
         {
-            logger.LogWarning("BOT8016 lifecycle blocked because runtime configuration was not found.");
+            logger.LogWarning("BOT8016 lifecycle blocked because runtime config was not found.");
             return true;
         }
 
-        return configuration.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase);
+        return config.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase);
     }
 }

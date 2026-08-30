@@ -18,7 +18,8 @@ public sealed class PostgresTradingPipelineRecorder(
                 (signal_id, 
                  bot_name, 
                  strategy_version, 
-                 symbol, side, 
+                 symbol, 
+                 side, 
                  source,
                  environment,
                  signal_time_utc, 
@@ -51,31 +52,41 @@ public sealed class PostgresTradingPipelineRecorder(
         },
         ct);
 
-    public Task RecordDecisionAsync(DecisionHistoryRecord x, CancellationToken ct) => Exec(
-        """
-        insert into trading_history.strategy_decisions
-            (signal_id, bot_name, strategy_version, symbol, side, decision, reason,
-             environment, decided_at_utc, mark_price, parameters, metadata)
-        values
-            (@SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Decision, @Reason,
-             @Environment, @DecidedAtUtc, @MarkPrice, cast(@Params as jsonb), cast(@Meta as jsonb));
-        """,
-        new
-        {
-            x.SignalId,
-            x.BotName,
-            x.StrategyVersion,
-            x.Symbol,
-            x.Side,
-            x.Decision,
-            x.Reason,
-            x.Environment,
-            x.DecidedAtUtc,
-            x.MarkPrice,
-            Params = Serialize(x.Parameters),
-            Meta = Serialize(x.Metadata)
-        },
-        ct);
+    public Task RecordDecisionAsync(DecisionHistoryRecord x, CancellationToken ct) 
+        => Exec(
+            """
+            insert into trading_history.strategy_decisions
+                (signal_id, 
+                 bot_name, 
+                 strategy_version, 
+                 symbol, 
+                 side, 
+                 decision, 
+                 reason,
+                 environment, 
+                 decided_at_utc, 
+                 mark_price, 
+                 parameters,
+                 metadata)
+            values
+                (@SignalId, @BotName, @StrategyVersion, @Symbol, @Side, @Decision, @Reason, @Environment, @DecidedAtUtc, @MarkPrice, cast(@Params as jsonb), cast(@Meta as jsonb));
+            """,
+            new
+            {
+                x.SignalId,
+                x.BotName,
+                x.StrategyVersion,
+                x.Symbol,
+                x.Side,
+                x.Decision,
+                x.Reason,
+                x.Environment,
+                x.DecidedAtUtc,
+                x.MarkPrice,
+                Params = Serialize(x.Parameters),
+                Meta = Serialize(x.Metadata)
+            },
+            ct);
 
     public Task UpsertPositionAsync(PositionHistoryRecord x, CancellationToken ct) 
         => Exec(

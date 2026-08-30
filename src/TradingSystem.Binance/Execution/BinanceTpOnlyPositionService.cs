@@ -11,7 +11,7 @@ using TradingSystem.Domain.Positions;
 namespace TradingSystem.Binance.Execution;
 
 public sealed class BinanceTpOnlyPositionService(
-    IBinanceFuturesOrderClient orders,
+    IBinanceFuturesOrderClient ordersClient,
     SafeBinanceOrderService safeOrders,
     IClock clock,
     ILogger<BinanceTpOnlyPositionService> logger)
@@ -25,30 +25,30 @@ public sealed class BinanceTpOnlyPositionService(
         CancellationToken ct)
     {
         var id = BinanceClientOrderId.NewShortId();
-        var parentId = BinanceClientOrderId.Create(botName, "P", id);
+        var pId = BinanceClientOrderId.Create(botName, "P", id);
         var tpId = BinanceClientOrderId.Create(botName, "TP", id);
 
-        var parent = await safeOrders.SafePlaceMarketOrderAsync(
+        var parentOrder = await safeOrders.SafePlaceMarketOrderAsync(
             symbol,
             BinanceOrderSide.Entry(side),
             BinanceOrderSide.Position(side),
             quantity,
-            parentId,
+            pId,
             ct);
 
-        var filled = await safeOrders.WaitForFillAsync(symbol, parent, parentId, ct);
+        var filled = await safeOrders.WaitForFillAsync(symbol, parentOrder, pId, ct);
 
         var entry = ResolvePrice(filled);
         if (entry <= 0)
             throw new InvalidOperationException($"Filled order '{filled.OrderId}' has no valid price.");
 
-        var filters = await orders.GetSymbolFiltersAsync(symbol, ct);
+        var filters = await ordersClient.GetSymbolFiltersAsync(symbol, ct);
         var raw = side == PositionSide.Long
             ? entry + profitDistance
             : entry - profitDistance;
         var tpPrice = Quantize(raw, filters.TickSize);
 
-        var tp = await orders.PlaceLimitOrderAsync(
+        var tp = await ordersClient.PlaceLimitOrderAsync(
             symbol,
             BinanceOrderSide.Close(side),
             BinanceOrderSide.Position(side),
@@ -59,13 +59,7 @@ public sealed class BinanceTpOnlyPositionService(
 
         var now = clock.UtcNow;
 
-        logger.LogInformation(
-            "TP-only position opened. Bot = {Bot} Id = {Id} Side = {Side} Entry = {Entry} TP = {TP}",
-            botName,
-            id,
-            side,
-            entry,
-            tpPrice);
+        logger.LogInformation("TP-only position opened. Bot = {Bot} Id = {Id} Side = {Side} Entry = {Entry} TP = {TP}", botName, id, side, entry, tpPrice);
 
         return new BotPosition
         {
@@ -77,7 +71,7 @@ public sealed class BinanceTpOnlyPositionService(
             Quantity = quantity,
             RemainingQuantity = quantity,
             EntryPrice = entry,
-            ParentClientId = parentId,
+            ParentClientId = pId,
             ParentOrderId = filled.OrderId,
             ParentFilledAtUtc = now,
             TpClientId = tpId,
@@ -124,7 +118,7 @@ public sealed class BinanceTpOnlyPositionService(
     {
         try
         {
-            await orders.CancelOrderAsync(symbol, orderId, ct);
+            await ordersClient.CancelOrderAsync(symbol, orderId, ct);
         }
         catch (BinanceApiException ex) when (IsUnknownOrder(ex))
         {

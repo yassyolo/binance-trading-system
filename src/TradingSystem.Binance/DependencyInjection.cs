@@ -25,7 +25,7 @@ public static class DependencyInjection
         services.AddHttpClient<IHistoricalCandleSource, BinanceHistoricalCandleSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
         services.AddHttpClient<IHistoricalCandleRangeSource, BinanceHistoricalCandleRangeSource>().ConfigureHttpClient(ConfigureBinanceHttpClient);
         services.AddHttpClient<IBinanceFuturesMarketClient,BinanceFuturesMarketClient>().ConfigureHttpClient(ConfigureBinanceHttpClient);
-        services.AddSingleton<IMarketPriceProvider, BinanceMarketPriceProvider>();
+        services.AddSingleton<IMarketPriceProvider, BinanceMarkPriceProvider>();
         services.AddSingleton<BinanceExchangeInfoService>();
 
         return services;
@@ -40,7 +40,7 @@ public static class DependencyInjection
         services.AddHttpClient<IBinanceFuturesMarketClient, BinanceFuturesMarketClient>().ConfigureHttpClient(ConfigureBinanceHttpClient);
         services.AddHttpClient<IBinanceFuturesOrderClient, BinanceFuturesOrderClient>().ConfigureHttpClient(ConfigureBinanceHttpClient);
 
-        services.AddSingleton<IMarketPriceProvider, BinanceMarketPriceProvider>();
+        services.AddSingleton<IMarketPriceProvider, BinanceMarkPriceProvider>();
         services.AddSingleton<BinanceExchangeInfoService>();
         services.AddSingleton<SafeBinanceOrderService>();
 

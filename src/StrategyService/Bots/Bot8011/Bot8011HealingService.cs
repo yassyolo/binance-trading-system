@@ -9,34 +9,30 @@ namespace StrategyService.Bots.Bot8011;
 
 public sealed class Bot8011HealingService(
     IOptions<Bot8011Options> options, 
-    IPositionStore store, IClock clock)
+    IPositionStore positionStore, 
+    IClock clock)
     :IBotHealingService
 {
-    readonly Bot8011Options options = options.Value;
-    public string BotName => options.BotName;
+    readonly Bot8011Options _options = options.Value;
+    public string BotName => _options.BotName;
     
     public async Task HealAsync(HealingSnapshotMessage healingSnapshot, CancellationToken ct)
     {
-        if(!healingSnapshot.Symbol.Equals(options.Symbol, StringComparison.OrdinalIgnoreCase))
+        if(!healingSnapshot.Symbol.Equals(_options.Symbol, StringComparison.OrdinalIgnoreCase))
             return;
         
         var active = healingSnapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         
-        foreach(var p in (await store.GetAllAsync(BotName, ct)).Where(x => !x.Closed))
+        foreach(var p in (await positionStore.GetAllAsync(BotName, ct)).Where(x => !x.Closed))
         {
-            var any = new[]
-            {
-                p.TpClientId, 
-                p.SlClientId, 
-                p.Stop3ClientId
-            }.Any(x => !string.IsNullOrWhiteSpace(x) && active.Contains(x));
+            var any = new[] { p.TpClientId,  p.SlClientId, p.Stop3ClientId}
+            .Any(x => !string.IsNullOrWhiteSpace(x) && active.Contains(x));
             
             if(!any && !p.Stop3Pending)
             {
-                p.ProtectiveActive = false;           
                 p.MarkClosed("HEALING_NO_ACTIVE_ORDERS", clock.UtcNow);
                 
-                await store.SaveAsync(p, ct);
+                await positionStore.SaveAsync(p, ct);
             }
         }
     }

@@ -9,5 +9,5 @@ public interface IHistoricalCandleRangeSource
         string interval, 
         DateTime? fromUtc, 
         DateTime? toUtc, 
-        CancellationToken cancellationToken  =  default);
+        CancellationToken ct = default);
 }
