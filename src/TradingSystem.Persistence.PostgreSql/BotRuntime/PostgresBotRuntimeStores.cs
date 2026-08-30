@@ -14,20 +14,29 @@ public sealed class PostgresBotRuntimeStateStore(
 	public async Task<BotRuntimeState?> GetAsync(string botName, CancellationToken ct)
 	{
 		await using var connection = await factory.OpenAsync(ct);
-		return await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
+		
+        return await connection.QuerySingleOrDefaultAsync<BotRuntimeState>(new CommandDefinition(
 			"""
-            select bot_name BotName,  runtime_status Status,  runtime_version Version, 
-                   runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
-                   runtime_reason Reason,  execution_enabled ExecutionEnabled
+            select 
+                bot_name BotName,  
+                runtime_status Status,  
+                runtime_version Version, 
+                runtime_updated_at_utc UpdatedAtUtc,  
+                runtime_updated_by UpdatedBy, 
+                runtime_reason Reason,  
+                execution_enabled ExecutionEnabled
             from trading_dashboard.bot_configurations
-            where bot_name  =  @botName
-            """, new { botName }, cancellationToken: ct));
+            where bot_name = @botName
+            """, 
+            new { botName }, 
+            cancellationToken: ct));
 	}
 
 	public async Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct)
 	{
 		await using var connection = await factory.OpenAsync(ct);
-		return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
+		
+        return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
 			"""
             select bot_name BotName,  runtime_status Status,  runtime_version Version, 
                    runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
@@ -37,7 +46,14 @@ public sealed class PostgresBotRuntimeStateStore(
             """, cancellationToken: ct))).AsList();
 	}
 
-	public async Task<BotRuntimeState> TransitionAsync(string botName, BotRuntimeStatus status, long expectedVersion, string user, string reason, bool executionEnabled, CancellationToken ct)
+	public async Task<BotRuntimeState> TransitionAsync(
+        string botName,
+        BotRuntimeStatus status, 
+        long expectedVersion, 
+        string user, 
+        string reason, 
+        bool executionEnabled,
+        CancellationToken ct)
 	{
 		await using var connection = await factory.OpenAsync(ct);
 		
@@ -62,15 +78,7 @@ public sealed class PostgresBotRuntimeStateStore(
                 runtime_reason Reason,  
                 execution_enabled ExecutionEnabled
             """,
-            new 
-            { 
-                botName, 
-                status = status.ToString(), 
-                expectedVersion, 
-                user, 
-                reason, 
-                executionEnabled 
-            }, 
+            new { botName, status = status.ToString(), expectedVersion, user, reason, executionEnabled }, 
             cancellationToken: ct));
 		
         return updated ?? throw new DBConcurrencyException($"Runtime state for '{botName}' was changed concurrently.");

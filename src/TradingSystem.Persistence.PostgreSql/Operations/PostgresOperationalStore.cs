@@ -59,11 +59,19 @@ public sealed class PostgresOperationalStore(
     {
         const string sql = """
             insert into trading_dashboard.alerts
-                (deduplication_key, severity, type, message, bot_name, position_id,
-                 metadata, acknowledged, resolved, last_seen_at_utc, occurrence_count)
+                (deduplication_key, 
+                 severity, 
+                 type,
+                 message,
+                 bot_name, 
+                 position_id,
+                 metadata,
+                 acknowledged, 
+                 resolved, 
+                 last_seen_at_utc, 
+                 occurrence_count)
             values
-                (@Key, @Severity, @Type, @Message, @BotName, @PositionId,
-                 cast(@Metadata as jsonb), false, false, now(), 1)
+                (@Key, @Severity, @Type, @Message, @BotName, @PositionId, cast(@Metadata as jsonb), false, false, now(), 1)
             on conflict(deduplication_key) do update set
                 severity = excluded.severity,
                 type = excluded.type,
@@ -78,6 +86,7 @@ public sealed class PostgresOperationalStore(
             """;
 
         await using var connection = await factory.OpenAsync(ct);
+       
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
@@ -88,30 +97,29 @@ public sealed class PostgresOperationalStore(
                 candidate.Message,
                 candidate.BotName,
                 candidate.PositionId,
-                Metadata = JsonSerializer.Serialize(
-                    candidate.Metadata ?? new Dictionary<string, string>())
+                Metadata = JsonSerializer.Serialize(candidate.Metadata ?? new Dictionary<string, string>())
             },
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));
     }
 
-    public async Task ResolveMissingAsync(
-        string prefix,
-        IReadOnlyCollection<string> active,
-        CancellationToken ct)
+    public async Task ResolveMissingAsync(string prefix, IReadOnlyCollection<string> active, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
         ArgumentNullException.ThrowIfNull(active);
 
         const string sql = """
             update trading_dashboard.alerts
-            set resolved = true, resolved_at_utc = now()
+            set 
+                resolved = true, 
+                resolved_at_utc = now()
             where not resolved
               and deduplication_key like @prefix
               and not (deduplication_key = any(@active));
             """;
 
         await using var connection = await factory.OpenAsync(ct);
+        
         await connection.ExecuteAsync(new CommandDefinition(
             sql,
             new
@@ -139,10 +147,7 @@ public sealed class PostgresOperationalStore(
                  old_value, 
                  new_value,
                  metadata)
-            values
-                (@AuditId, @OccurredAtUtc, @Actor, @Action, @EntityType, @EntityId,
-                 @Reason, @CorrelationId, @IpAddress, cast(@OldValueJson as jsonb),
-                 cast(@NewValueJson as jsonb), cast(@Metadata as jsonb));
+            values (@AuditId, @OccurredAtUtc, @Actor, @Action, @EntityType, @EntityId, @Reason, @CorrelationId, @IpAddress, cast(@OldValueJson as jsonb), cast(@NewValueJson as jsonb), cast(@Metadata as jsonb));
             """;
 
         await using var connection = await factory.OpenAsync(ct);

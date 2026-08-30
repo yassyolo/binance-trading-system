@@ -5,12 +5,12 @@ using TradingSystem.Operations.Contracts;
 
 public sealed class AuditMiddleware(RequestDelegate next)
 {
-    private static readonly HashSet<string> SensitiveNames  =  new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> SensitiveNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "password",  "secret",  "token",  "apiKey",  "apiSecret",  "signingKey",  "authorization",  "connectionString"
+        "password", "secret", "token", "apiKey", "apiSecret", "signingKey", "authorization", "connectionString"
     };
 
-    public async Task InvokeAsync(HttpContext context,  IAuditLog audit,  ILogger<AuditMiddleware> logger)
+    public async Task InvokeAsync(HttpContext context, IAuditLog audit, ILogger<AuditMiddleware> logger)
     {
         if (context.Request.Method is "GET" or "HEAD" or "OPTIONS")
         {
@@ -30,42 +30,50 @@ public sealed class AuditMiddleware(RequestDelegate next)
         try
         {
             await next(context);
-            succeeded  =  true;
+            succeeded = true;
         }
         finally
         {
-            var actor  =  context.User.Identity?.Name ?? context.User.FindFirst("sub")?.Value ?? "anonymous";
-            var action  =  $"{context.Request.Method} {context.Request.Path}";
-            var metadata  =  new Dictionary<string,  string>
+            var actor = context.User.Identity?.Name ?? context.User.FindFirst("sub")?.Value ?? "anonymous";
+            var action = $"{context.Request.Method} {context.Request.Path}";
+            var metadata = new Dictionary<string,  string>
             {
-                ["statusCode"]  =  context.Response.StatusCode.ToString(), 
-                ["succeeded"]  =  succeeded.ToString(), 
-                ["userAgent"]  =  Truncate(context.Request.Headers.UserAgent.ToString(),  256)
+                ["statusCode"] = context.Response.StatusCode.ToString(), 
+                ["succeeded"] = succeeded.ToString(), 
+                ["userAgent"] = Truncate(context.Request.Headers.UserAgent.ToString(),  256)
             };
 
             try
             {
                 await audit.WriteAsync(new(
-                    Guid.NewGuid(),  DateTime.UtcNow,  actor,  action,  "HttpRequest", 
+                    Guid.NewGuid(),  
+                    DateTime.UtcNow,  
+                    actor, 
+                    action, 
+                    "HttpRequest", 
                     context.Request.RouteValues.Values.LastOrDefault()?.ToString(), 
                     context.Request.Headers["X-Change-Reason"].FirstOrDefault(), 
                     context.TraceIdentifier, 
                     context.Connection.RemoteIpAddress?.ToString(), 
                     null, 
                     Redact(body), 
-                    metadata),  CancellationToken.None);
+                    metadata),  
+                    CancellationToken.None);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogWarning(exception,  "Audit event could not be persisted for {Action}. TraceId: {TraceId}",  action,  context.TraceIdentifier);
+                logger.LogWarning(ex,  "Audit event could not be persisted for {Action}. TraceId: {TraceId}",  action,  context.TraceIdentifier);
             }
         }
     }
 
     private static string? Redact(string? body)
     {
-        if (string.IsNullOrWhiteSpace(body)) return null;
-        if (body.Length > 64_000) return JsonSerializer.Serialize(new { truncated  =  true,  originalLength  =  body.Length });
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+        
+        if (body.Length > 64_000) 
+            return JsonSerializer.Serialize(new { truncated  =  true,  originalLength  =  body.Length });
 
         try
         {

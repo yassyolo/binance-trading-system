@@ -44,12 +44,7 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
             order by bot_name;
             """;
 
-        var bots = (
-            await c.QueryAsync<BotOverviewDto>(
-                new CommandDefinition(
-                    botsSql,
-                    cancellationToken: ct)))
-            .AsList();
+        var bots = (await c.QueryAsync<BotOverviewDto>(new CommandDefinition(botsSql, cancellationToken: ct))).AsList();
 
         var health = await GetHealthWithConnection(c, ct);
 
@@ -201,9 +196,39 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
 
     public async Task<StrategyComparisonDto?> CompareRunsAsync(Guid l, Guid r, CancellationToken ct)
     {
-        await using var c = await factory.OpenAsync(ct);
+        await using var command = await factory.OpenAsync(ct);
 
-        var rows = (await c.QueryAsync<dynamic>(new CommandDefinition("select r.run_id, r.bot_name || ' ' || r.strategy_version label, s.net_profit, s.maximum_drawdown_percent, s.win_rate_percent, s.score from trading.performance_runs r join trading.performance_snapshots s on s.run_id = r.run_id where r.run_id = any(@ids)", new { ids = new[] { l, r } }, cancellationToken: ct))).ToDictionary(x => (Guid)x.run_id); if (!rows.TryGetValue(l, out var a) || !rows.TryGetValue(r, out var b)) return null; return new(l, r, (string)a.label, (string)b.label, (decimal)a.net_profit - (decimal)b.net_profit, (decimal)a.maximum_drawdown_percent - (decimal)b.maximum_drawdown_percent, (decimal)a.win_rate_percent - (decimal)b.win_rate_percent, (decimal)a.score - (decimal)b.score);
+        var rows = (await command.QueryAsync<dynamic>(new CommandDefinition(
+            """           
+             select 
+                r.run_id, 
+                r.bot_name || ' ' || 
+                r.strategy_version label, 
+                s.net_profit, 
+                s.maximum_drawdown_percent, 
+                s.win_rate_percent, 
+                s.score 
+             from trading.performance_runs r 
+             join trading.performance_snapshots s on s.run_id = r.run_id 
+             where r.run_id = any(@ids)            
+            """, 
+            new { ids = new[] { l, r } }, 
+            cancellationToken: ct)))
+            .ToDictionary(x => (Guid)x.run_id); 
+        
+        if (!rows.TryGetValue(l, out var a) 
+            || !rows.TryGetValue(r, out var b)) 
+            return null; 
+        
+        return new(
+            l, 
+            r, 
+            (string)a.label, 
+            (string)b.label, 
+            (decimal)a.net_profit - (decimal)b.net_profit, 
+            (decimal)a.maximum_drawdown_percent - (decimal)b.maximum_drawdown_percent, 
+            (decimal)a.win_rate_percent - (decimal)b.win_rate_percent, 
+            (decimal)a.score - (decimal)b.score);       
     }
 
     public async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthAsync(CancellationToken ct)
@@ -214,7 +239,27 @@ public sealed class PostgresDashboardStore(ITradingDbConnectionFactory factory) 
     }
 
     private static async Task<IReadOnlyCollection<ComponentHealthDto>> GetHealthWithConnection(System.Data.Common.DbConnection c, CancellationToken ct)
-        => (await c.QueryAsync<ComponentHealthDto>(new CommandDefinition("with latest as (select component, instance_id, last_seen_at_utc, stale_after_seconds, details, row_number() over(partition by component order by last_seen_at_utc desc, instance_id desc) rn from trading_dashboard.service_heartbeats) select component Component, case when last_seen_at_utc>=now()-make_interval(secs => stale_after_seconds) then 'Healthy' else 'Unhealthy' end Status, last_seen_at_utc LastSeenUtc, details Details from latest where rn = 1 order by component", cancellationToken: ct))).AsList();
+        => (await c.QueryAsync<ComponentHealthDto>(new CommandDefinition(
+            """
+            with latest as (
+                select 
+                    component, 
+                    instance_id, 
+                    last_seen_at_utc, 
+                    stale_after_seconds, 
+                    details, 
+                    row_number() over(partition by component order by last_seen_at_utc desc, instance_id desc) rn 
+                    from trading_dashboard.service_heartbeats) 
+               select 
+                component Component, 
+                case when last_seen_at_utc>=now()-make_interval(secs => stale_after_seconds) then 'Healthy' else 'Unhealthy' end Status, 
+                last_seen_at_utc LastSeenUtc, 
+                details Details
+                from latest where rn = 1 
+                order by component
+            """, 
+            cancellationToken: ct))).AsList();
+            
 
     public async Task<IReadOnlyCollection<AlertDto>> GetAlertsAsync(bool acknowledged, int take, CancellationToken ct)
     {

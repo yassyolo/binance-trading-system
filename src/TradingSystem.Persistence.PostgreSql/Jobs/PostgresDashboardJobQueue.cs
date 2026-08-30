@@ -10,53 +10,60 @@ public sealed class PostgresDashboardJobQueue(ITradingDbConnectionFactory factor
     public async Task<IReadOnlyList<DashboardJob>> ClaimAsync(string type, string workerId, int batchSize, TimeSpan timeout, CancellationToken ct)
     {
         const string sql = """
-with picked as (
-    select job_id
-    from trading_dashboard.jobs
-    where type = @type
-      and (
-        (status = 'Pending' and (next_attempt_at_utc is null or next_attempt_at_utc <= now()))
-        or
-        (status = 'Processing' and processing_started_at_utc < now() - @timeout)
-      )
-    order by created_at_utc
-    for update skip locked
-    limit @take
-)
-update trading_dashboard.jobs j
-set status = 'Processing',
-    processing_worker_id = @worker,
-    processing_started_at_utc = now(),
-    started_at_utc = coalesce(started_at_utc, now()),
-    attempt_count = attempt_count + 1
-from picked
-where j.job_id = picked.job_id
-returning j.job_id JobId,
-          j.type Type,
-          j.status Status,
-          j.requested_by RequestedBy,
-          j.request::text RequestJson,
-          j.attempt_count AttemptCount,
-          j.created_at_utc CreatedAtUtc,
-          j.started_at_utc StartedAtUtc;
-""";
-        await using var c = await factory.OpenAsync(ct);
-        var rows = await c.QueryAsync<DashboardJob>(
+            with picked as (
+                select job_id
+                from trading_dashboard.jobs
+                where type = @type
+                  and ((status = 'Pending' and (next_attempt_at_utc is null or next_attempt_at_utc <= now()))
+                  or (status = 'Processing' and processing_started_at_utc < now() - @timeout))
+                order by created_at_utc
+                for update skip locked
+                limit @take
+            )
+            update trading_dashboard.jobs j
+            set status = 'Processing',
+                processing_worker_id = @worker,
+                processing_started_at_utc = now(),
+                started_at_utc = coalesce(started_at_utc, now()),
+                attempt_count = attempt_count + 1
+            from picked
+            where j.job_id = picked.job_id
+            returning j.job_id JobId,
+                      j.type Type,
+                      j.status Status,
+                      j.requested_by RequestedBy,
+                      j.request::text RequestJson,
+                      j.attempt_count AttemptCount,
+                      j.created_at_utc CreatedAtUtc,
+                      j.started_at_utc StartedAtUtc;
+            """;
+        await using var ccommand = await factory.OpenAsync(ct);
+        
+        var rows = await ccommand.QueryAsync<DashboardJob>(
             new CommandDefinition(
                 sql,
                 new { type, worker = workerId, take = Math.Clamp(batchSize, 1, 20), timeout },
                 cancellationToken: ct
             )
         );
+       
         return rows.AsList();
     }
 
     public async Task ReportProgressAsync(Guid id, int percent, string stage, CancellationToken ct)
     {
-        await using var c = await factory.OpenAsync(ct);
-        await c.ExecuteAsync(
+        await using var command = await factory.OpenAsync(ct);
+       
+        await command.ExecuteAsync(
             new CommandDefinition(
-                "update trading_dashboard.jobs set progress_percent = @percent, progress_stage = @stage where job_id = @id and status = 'Processing'",
+                """
+                update trading_dashboard.jobs
+                set 
+                    progress_percent = @percent, 
+                    progress_stage = @stage
+                where job_id = @id
+                    and status = 'Processing'
+                """,
                 new { id, percent = Math.Clamp(percent, 0, 100), stage },
                 cancellationToken: ct
             )
@@ -65,8 +72,9 @@ returning j.job_id JobId,
 
     public async Task CompleteAsync(Guid id, Guid runId, CancellationToken ct)
     {
-        await using var c = await factory.OpenAsync(ct);
-        await c.ExecuteAsync(
+        await using var command = await factory.OpenAsync(ct);
+        
+        await command.ExecuteAsync(
             new CommandDefinition(
                 """
                 update trading_dashboard.jobs
@@ -87,14 +95,16 @@ returning j.job_id JobId,
 
     public async Task FailAsync(Guid id, string error, int maxAttempts, TimeSpan retry, CancellationToken ct)
     {
-        await using var c = await factory.OpenAsync(ct);
-        await c.ExecuteAsync(
+        await using var command = await factory.OpenAsync(ct);
+        
+        await command.ExecuteAsync(
             new CommandDefinition(
                 """
                 update trading_dashboard.jobs
-                set status = case when attempt_count>=@max then 'Failed' else 'Pending' end,
+                set 
+                    status = case when attempt_count>=@max then 'Failed' else 'Pending' end,
                     error = @error,
-                    next_attempt_at_utc = case when attempt_count>=@max then null else now()+@retry end,
+                    next_attempt_at_utc = case when attempt_count >= @max then null else now() + @retry end,
                     completed_at_utc = case when attempt_count>=@max then now() else null end,
                     completed_by_worker_id = case when attempt_count>=@max then processing_worker_id else completed_by_worker_id end,
                     processing_worker_id = null

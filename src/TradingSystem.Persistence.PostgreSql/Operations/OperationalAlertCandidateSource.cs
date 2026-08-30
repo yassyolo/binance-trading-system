@@ -39,15 +39,15 @@ public sealed class OperationalAlertCandidateSource(
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));
 
-        result.AddRange(stale.Select(item => new AlertCandidate(
-            $"operational:heartbeat:{item.Component}",
+        result.AddRange(stale.Select(x => new AlertCandidate(
+            $"operational:heartbeat:{x.Component}",
             AlertSeverity.Critical,
             "ServiceHeartbeatMissing",
-            $"{item.Component} has no healthy heartbeat. Latest instance {item.InstanceId} is stale.",
+            $"{x.Component} has no healthy heartbeat. Latest instance {x.InstanceId} is stale.",
             Metadata: new Dictionary<string, string>
             {
-                ["instanceId"] = item.InstanceId,
-                ["lastSeenUtc"] = item.LastSeenUtc.ToString("O")
+                ["instanceId"] = x.InstanceId,
+                ["lastSeenUtc"] = x.LastSeenUtc.ToString("O")
             })));
 
         var findings = await connection.QueryAsync<(Guid Id, string? BotName, string? PositionId, string FindingType, string Details)>(
@@ -65,20 +65,20 @@ public sealed class OperationalAlertCandidateSource(
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));
 
-        result.AddRange(findings.Select(item => new AlertCandidate(
-            $"operational:reconciliation:{item.Id}",
+        result.AddRange(findings.Select(x => new AlertCandidate(
+            $"operational:reconciliation:{x.Id}",
             AlertSeverity.Critical,
             "CriticalReconciliationFinding",
-            item.Details,
-            item.BotName,
-            item.PositionId)));
+            x.Details,
+            x.BotName,
+            x.PositionId)));
 
-        var jobs = await connection.QueryAsync<(
-            Guid JobId,
-            string Type,
-            string? Error)>(new CommandDefinition(
+        var jobs = await connection.QueryAsync<(Guid JobId, string Type, string? Error)>(new CommandDefinition(
             """
-                select job_id JobId, type Type, error Error
+                select 
+                    job_id JobId, 
+                    type Type, 
+                    error Error
                 from trading_dashboard.jobs
                 where status = 'Failed'
                   and completed_at_utc > now() - interval '7 day';
@@ -86,11 +86,11 @@ public sealed class OperationalAlertCandidateSource(
             commandTimeout: factory.CommandTimeoutSeconds,
             cancellationToken: ct));
 
-        result.AddRange(jobs.Select(item => new AlertCandidate(
-            $"operational:job:{item.JobId}",
+        result.AddRange(jobs.Select(x => new AlertCandidate(
+            $"operational:job:{x.JobId}",
             AlertSeverity.Warning,
             "JobFailed",
-            $"{item.Type} job failed: {item.Error ?? "Unknown error"}")));
+            $"{x.Type} job failed: {x.Error ?? "Unknown error"}")));
 
         return result;
     }

@@ -64,10 +64,7 @@ public sealed class PostgresPaperTradingStore(
         
         var rows = await connection.QueryAsync<PaperTradingPosition>(
             new CommandDefinition(
-                BaseSelect + """
-                     and status = @Status
-                     order by opened_at_utc
-                    """,
+                BaseSelect + " and status = @Status order by opened_at_utc",
                 new { Status = (short)PaperPositionStatus.Open },
                 commandTimeout: connections.CommandTimeoutSeconds,
                 cancellationToken: ct));

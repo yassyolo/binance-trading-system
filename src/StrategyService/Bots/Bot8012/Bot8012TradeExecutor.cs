@@ -50,7 +50,7 @@ public sealed class Bot8012TradeExecutor(
         }
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken ct)
+    public async Task<TradeExecutionResult> CloseAsync(string shortId, string reason, CancellationToken ct)
     {
         var position = await store.GetAsync(BotName, shortId, ct);
         if (position is null) 
@@ -61,16 +61,16 @@ public sealed class Bot8012TradeExecutor(
        
         try
         {
-            await execution.CloseAsync(position,  ct);
+            await execution.CloseAsync(position, ct);
             
-            position.MarkClosed(reason,  clock.UtcNow);    
-            await store.SaveAsync(position,  ct);
+            position.MarkClosed(reason, clock.UtcNow);    
+            await store.SaveAsync(position, ct);
            
-            return TradeExecutionResult.Success(shortId,  reason);
+            return TradeExecutionResult.Success(shortId, reason);
         }
         catch (Exception ex)
         {
-            return TradeExecutionResult.Failure(ex.Message,  ex);
+            return TradeExecutionResult.Failure(ex.Message, ex);
         }
     }
 }

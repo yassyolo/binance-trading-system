@@ -44,25 +44,24 @@ public abstract class TpOnlyGridTradeExecutor<TOptions>(
         }
     }
 
-    public async Task<TradeExecutionResult> CloseAsync(string shortId,  string reason,  CancellationToken ct)
+    public async Task<TradeExecutionResult> CloseAsync(string shortId, string reason, CancellationToken ct)
     {
-        var position = await store.GetAsync(BotName,  shortId,  ct);
-        
+        var position = await store.GetAsync(BotName, shortId, ct);  
         if (position is null) 
             return TradeExecutionResult.Failure($"Position '{shortId}' was not found.");
         
         if (position.Closed) 
-            return TradeExecutionResult.Success(shortId,  "Position is already closed.");
+            return TradeExecutionResult.Success(shortId, "Position is already closed.");
         
         try
         {
-            await execution.CloseAsync(position,  ct);
+            await execution.CloseAsync(position, ct);
             
-            position.MarkClosed(reason,  clock.UtcNow);
+            position.MarkClosed(reason, clock.UtcNow);
            
-            await store.SaveAsync(position,  ct);
+            await store.SaveAsync(position, ct);
             
-            return TradeExecutionResult.Success(shortId,  reason);
+            return TradeExecutionResult.Success(shortId, reason);
         }
         catch (Exception ex)
         {

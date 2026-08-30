@@ -12,7 +12,7 @@ public sealed class PostgresTradingPipelineRecorder(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public Task RecordSignalAsync(SignalHistoryRecord signal, CancellationToken ct) 
+    public Task RecordSignalAsync(SignalHistoryRecord S, CancellationToken ct) 
         => Exec("""
             insert into trading_history.signals
                 (signal_id, 
@@ -35,24 +35,24 @@ public sealed class PostgresTradingPipelineRecorder(
             """,
         new
         {
-            signal.SignalId,
-            signal.BotName,
-            signal.StrategyVersion,
-            signal.Symbol,
-            signal.Side,
-            signal.Source,
-            signal.Environment,
-            signal.SignalTimeUtc,
-            signal.ReferencePrice,
-            signal.CandleOpenTimeUtc,
-            signal.Interval,
-            signal.Reason,
-            Raw = Normalize(signal.RawPayload),
-            Meta = Serialize(signal.Metadata)
+            S.SignalId,
+            S.BotName,
+            S.StrategyVersion,
+            S.Symbol,
+            S.Side,
+            S.Source,
+            S.Environment,
+            S.SignalTimeUtc,
+            S.ReferencePrice,
+            S.CandleOpenTimeUtc,
+            S.Interval,
+            S.Reason,
+            Raw = Normalize(S.RawPayload),
+            Meta = Serialize(S.Metadata)
         },
         ct);
 
-    public Task RecordDecisionAsync(DecisionHistoryRecord x, CancellationToken ct) 
+    public Task RecordDecisionAsync(DecisionHistoryRecord d, CancellationToken ct) 
         => Exec(
             """
             insert into trading_history.strategy_decisions
@@ -73,22 +73,22 @@ public sealed class PostgresTradingPipelineRecorder(
             """,
             new
             {
-                x.SignalId,
-                x.BotName,
-                x.StrategyVersion,
-                x.Symbol,
-                x.Side,
-                x.Decision,
-                x.Reason,
-                x.Environment,
-                x.DecidedAtUtc,
-                x.MarkPrice,
-                Params = Serialize(x.Parameters),
-                Meta = Serialize(x.Metadata)
+                d.SignalId,
+                d.BotName,
+                d.StrategyVersion,
+                d.Symbol,
+                d.Side,
+                d.Decision,
+                d.Reason,
+                d.Environment,
+                d.DecidedAtUtc,
+                d.MarkPrice,
+                Params = Serialize(d.Parameters),
+                Meta = Serialize(d.Metadata)
             },
             ct);
 
-    public Task UpsertPositionAsync(PositionHistoryRecord x, CancellationToken ct) 
+    public Task UpsertPositionAsync(PositionHistoryRecord p, CancellationToken ct) 
         => Exec(
             """
             insert into trading_history.positions
@@ -135,28 +135,28 @@ public sealed class PostgresTradingPipelineRecorder(
             """,
             new
             {
-                x.PositionId,
-                x.SignalId,
-                x.BotName,
-                x.StrategyVersion,
-                x.Symbol,
-                x.Side,
-                x.Source,
-                x.Environment,
-                x.Status,
-                x.Quantity,
-                x.EntryPrice,
-                x.TakeProfitPrice,
-                x.OpenedAtUtc,
-                x.ClosedAtUtc,
-                x.RealizedPnl,
-                x.Fees,
-                x.CloseReason,
-                Meta = Serialize(x.Metadata)
+                p.PositionId,
+                p.SignalId,
+                p.BotName,
+                p.StrategyVersion,
+                p.Symbol,
+                p.Side,
+                p.Source,
+                p.Environment,
+                p.Status,
+                p.Quantity,
+                p.EntryPrice,
+                p.TakeProfitPrice,
+                p.OpenedAtUtc,
+                p.ClosedAtUtc,
+                p.RealizedPnl,
+                p.Fees,
+                p.CloseReason,
+                Meta = Serialize(p.Metadata)
             },
             ct);
 
-    public Task RecordPositionEventAsync(PositionEventHistoryRecord x, CancellationToken ct) 
+    public Task RecordPositionEventAsync(PositionEventHistoryRecord p, CancellationToken ct) 
         => Exec(
             """
             insert into trading_history.position_events
@@ -173,18 +173,18 @@ public sealed class PostgresTradingPipelineRecorder(
             """,
             new
             {
-                x.PositionId,
-                x.BotName,
-                x.EventType,
-                x.Status,
-                x.OccurredAtUtc,
-                x.Price,
-                x.Quantity,
-                Details = Serialize(x.Details)
+                p.PositionId,
+                p.BotName,
+                p.EventType,
+                p.Status,
+                p.OccurredAtUtc,
+                p.Price,
+                p.Quantity,
+                Details = Serialize(p.Details)
             },
             ct);
 
-    public Task RecordOrderEventAsync(OrderEventHistoryRecord x, CancellationToken ct) 
+    public Task RecordOrderEventAsync(OrderEventHistoryRecord o, CancellationToken ct) 
         => Exec(
             """
             insert into trading_history.order_events
@@ -204,28 +204,26 @@ public sealed class PostgresTradingPipelineRecorder(
                  executed_quantity, 
                  raw_payload)
             values
-                (@EventKey, @BotName, @PositionId, @ClientOrderId, @ExchangeOrderId, @OrderType,
-                 @Status, @Side, @Symbol, @Environment, @OccurredAtUtc, @Price, @Quantity,
-                 @ExecutedQuantity, cast(@Raw as jsonb))
+                (@EventKey, @BotName, @PositionId, @ClientOrderId, @ExchangeOrderId, @OrderType, @Status, @Side, @Symbol, @Environment, @OccurredAtUtc, @Price, @Quantity, @ExecutedQuantity, cast(@Raw as jsonb))
             on conflict(event_key) do nothing;
             """,
             new
             {
-                x.EventKey,
-                x.BotName,
-                x.PositionId,
-                x.ClientOrderId,
-                x.ExchangeOrderId,
-                x.OrderType,
-                x.Status,
-                x.Side,
-                x.Symbol,
-                x.Environment,
-                x.OccurredAtUtc,
-                x.Price,
-                x.Quantity,
-                x.ExecutedQuantity,
-                Raw = Normalize(x.RawPayload)
+                o.EventKey,
+                o.BotName,
+                o.PositionId,
+                o.ClientOrderId,
+                o.ExchangeOrderId,
+                o.OrderType,
+                o.Status,
+                o.Side,
+                o.Symbol,
+                o.Environment,
+                o.OccurredAtUtc,
+                o.Price,
+                o.Quantity,
+                o.ExecutedQuantity,
+                Raw = Normalize(o.RawPayload)
             },
             ct);
 

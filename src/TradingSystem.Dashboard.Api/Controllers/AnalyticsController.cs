@@ -49,18 +49,10 @@ public sealed class AnalyticsController(
     [HttpGet("comparisons")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> CompareRunsAsync(
-        Guid leftRunId,
-        Guid rightRunId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> CompareRunsAsync(Guid leftRunId, Guid rightRunId, CancellationToken cancellationToken)
     {
-        var comparison = await store.CompareRunsAsync(
-            leftRunId,
-            rightRunId,
-            cancellationToken);
+        var comparison = await store.CompareRunsAsync(leftRunId, rightRunId, cancellationToken);
 
-        return comparison is null
-            ? NotFound()
-            : Ok(comparison);
+        return comparison is null ? NotFound() : Ok(comparison);
     }
 }

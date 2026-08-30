@@ -21,8 +21,7 @@ public sealed class PostgresTradingEventStore(
         await using var connection = await connections.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
        
-        await connection.ExecuteAsync(
-            new CommandDefinition(
+        await connection.ExecuteAsync(new CommandDefinition(
                 "SELECT pg_advisory_xact_lock(hashtextextended(@StreamKey,  0));",
                 new { StreamKey = $"{request.AggregateType}:{request.AggregateId}" }, 
                 transaction, 
@@ -69,9 +68,9 @@ public sealed class PostgresTradingEventStore(
             }
         }
 
-        if ((request.EventType == TradingEventTypes.PositionOpened ||
-             request.EventType == TradingEventTypes.PositionClosed) &&
-            !string.IsNullOrWhiteSpace(request.PositionId))
+        if ((request.EventType == TradingEventTypes.PositionOpened 
+            || request.EventType == TradingEventTypes.PositionClosed) 
+            && !string.IsNullOrWhiteSpace(request.PositionId))
         {
             var existingPositionEvent = await connection.QuerySingleOrDefaultAsync<EventRow>(new CommandDefinition(
                 """

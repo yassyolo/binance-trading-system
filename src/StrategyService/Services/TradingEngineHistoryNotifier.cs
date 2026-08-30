@@ -17,7 +17,7 @@ public sealed class TradingEngineHistoryNotifier(
     TelegramTradingEngineNotifier telegramNotifier,
     TradingStrategyRegistry strategies,
     IPositionStore positions,
-    IHistoricalEventSink historicalEvents,
+    IHistoricalEventSink historicalDatabase,
     TradingMetrics metrics,
     ITradingEnvironmentProvider environment,
     IBotRuntimeConfigurationProvider configurations,
@@ -33,7 +33,7 @@ public sealed class TradingEngineHistoryNotifier(
         metrics.SignalsReceived.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown").Inc();
         metrics.Decisions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName).Inc();
 
-        await historicalEvents.WriteAsync(
+        await historicalDatabase.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.StrategyDecision,
@@ -81,7 +81,7 @@ public sealed class TradingEngineHistoryNotifier(
             }
         }
 
-        await historicalEvents.WriteAsync(
+        await historicalDatabase.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.ExecutionCompleted,
@@ -114,7 +114,7 @@ public sealed class TradingEngineHistoryNotifier(
        
         var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
-        await historicalEvents.WriteAsync(
+        await historicalDatabase.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.ProcessingFailed,

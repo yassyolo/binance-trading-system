@@ -15,16 +15,16 @@ public sealed class ServiceHeartbeatWorker(
     ILogger<ServiceHeartbeatWorker> logger) 
     : BackgroundService
 {
+    private readonly ServiceHeartbeatOptions _options = options.Value;
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;
     private readonly string _instanceId = $"{Environment.MachineName}-{Environment.ProcessId}";
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        var settings = options.Value;
-        if (!settings.Enabled)
+        if (!_options.Enabled)
             return;
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(2, settings.IntervalSeconds)));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(2, _options.IntervalSeconds)));
         try
         {
             do
@@ -40,14 +40,14 @@ public sealed class ServiceHeartbeatWorker(
                     };
                     
                     await store.UpsertAsync(new ServiceHeartbeat(
-                        settings.ServiceName,
+                        _options.ServiceName,
                         _instanceId,
                         version,
-                        settings.Environment,
+                        _options.Environment,
                         OperationalStatus.Healthy,
                         _startedAtUtc,
                         DateTime.UtcNow,
-                        Math.Max(settings.StaleAfterSeconds, settings.IntervalSeconds * 2),
+                        Math.Max(_options.StaleAfterSeconds, _options.IntervalSeconds * 2),
                         details), 
                         ct);
                 }
@@ -57,7 +57,7 @@ public sealed class ServiceHeartbeatWorker(
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Failed to publish heartbeat for {ServiceName}", settings.ServiceName);
+                    logger.LogError(ex, "Failed to publish heartbeat for {ServiceName}", _options.ServiceName);
                 }
             } while (await timer.WaitForNextTickAsync(ct));
         }

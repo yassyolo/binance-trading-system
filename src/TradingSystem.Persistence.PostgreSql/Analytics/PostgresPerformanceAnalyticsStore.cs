@@ -17,11 +17,13 @@ public sealed class PostgresPerformanceAnalyticsStore(
 	{
 		const string sql = """
             INSERT INTO trading.performance_runs
-            (run_id,  run_type,  bot_name,  strategy_version,  symbol,  interval,  started_at_utc,  completed_at_utc,  status,  parameters,  parent_run_id,  notes)
-            VALUES (@RunId,  @RunType,  @BotName,  @StrategyVersion,  @Symbol,  @Interval,  @StartedAtUtc,  @CompletedAtUtc,  @Status,  CAST(@ParametersJson AS jsonb),  @ParentRunId,  @Notes)
-            ON CONFLICT (run_id) DO UPDATE SET status  =  EXCLUDED.status,  completed_at_utc  =  EXCLUDED.completed_at_utc,  notes  =  EXCLUDED.notes;
+            (run_id, run_type, bot_name, strategy_version, symbol, interval, started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
+            VALUES (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)
+            ON CONFLICT (run_id) DO UPDATE SET status = EXCLUDED.status, completed_at_utc = EXCLUDED.completed_at_utc, notes = EXCLUDED.notes;
             """;
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(sql, new
 		{
 			run.RunId,

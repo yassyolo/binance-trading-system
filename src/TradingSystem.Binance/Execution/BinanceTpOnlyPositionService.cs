@@ -59,7 +59,7 @@ public sealed class BinanceTpOnlyPositionService(
 
         var now = clock.UtcNow;
 
-        logger.LogInformation("TP-only position opened. Bot = {Bot} Id = {Id} Side = {Side} Entry = {Entry} TP = {TP}", botName, id, side, entry, tpPrice);
+        logger.LogInformation("TP-only p opened. Bot = {Bot} Id = {Id} Side = {Side} Entry = {Entry} TP = {TP}", botName, id, side, entry, tpPrice);
 
         return new BotPosition
         {
@@ -86,32 +86,32 @@ public sealed class BinanceTpOnlyPositionService(
         };
     }
 
-    public async Task CloseAsync(BotPosition position, CancellationToken ct)
+    public async Task CloseAsync(BotPosition p, CancellationToken ct)
     {
-        position.MarkClosing(clock.UtcNow);
+        p.MarkClosing(clock.UtcNow);
 
-        if (!position.TpExecuted && !string.IsNullOrWhiteSpace(position.TpOrderId))
+        if (!p.TpExecuted && !string.IsNullOrWhiteSpace(p.TpOrderId))
         {
-            await TryCancelOrderAsync(position.Symbol, position.TpOrderId, ct);
-            position.TpStatus = "CANCELED";
+            await TryCancelOrderAsync(p.Symbol, p.TpOrderId, ct);
+            p.TpStatus = "CANCELED";
         }
 
-        if (position.RemainingQuantity <= 0)
+        if (p.RemainingQuantity <= 0)
             return;
 
-        var clientOrderId = BinanceClientOrderId.Create(position.BotName, "CL", position.ShortId);
+        var clientOrderId = BinanceClientOrderId.Create(p.BotName, "CL", p.ShortId);
 
         var close = await safeOrders.SafePlaceMarketOrderAsync(
-            position.Symbol,
-            BinanceOrderSide.Close(position.Side),
-            BinanceOrderSide.Position(position.Side),
-            position.RemainingQuantity,
+            p.Symbol,
+            BinanceOrderSide.Close(p.Side),
+            BinanceOrderSide.Position(p.Side),
+            p.RemainingQuantity,
             clientOrderId,
             ct);
 
-        position.CloseClientId = clientOrderId;
-        position.CloseOrderId = close.OrderId;
-        position.CloseStatus = close.Status;
+        p.CloseClientId = clientOrderId;
+        p.CloseOrderId = close.OrderId;
+        p.CloseStatus = close.Status;
     }
 
     private async Task TryCancelOrderAsync(string symbol, string orderId, CancellationToken ct)
@@ -122,10 +122,7 @@ public sealed class BinanceTpOnlyPositionService(
         }
         catch (BinanceApiException ex) when (IsUnknownOrder(ex))
         {
-            logger.LogInformation(
-                "Standard Binance order was already absent while cancelling. Symbol = {Symbol} OrderId = {OrderId}",
-                symbol,
-                orderId);
+            logger.LogInformation("Standard Binance order was already absent while cancelling. Symbol = {Symbol} OrderId = {OrderId}", symbol, orderId);
         }
     }
 
