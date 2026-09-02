@@ -3,7 +3,6 @@ using TradingSystem.Backtesting.Bots.Bot8011.Models.Enums;
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
-using TradingSystem.Backtesting.Models;
 using TradingSystem.Backtesting.Models.Enums;
 using TradingSystem.Domain.MarketData;
 
@@ -19,6 +18,7 @@ public sealed class Bot8011BacktestEngine
         CancellationToken cancellationToken = default)
     {
         Validate(initialBalance, options, sourceCandles);
+        
         var started = DateTime.UtcNow;
         var candles = sourceCandles.OrderBy(x => x.OpenTimeUtc).ToArray();
         var signals = sourceSignals.OrderBy(x => x.TimeUtc).ToArray();
@@ -47,13 +47,8 @@ public sealed class Bot8011BacktestEngine
             {
                 ProcessProtection(active, candle);
 
-                // ProcessProtection may close the position and set the captured
-                // 'active' variable to null. Re-check it before reading Stage.
-                if (active is not null &&
-                    active.Stage == LifecycleStage.Stop3Active)
-                {
+                if (active is not null && active.Stage == LifecycleStage.Stop3Active)
                     UpdateTrailing(active, candle.Close);
-                }
             }
 
             while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.CloseTimeUtc)
@@ -201,17 +196,24 @@ public sealed class Bot8011BacktestEngine
 
         void UpdateTrailing(SimulatedPosition position, decimal close)
         {
-            if (!position.Stop3Current.HasValue) return;
-            if (position.Side == TradeSide.Long && close >= position.Stop3Current.Value + options.Stop3TrailingStep)
+            if (!position.Stop3Current.HasValue) 
+                return;
+           
+            if (position.Side == TradeSide.Long 
+                && close >= position.Stop3Current.Value + options.Stop3TrailingStep)
                 position.Stop3Current = BotBacktestMath.RoundToStep(position.Stop3Current.Value + options.Stop3TrailingBuffer, options.TickSize);
-            else if (position.Side == TradeSide.Short && close <= position.Stop3Current.Value - options.Stop3TrailingStep)
+            else if (position.Side == TradeSide.Short
+                && close <= position.Stop3Current.Value - options.Stop3TrailingStep)
                 position.Stop3Current = BotBacktestMath.RoundToStep(position.Stop3Current.Value - options.Stop3TrailingBuffer, options.TickSize);
         }
 
         void CloseRemaining(SimulatedPosition position, decimal price, DateTime time, string reason)
         {
-            if (position.RemainingQuantity > 0) Realize(position, price, position.RemainingQuantity, time, reason);
+            if (position.RemainingQuantity > 0) 
+                Realize(position, price, position.RemainingQuantity, time, reason);
+            
             position.Stage = LifecycleStage.Closed;
+            
             Finalize(position, price, time, reason);
         }
 
@@ -220,10 +222,12 @@ public sealed class Bot8011BacktestEngine
             var price = BotBacktestMath.RoundToStep(rawPrice, options.TickSize);
             var gross = BotBacktestMath.UnrealizedPnl(position.Side, position.EntryPrice, price, quantity);
             var fee = price * quantity * options.TakerFeeRate;
+           
             position.RealizedGross += gross;
             position.Fees += fee;
             position.RemainingQuantity = Math.Max(0, position.RemainingQuantity - quantity);
             balance += gross - fee;
+            
             executions.Add(new(position.Id, time, "EXIT", position.Side, price, quantity, gross, fee, reason));
         }
 

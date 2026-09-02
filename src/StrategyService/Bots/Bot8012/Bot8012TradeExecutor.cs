@@ -18,7 +18,7 @@ public sealed class Bot8012TradeExecutor(
     IBotRuntimeConfigurationProvider runtimeConfigurationProvider, 
     ILogger<Bot8012TradeExecutor> logger) : IBotTradeExecutor
 {
-    private readonly Bot8012Options _options  =  options.Value;
+    private readonly Bot8012Options _options = options.Value;
     public string BotName  =>  _options.BotName;
 
     public async Task<TradeExecutionResult> OpenAsync(string symbol, PositionSide side, string? source, CancellationToken ct)
@@ -29,14 +29,14 @@ public sealed class Bot8012TradeExecutor(
             return TradeExecutionResult.Failure($"Unsupported symbol '{symbol}'.");
         try
         {
-            var position  =  await execution.OpenAsync(
+            var position = await execution.OpenAsync(
                 BotName, 
                 symbol, 
                 side, 
                 runtime?.Quantity ?? _options.Quantity, 
                 runtime?.ProfitDistance ?? _options.ProfitDistance, 
                 ct);
-            position.Source  =  source;
+            position.Source = source;
             
             await store.SaveAsync(position,  ct);
            

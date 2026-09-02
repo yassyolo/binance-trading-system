@@ -28,7 +28,7 @@ public abstract class TpOnlyGridTradeExecutor<TOptions>(
             return TradeExecutionResult.Failure($"{BotName} does not support symbol '{symbol}'.");
 
         var quantity = runtime?.Quantity ?? options.Quantity;
-        var profitDistance  =  runtime?.ProfitDistance ?? options.ProfitDistance;
+        var profitDistance = runtime?.ProfitDistance ?? options.ProfitDistance;
         try
         {
             var position = await execution.OpenAsync(BotName,  symbol,  side,  quantity,  profitDistance,  ct);

@@ -15,7 +15,7 @@ public sealed class Bot8011Optimizer(Bot8011BacktestEngine engine,  GridSearchOp
         Bot8011OptimizationSpace space, 
         IReadOnlyList<MarketCandle> candles,  
         IReadOnlyList<HistoricalBotSignal> signals, 
-        int top  =  50,  
+        int top = 50,  
         CancellationToken ct = default)
     {
         var candidates  = 

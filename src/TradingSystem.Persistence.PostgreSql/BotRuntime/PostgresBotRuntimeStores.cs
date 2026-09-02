@@ -32,20 +32,6 @@ public sealed class PostgresBotRuntimeStateStore(
             cancellationToken: ct));
 	}
 
-	public async Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct)
-	{
-		await using var connection = await factory.OpenAsync(ct);
-		
-        return (await connection.QueryAsync<BotRuntimeState>(new CommandDefinition(
-			"""
-            select bot_name BotName,  runtime_status Status,  runtime_version Version, 
-                   runtime_updated_at_utc UpdatedAtUtc,  runtime_updated_by UpdatedBy, 
-                   runtime_reason Reason,  execution_enabled ExecutionEnabled
-            from trading_dashboard.bot_configurations
-            order by bot_name
-            """, cancellationToken: ct))).AsList();
-	}
-
 	public async Task<BotRuntimeState> TransitionAsync(
         string botName,
         BotRuntimeStatus status, 

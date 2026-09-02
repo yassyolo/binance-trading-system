@@ -10,7 +10,7 @@ public sealed class StrategyPluginCatalog : IStrategyPluginCatalog
 
     public StrategyPluginCatalog(IEnumerable<ITradingStrategy> strategies, IEnumerable<IStrategyPluginModule> modules)
     {
-        var descriptors  =  new List<StrategyPluginDescriptor>();
+        var descriptors = new List<StrategyPluginDescriptor>();
         descriptors.AddRange(modules.Select(x  =>  x.Descriptor));
 
         foreach (var strategy in strategies)

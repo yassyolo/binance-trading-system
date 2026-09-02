@@ -20,13 +20,13 @@ public sealed class AuditMiddleware(RequestDelegate next)
 
         context.Request.EnableBuffering();
         string? body;
-        using (var reader  =  new StreamReader(context.Request.Body,  Encoding.UTF8,  false,  4096,  true))
+        using (var reader = new StreamReader(context.Request.Body,  Encoding.UTF8,  false,  4096,  true))
         {
-            body  =  await reader.ReadToEndAsync(context.RequestAborted);
-            context.Request.Body.Position  =  0;
+            body = await reader.ReadToEndAsync(context.RequestAborted);
+            context.Request.Body.Position = 0;
         }
 
-        var succeeded  =  false;
+        var succeeded = false;
         try
         {
             await next(context);
@@ -73,17 +73,17 @@ public sealed class AuditMiddleware(RequestDelegate next)
             return null;
         
         if (body.Length > 64_000) 
-            return JsonSerializer.Serialize(new { truncated  =  true,  originalLength  =  body.Length });
+            return JsonSerializer.Serialize(new { truncated = true,  originalLength = body.Length });
 
         try
         {
-            var node  =  JsonNode.Parse(body);
+            var node = JsonNode.Parse(body);
             RedactNode(node);
             return node?.ToJsonString();
         }
         catch (JsonException)
         {
-            return JsonSerializer.Serialize(new { nonJsonPayload  =  true,  length  =  body.Length });
+            return JsonSerializer.Serialize(new { nonJsonPayload = true,  length = body.Length });
         }
     }
 
@@ -93,7 +93,7 @@ public sealed class AuditMiddleware(RequestDelegate next)
         {
             foreach (var property in obj.ToArray())
             {
-                if (SensitiveNames.Contains(property.Key)) obj[property.Key]  =  "[REDACTED]";
+                if (SensitiveNames.Contains(property.Key)) obj[property.Key] = "[REDACTED]";
                 else RedactNode(property.Value);
             }
         }

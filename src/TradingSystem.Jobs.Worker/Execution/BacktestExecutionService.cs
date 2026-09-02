@@ -21,8 +21,8 @@ namespace TradingSystem.Jobs.Worker.Execution;
 
 public sealed class BacktestExecutionService(
     IServiceProvider services,
-    IHistoricalMarketDataStore market,
-    IHistoricalSignalStore signalStore,
+    IHistoricalMarketDataStore historicalMarketData,
+    IHistoricalSignalStore historicalSignalStore,
     IPerformanceAnalyticsStore analytics)
 {
     private static readonly JsonSerializerOptions OptionJsonOptions = new()
@@ -44,16 +44,16 @@ public sealed class BacktestExecutionService(
         var fromUtc = NormalizeUtc(request.FromUtc);
         var toUtc = NormalizeUtc(request.ToUtc);
 
-        if (await market.HasGapsAsync(request.Symbol, interval, fromUtc, toUtc, ct))
+        if (await historicalMarketData.HasGapsAsync(request.Symbol, interval, fromUtc, toUtc, ct))
             throw new HistoricalDataUnavailableException("Historical data contains unresolved candle gaps for the requested period.");
 
-        var candles = await market.LoadCandlesAsync(request.Symbol, interval, fromUtc, toUtc, ct);
+        var candles = await historicalMarketData.LoadCandlesAsync(request.Symbol, interval, fromUtc, toUtc, ct);
         if (candles.Count < 2)
             throw new HistoricalDataUnavailableException("Historical candles are missing for the requested period.");
 
         var signals = string.Equals(request.SignalSource, "Internal", StringComparison.OrdinalIgnoreCase)
             ? new EmaCrossDemoSignalSource().Generate(candles)
-            : await signalStore.LoadAsync(request.BotName, request.Symbol, fromUtc, toUtc, ct);
+            : await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, fromUtc, toUtc, ct);
 
         if (signals.Count == 0)
             throw new HistoricalDataUnavailableException("No historical signals were found for the requested source and period.");
@@ -159,19 +159,14 @@ public sealed class BacktestExecutionService(
                 interval,
                 ct),
 
-            _ => throw new NotSupportedException(
-                "Supported bots are BOT8011-BOT8016.")
+            _ => throw new NotSupportedException("Supported bots are BOT8011-BOT8016.")
         };
     }
 
-    private T Get<T>() where T : notnull =>
-        services.GetRequiredService<T>();
+    private T Get<T>() where T : notnull
+        => services.GetRequiredService<T>();
 
-    private async Task<Guid> SaveAsync<T>(
-        BotBacktestResult<T> result,
-        string version,
-        string interval,
-        CancellationToken ct)
+    private async Task<Guid> SaveAsync<T>(BotBacktestResult<T> result, string version, string interval, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(result);
 

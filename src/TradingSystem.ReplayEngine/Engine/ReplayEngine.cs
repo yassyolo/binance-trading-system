@@ -12,8 +12,8 @@ using TradingSystem.ReplayEngine.Store;
 namespace TradingSystem.ReplayEngine.Engine;
 
 public sealed class ReplayEngine(
-    IReplayEventSource source,
-    IReplayJobStore store,
+    IReplayEventSource replayEventSource,
+    IReplayJobStore replayJobStore,
     IEnumerable<IReplayStrategyEvaluator> evaluators)
 {
     private readonly IReadOnlyDictionary<string, IReplayStrategyEvaluator> _evaluators 
@@ -23,9 +23,9 @@ public sealed class ReplayEngine(
     {
         var request = Validate(job.Request);
        
-        var total = Math.Max(1L, await source.CountAsync(request, ct));
+        var total = Math.Max(1L, await replayEventSource.CountAsync(request, ct));
        
-        var state = await store.LoadCheckpointAsync(job.ReplayId, ct) ?? new ReplayAccumulator();
+        var state = await replayJobStore.LoadCheckpointAsync(job.ReplayId, ct) ?? new ReplayAccumulator();
        
         var clock = new ReplayVirtualClock();
         
@@ -37,14 +37,14 @@ public sealed class ReplayEngine(
         {
             ct.ThrowIfCancellationRequested();
             
-            if (await store.IsCancellationRequestedAsync(job.ReplayId, ct))
+            if (await replayJobStore.IsCancellationRequestedAsync(job.ReplayId, ct))
             {
-                await store.MarkCancelledAsync(job.ReplayId, ct);
+                await replayJobStore.MarkCancelledAsync(job.ReplayId, ct);
                 
                 throw new OperationCanceledException("Replay cancellation was requested.", ct);
             }
 
-            var batch = await source.ReadForwardAsync(request, cursor, Math.Clamp(request.BatchSize, 1, 1000), ct);
+            var batch = await replayEventSource.ReadForwardAsync(request, cursor, Math.Clamp(request.BatchSize, 1, 1000), ct);
             if (batch.Count == 0)
                 break;
 
@@ -102,7 +102,7 @@ public sealed class ReplayEngine(
 
                     if (request.StopOnError)
                     {
-                        await store.SaveStepsAsync(steps, ct);
+                        await replayJobStore.SaveStepsAsync(steps, ct);
                         throw;
                     }
                 }
@@ -110,11 +110,11 @@ public sealed class ReplayEngine(
                 cursor = item.GlobalPosition;
             }
 
-            await store.SaveStepsAsync(steps, ct);
+            await replayJobStore.SaveStepsAsync(steps, ct);
             var percent = Math.Clamp((int)Math.Round(state.ProcessedEvents * 100d / total), 0, 99);
             var stage = $"Replayed through global position {cursor}";
             
-            await store.SaveCheckpointAsync(job.ReplayId, cursor, state, percent, stage, ct);
+            await replayJobStore.SaveCheckpointAsync(job.ReplayId, cursor, state, percent, stage, ct);
             
             if (progress is not null)
                 await progress(percent, stage);
@@ -122,7 +122,7 @@ public sealed class ReplayEngine(
 
         var summary = state.ToSummary(job.ReplayId);
        
-        await store.CompleteAsync(job.ReplayId, summary, ct);
+        await replayJobStore.CompleteAsync(job.ReplayId, summary, ct);
         
         if (progress is not null)
             await progress(100, "Completed");
@@ -171,7 +171,7 @@ public sealed class ReplayEngine(
         foreach (var item in batch)
         {
             if (item.GlobalPosition <= previous)
-                throw new InvalidOperationException($"Replay source returned non-forward global position {item.GlobalPosition} after {previous}.");
+                throw new InvalidOperationException($"Replay replayEventSource returned non-forward global position {item.GlobalPosition} after {previous}.");
            
             previous = item.GlobalPosition;
         }
@@ -182,6 +182,7 @@ public sealed class ReplayEngine(
         try
         {
             using var document = JsonDocument.Parse(json);
+            
             return document.RootElement.TryGetProperty("decision", out var value)
                 ? value.GetString()
                 : null;

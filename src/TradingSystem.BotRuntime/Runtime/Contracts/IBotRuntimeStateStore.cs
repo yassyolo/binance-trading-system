@@ -6,9 +6,7 @@ namespace TradingSystem.BotRuntime.Runtime.Contracts;
 public interface IBotRuntimeStateStore
 {
     Task<BotRuntimeState?> GetAsync(string botName, CancellationToken ct);
-    
-    Task<IReadOnlyCollection<BotRuntimeState>> GetAllAsync(CancellationToken ct);
-    
+        
     Task<BotRuntimeState> TransitionAsync(
         string botName, 
         BotRuntimeStatus status, 

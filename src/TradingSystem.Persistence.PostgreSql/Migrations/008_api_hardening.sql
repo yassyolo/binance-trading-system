@@ -21,7 +21,7 @@ create index if not exists ix_api_idempotency_expiry
 
 create index if not exists ix_api_idempotency_processing
     on trading_dashboard.api_idempotency_keys(status,  created_at_utc)
-    where status  =  'Processing';
+    where status = 'Processing';
 
 -- Safe cleanup can be executed periodically by an operational job.
 delete from trading_dashboard.api_idempotency_keys

@@ -14,7 +14,6 @@
 		<ProjectReference Include="../TradingSystem.Backtesting.Bots/TradingSystem.Backtesting.Bots.csproj" />
 		<ProjectReference Include="../TradingSystem.Optimization/TradingSystem.Optimization.csproj" />
 		<ProjectReference Include="../TradingSystem.Analytics/TradingSystem.Analytics.csproj" />
-		<ProjectReference Include="../TradingSystem.HistoricalData/TradingSystem.HistoricalData.csproj" />
 		<ProjectReference Include="../TradingSystem.Binance/TradingSystem.Binance.csproj" />
 		<ProjectReference Include="../TradingSystem.Dashboard.Contracts/TradingSystem.Dashboard.Contracts.csproj" />
 	</ItemGroup>

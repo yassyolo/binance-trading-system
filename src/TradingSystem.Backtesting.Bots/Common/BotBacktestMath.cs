@@ -33,31 +33,31 @@ internal static class BotBacktestMath
         IReadOnlyList<BotPositionResult> positions, 
         IReadOnlyList<BotEquityPoint> equity)
     {
-        var wins  =  positions.Where(x  =>  x.NetPnl > 0).ToArray();
-        var losses  =  positions.Where(x  =>  x.NetPnl <= 0).ToArray();
-        var grossProfit  =  wins.Sum(x  =>  x.NetPnl);
-        var grossLoss  =  Math.Abs(losses.Sum(x  =>  x.NetPnl));
+        var wins = positions.Where(x  =>  x.NetPnl > 0).ToArray();
+        var losses = positions.Where(x  =>  x.NetPnl <= 0).ToArray();
+        var grossProfit = wins.Sum(x  =>  x.NetPnl);
+        var grossLoss = Math.Abs(losses.Sum(x  =>  x.NetPnl));
         return new BotBacktestMetrics
         {
-            Signals  =  signals, 
-            OpenedPositions  =  positions.Count, 
-            BlockedSignals  =  blocked, 
-            ClosedPositions  =  positions.Count, 
-            WinningPositions  =  wins.Length, 
-            LosingPositions  =  losses.Length, 
-            WinRatePercent  =  positions.Count == 0 ? 0 : wins.Length * 100m / positions.Count, 
-            InitialBalance  =  initial, 
-            FinalBalance  =  final, 
-            NetProfit  =  final - initial, 
-            ReturnPercent  =  initial == 0 ? 0 : (final - initial) / initial * 100m, 
-            GrossProfit  =  grossProfit, 
-            GrossLoss  =  grossLoss, 
-            ProfitFactor  =  grossLoss == 0 ? (grossProfit > 0 ? decimal.MaxValue : 0) : grossProfit / grossLoss, 
-            MaximumDrawdownAmount  =  equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownAmount), 
-            MaximumDrawdownPercent  =  equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownPercent), 
-            TotalFees  =  positions.Sum(x  =>  x.Fees), 
-            Expectancy  =  positions.Count == 0 ? 0 : positions.Average(x  =>  x.NetPnl), 
-            PartialTakeProfits  =  positions.Count(x  =>  x.PartialTakeProfitReached)
+            Signals = signals, 
+            OpenedPositions = positions.Count, 
+            BlockedSignals = blocked, 
+            ClosedPositions = positions.Count, 
+            WinningPositions = wins.Length, 
+            LosingPositions = losses.Length, 
+            WinRatePercent = positions.Count == 0 ? 0 : wins.Length * 100m / positions.Count, 
+            InitialBalance = initial, 
+            FinalBalance = final, 
+            NetProfit = final - initial, 
+            ReturnPercent = initial == 0 ? 0 : (final - initial) / initial * 100m, 
+            GrossProfit = grossProfit, 
+            GrossLoss = grossLoss, 
+            ProfitFactor = grossLoss == 0 ? (grossProfit > 0 ? decimal.MaxValue : 0) : grossProfit / grossLoss, 
+            MaximumDrawdownAmount = equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownAmount), 
+            MaximumDrawdownPercent = equity.Count == 0 ? 0 : equity.Max(x  =>  x.DrawdownPercent), 
+            TotalFees = positions.Sum(x  =>  x.Fees), 
+            Expectancy = positions.Count == 0 ? 0 : positions.Average(x  =>  x.NetPnl), 
+            PartialTakeProfits = positions.Count(x  =>  x.PartialTakeProfitReached)
         };
     }
 }

@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using TradingSystem.Dashboard.Contracts.Models.Backtesting;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.JobOrchestration.Models;
@@ -29,12 +29,7 @@ public sealed class BacktestingJobWorker(
         {
             try
             {
-                var jobs = await queue.ClaimAsync(
-                    "Backtest",
-                    workerId,
-                    settings.BatchSize,
-                    TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes),
-                    ct);
+                var jobs = await queue.ClaimAsync("Backtest", workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
 
                 foreach (var job in jobs)
                     await ProcessSafelyAsync(job, settings, ct);
@@ -43,12 +38,9 @@ public sealed class BacktestingJobWorker(
             {
                 break;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(
-                    exception,
-                    "Backtest worker polling cycle failed. Worker = {WorkerId}. The worker will retry.",
-                    workerId);
+                logger.LogError(ex, "Backtest worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
             }
 
             try
@@ -68,55 +60,43 @@ public sealed class BacktestingJobWorker(
         {
             await queue.ReportProgressAsync(job.JobId, 5, "Loading historical data", ct);
 
-            var request = JsonSerializer.Deserialize<BacktestRequest>(
-                job.RequestJson,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            var request = JsonSerializer.Deserialize<BacktestRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new ArgumentException("Invalid backtest request.");
 
             var runId = await executor.ExecuteAsync(request, settings.Interval, ct);
+            
             await queue.CompleteAsync(job.JobId, runId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Backtest job {JobId} failed.", job.JobId);
+            logger.LogError(ex, "Backtest job {JobId} failed.", job.JobId);
 
             try
             {
-                var maximumAttempts = IsPermanent(exception) ? job.AttemptCount : settings.MaximumAttempts;
+                var maximumAttempts = IsPermanent(ex) ? job.AttemptCount : settings.MaximumAttempts;
 
                 var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
-                await queue.FailAsync(
-                    job.JobId,
-                    FullError(exception),
-                    maximumAttempts,
-                    TimeSpan.FromSeconds(retrySeconds),
-                    ct);
+                await queue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }
-            catch (Exception persistenceException)
+            catch (Exception persistenceEx)
             {
-                logger.LogError(
-                    persistenceException,
-                    "Could not persist failure for backtest job {JobId}. It will be reclaimed after the processing timeout.",
-                    job.JobId);
+                logger.LogError(persistenceEx, "Could not persist failure for backtest job {JobId}. It will be reclaimed after the processing timeout.", job.JobId);
             }
         }
     }
 
-    private static bool IsPermanent(Exception exception) =>
-        exception is ArgumentException
+    private static bool IsPermanent(Exception ex) 
+        => ex is ArgumentException
             or NotSupportedException
             or JsonException
             or HistoricalDataUnavailableException;
-
-    private static string FullError(Exception exception) =>
-        exception.ToString();
 }

@@ -4,7 +4,7 @@ namespace TradingSystem.Backtesting.Strategies;
 
 public sealed class BacktestStrategyRegistry(IEnumerable<IBacktestStrategyFactory> factories)
 {
-    private readonly IReadOnlyDictionary<string,  IBacktestStrategyFactory> _factories  =  factories
+    private readonly IReadOnlyDictionary<string,  IBacktestStrategyFactory> _factories = factories
         .ToDictionary(x  =>  x.Name,  StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyCollection<string> Names  =>  _factories.Keys.OrderBy(x  =>  x).ToArray();

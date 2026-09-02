@@ -1,4 +1,4 @@
-namespace TradingSystem.BotRuntime.Configuration;
+namespace TradingSystem.BotRuntime.Configuration.Models;
 
 public sealed record BotRuntimeConfiguration(
     string BotName, 

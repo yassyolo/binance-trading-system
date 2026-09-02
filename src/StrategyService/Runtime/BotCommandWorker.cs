@@ -19,7 +19,7 @@ public sealed class BotCommandWorker(
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
     IPositionStore positionStore,
-    LivePositionLifecycleRecorder lifecycle,
+    LivePositionLifecycleRecorder LivePositionLifecycleRecorder,
     IAuditLog auditLog,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotCommandWorker> logger)
@@ -48,9 +48,9 @@ public sealed class BotCommandWorker(
             {
                 break;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(exception, "Bot command batch failed. Worker = {WorkerId}", _workerId);
+                logger.LogError(ex, "Bot command batch failed. Worker = {WorkerId}", _workerId);
             }
         }
         while (await timer.WaitForNextTickAsync(ct));
@@ -180,7 +180,7 @@ public sealed class BotCommandWorker(
             if (!result.Succeeded)
                 throw new InvalidOperationException($"Runtime command '{command.Command}' changed the bot state but failed to close position '{position.ShortId}' for bot '{command.BotName}': {result.Reason}", result.Exception);
 
-            await lifecycle.RecordClosedAsync(command.BotName, position.ShortId, reason, ct);
+            await LivePositionLifecycleRecorder.RecordClosedAsync(command.BotName, position.ShortId, reason, ct);
 
             logger.LogInformation("Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}", command.CommandId, command.BotName, position.ShortId, command.Command);
         }
@@ -205,7 +205,7 @@ public sealed class BotCommandWorker(
             throw new InvalidOperationException(message, result.Exception);
         }
 
-        await lifecycle.RecordClosedAsync(command.BotName, positionIdentifier, reason, ct);
+        await LivePositionLifecycleRecorder.RecordClosedAsync(command.BotName, positionIdentifier, reason, ct);
 
         logger.LogInformation("Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}", command.CommandId, command.BotName, positionIdentifier, result.Reason);
     }

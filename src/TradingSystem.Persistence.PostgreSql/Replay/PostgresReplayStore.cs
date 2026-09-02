@@ -129,10 +129,15 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 	public async Task<ReplayAccumulator?> LoadCheckpointAsync(Guid replayId, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
+		
 		var json = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
 			"select state::text from trading_replay.checkpoints where replay_id = @replayId",
-			new { replayId }, cancellationToken: ct));
-		return json is null ? null : JsonSerializer.Deserialize<ReplayAccumulator>(json, EventJson.Options);
+			new { replayId },
+			cancellationToken: ct));
+		
+		return json is null 
+			? null 
+			: JsonSerializer.Deserialize<ReplayAccumulator>(json, EventJson.Options);
 	}
 
 	public async Task SaveCheckpointAsync(Guid replayId, long globalPosition, ReplayAccumulator accumulator, int progressPercent, string progressStage, CancellationToken ct)
@@ -177,6 +182,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 	public async Task FailAsync(Guid replayId, string error, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(
 			"""
             update trading_replay.jobs
@@ -200,6 +206,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 	public async Task MarkCancelledAsync(Guid replayId, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(
 			"""
             update trading_replay.jobs
@@ -209,20 +216,28 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
                 processing_worker_id = null
             where replay_id = @replayId
             """,
-			new { replayId }, cancellationToken: ct));
+			new { replayId }, 
+			cancellationToken: ct));
 	}
 
 	public async Task<bool> IsCancellationRequestedAsync(Guid replayId, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
-		return await connection.ExecuteScalarAsync<bool>(new CommandDefinition("select cancellation_requested from trading_replay.jobs where replay_id = @replayId", new { replayId }, cancellationToken: ct));
+		
+		return await connection.ExecuteScalarAsync<bool>(
+			new CommandDefinition("select " +
+			"cancellation_requested " +
+			"from trading_replay.jobs " +
+			"where replay_id = @replayId", 
+			new { replayId }, 
+			cancellationToken: ct));
 	}
 
 	public async Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(
-	CreateReplayRequest request,
-	long afterGlobalPosition,
-	int take,
-	CancellationToken ct)
+		CreateReplayRequest request,
+		long afterGlobalPosition,
+		int take,
+		CancellationToken ct)
 	{
 		const string sql = """
         select
@@ -300,14 +315,10 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 				commandTimeout: connections.CommandTimeoutSeconds,
 				cancellationToken: ct));
 
-		return rows
-			.Select(x => x.ToStored())
-			.ToArray();
+		return rows.Select(x => x.ToStored()).ToArray();
 	}
 
-	public async Task<long> CountAsync(
-	CreateReplayRequest request,
-	CancellationToken ct)
+	public async Task<long> CountAsync(CreateReplayRequest request, CancellationToken ct)
 	{
 		const string sql = """
         select count(*)

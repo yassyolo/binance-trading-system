@@ -1,8 +1,8 @@
 using TradingSystem.Application.Execution;
 using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Execution.Models;
-using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Configuration.Contracts;
+using TradingSystem.BotRuntime.Configuration.Models;
 using TradingSystem.Domain.Enums;
 
 namespace TradingSystem.PaperTrading.Executor;

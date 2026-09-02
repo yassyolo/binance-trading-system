@@ -8,32 +8,29 @@ using TradingSystem.Jobs.Worker.Configuration;
 namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class HistoricalDataIngestionWorker(
-	IHistoricalCandleRangeSource source,
-	IHistoricalMarketDataStore store,
+	IHistoricalCandleRangeSource historicalCandleRangeSource,
+	IHistoricalMarketDataStore historicalMarketDataStore,
 	IOptions<HistoricalDataIngestionOptions> options,
 	ILogger<HistoricalDataIngestionWorker> logger) 
 	: BackgroundService
 {
-	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+	protected override async Task ExecuteAsync(CancellationToken ct)
 	{
 		var settings = options.Value;
 		if (!settings.Enabled)
 			return;
 
-		var symbols = settings.Symbols
-			.Where(x => !string.IsNullOrWhiteSpace(x))
+		var symbols = settings.Symbols.Where(x => !string.IsNullOrWhiteSpace(x))
 			.Select(x => x.Trim().ToUpperInvariant())
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToArray();
 
-		var intervals = settings.Intervals
-			.Where(x => !string.IsNullOrWhiteSpace(x))
+		var intervals = settings.Intervals.Where(x => !string.IsNullOrWhiteSpace(x))
 			.Select(x => x.Trim().ToLowerInvariant())
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToArray();
 
-		logger.LogInformation(
-			"Historical ingestion effective configuration. Symbols = {Symbols}; Intervals = {Intervals}; LookbackDays = {LookbackDays}; OverlapCandles = {OverlapCandles}",
+		logger.LogInformation("Historical ingestion effective configuration. Symbols = {Symbols}; Intervals = {Intervals}; LookbackDays = {LookbackDays}; OverlapCandles = {OverlapCandles}",
 			string.Join(',', symbols),
 			string.Join(',', intervals),
 			settings.InitialLookbackDays,
@@ -41,7 +38,7 @@ public sealed class HistoricalDataIngestionWorker(
 
 		var pollDelay = TimeSpan.FromMinutes(Math.Max(1, settings.PollMinutes));
 
-		while (!stoppingToken.IsCancellationRequested)
+		while (!ct.IsCancellationRequested)
 		{
 			foreach (var symbol in symbols)
 			{
@@ -49,82 +46,54 @@ public sealed class HistoricalDataIngestionWorker(
 				{
 					try
 					{
-						await IngestAsync(
-							symbol,
-							interval,
-							settings,
-							stoppingToken);
+						await IngestAsync(symbol, interval, settings, ct);
 					}
-					catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+					catch (OperationCanceledException) when (ct.IsCancellationRequested)
 					{
 						return;
 					}
-					catch (Exception exception)
+					catch (Exception ex)
 					{
-						logger.LogError(
-							exception,
-							"Historical ingestion failed for {Symbol} {Interval}. The worker will continue.",
-							symbol,
-							interval);
+						logger.LogError(ex, "Historical ingestion failed for {Symbol} {Interval}. The worker will continue.", symbol, interval);
 					}
 				}
 			}
 
 			try
 			{
-				await Task.Delay(pollDelay, stoppingToken);
+				await Task.Delay(pollDelay, ct);
 			}
-			catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+			catch (OperationCanceledException) when (ct.IsCancellationRequested)
 			{
 				break;
 			}
 		}
 	}
 
-	private async Task IngestAsync(
-		string symbol,
-		string interval,
-		HistoricalDataIngestionOptions settings,
-		CancellationToken ct)
+	private async Task IngestAsync(string symbol, string interval, HistoricalDataIngestionOptions settings, CancellationToken ct)
 	{
 		var duration = ParseInterval(interval);
 		var nowUtc = DateTime.UtcNow;
-		var latest = await store.GetLatestOpenTimeAsync(symbol, interval, ct);
-		var overlap = TimeSpan.FromTicks(
-			checked(duration.Ticks * Math.Max(1, settings.OverlapCandles)));
+		var latest = await historicalMarketDataStore.GetLatestOpenTimeAsync(symbol, interval, ct);
+		var overlap = TimeSpan.FromTicks(checked(duration.Ticks * Math.Max(1, settings.OverlapCandles)));
 
-		var from = latest?.Subtract(overlap)
-			?? nowUtc.AddDays(-settings.InitialLookbackDays);
+		var from = latest?.Subtract(overlap) ?? nowUtc.AddDays(-settings.InitialLookbackDays);
 		var to = nowUtc;
 
-		var downloaded = await source.LoadAsync(
-			symbol,
-			interval,
-			from,
-			to,
-			ct);
-
-		// Binance includes the currently forming candle. Persist only candles whose
-		// close boundary has passed so backtests remain deterministic.
-		var closed = downloaded
-			.Where(x => x.OpenTimeUtc + duration <= nowUtc)
+		var downloaded = await historicalCandleRangeSource.LoadAsync(symbol, interval, from, to, ct);
+		
+		var closed = downloaded.Where(x => x.OpenTimeUtc + duration <= nowUtc)
 			.OrderBy(x => x.OpenTimeUtc)
 			.ToArray();
 
-		await store.UpsertCandlesAsync(closed, ct);
+		await historicalMarketDataStore.UpsertCandlesAsync(closed, ct);
 
-		var all = await store.LoadCandlesAsync(
-			symbol,
-			interval,
-			from,
-			to,
-			ct);
+		var all = await historicalMarketDataStore.LoadCandlesAsync(symbol, interval, from, to, ct);
 
 		var gaps = DetectGaps(symbol, interval, all, duration);
-		await store.ReplaceGapsAsync(symbol, interval, gaps, ct);
+		await historicalMarketDataStore.ReplaceGapsAsync(symbol, interval, gaps, ct);
 
-		logger.LogInformation(
-			"Historical data {Symbol} {Interval}: requested {FromUtc:o} - {ToUtc:o}, downloaded {Downloaded}, persisted closed {Persisted}, first {FirstUtc:o}, last {LastUtc:o}, gaps {Gaps}",
+		logger.LogInformation("Historical data {Symbol} {Interval}: requested {FromUtc:o} - {ToUtc:o}, downloaded {Downloaded}, persisted closed {Persisted}, first {FirstUtc:o}, last {LastUtc:o}, gaps {Gaps}",
 			symbol,
 			interval,
 			from,
@@ -136,18 +105,12 @@ public sealed class HistoricalDataIngestionWorker(
 			gaps.Count);
 	}
 
-	public static IReadOnlyList<HistoricalDataGap> DetectGaps(
-		string symbol,
-		string interval,
-		IReadOnlyList<MarketCandle> candles,
-		TimeSpan duration)
+	public static IReadOnlyList<HistoricalDataGap> DetectGaps(string symbol, string interval, IReadOnlyList<MarketCandle> candles, TimeSpan duration)
 	{
 		if (duration <= TimeSpan.Zero)
 			throw new ArgumentOutOfRangeException(nameof(duration));
 
-		var ordered = candles
-			.OrderBy(x => x.OpenTimeUtc)
-			.ToArray();
+		var ordered = candles.OrderBy(x => x.OpenTimeUtc).ToArray();
 
 		var gaps = new List<HistoricalDataGap>();
 
@@ -179,20 +142,14 @@ public sealed class HistoricalDataIngestionWorker(
 		if (value.Length < 2 ||
 			!int.TryParse(value[..^1], out var amount) ||
 			amount <= 0)
-		{
-			throw new ArgumentException(
-				$"Invalid interval '{value}'.",
-				nameof(value));
-		}
+			throw new ArgumentException($"Invalid interval '{value}'.", nameof(value));
 
 		return value[^1] switch
 		{
 			'm' => TimeSpan.FromMinutes(amount),
 			'h' => TimeSpan.FromHours(amount),
 			'd' => TimeSpan.FromDays(amount),
-			_ => throw new ArgumentOutOfRangeException(
-				nameof(value),
-				"Supported intervals use m, h or d.")
+			_ => throw new ArgumentOutOfRangeException(nameof(value), "Supported intervals use m, h or d.")
 		};
 	}
 }

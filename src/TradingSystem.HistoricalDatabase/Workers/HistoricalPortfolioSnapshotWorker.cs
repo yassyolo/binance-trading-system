@@ -11,8 +11,8 @@ using TradingSystem.PortfolioManagement.Provider;
 namespace TradingSystem.HistoricalDatabase.Workers;
 
 public sealed class HistoricalPortfolioSnapshotWorker(
-    IPortfolioSnapshotProvider portfolio,
-    IHistoricalEventStore store,
+    IPortfolioSnapshotProvider portfolioProvider,
+    IHistoricalEventStore historicalEventStore,
     ITradingEnvironmentProvider environment,
     IOptions<HistoricalDatabaseOptions> options,
     ILogger<HistoricalPortfolioSnapshotWorker> logger)
@@ -20,7 +20,7 @@ public sealed class HistoricalPortfolioSnapshotWorker(
 {
     private readonly HistoricalDatabaseOptions _options = options.Value;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         if (!_options.Enabled)
             return;
@@ -31,8 +31,9 @@ public sealed class HistoricalPortfolioSnapshotWorker(
         {
             try
             {
-                var snapshot = await portfolio.GetSnapshotAsync(stoppingToken);
-                await store.AppendAsync(new HistoricalEvent(
+                var snapshot = await portfolioProvider.GetSnapshotAsync(ct);
+                
+                await historicalEventStore.AppendAsync(new HistoricalEvent(
                     Guid.NewGuid(),
                     HistoricalEventType.PortfolioSnapshot,
                     snapshot.GeneratedAtUtc,
@@ -63,17 +64,17 @@ public sealed class HistoricalPortfolioSnapshotWorker(
                         ["estimated_initial_margin"] = snapshot.EstimatedInitialMargin,
                         ["symbols"] = snapshot.Symbols,
                         ["bots"] = snapshot.Bots
-                    }), stoppingToken);
+                    }), ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Historical portfolio snapshot failed.");
+                logger.LogError(ex, "Historical portfolioProvider snapshot failed.");
             }
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        while (await timer.WaitForNextTickAsync(ct));
     }
 }

@@ -38,9 +38,10 @@ public sealed class BinanceHistoricalCandleRangeSource(
                       $"&startTime={cursor}&endTime={end}&limit={PageLimit}";
 
             using var response = await httpClient.GetAsync(url, ct);
+            
             var body = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
-                throw new BinanceApiException(response.StatusCode, body, "load historical candle range");
+                throw new BinanceApiException(response.StatusCode, body, "load historical c range");
 
             using var document = JsonDocument.Parse(body);
             var rows = document.RootElement.EnumerateArray().ToArray();
@@ -69,19 +70,20 @@ public sealed class BinanceHistoricalCandleRangeSource(
             cursor = nextCursor;
         }
 
-        return result.Where(candle => candle.OpenTimeUtc >= from && candle.OpenTimeUtc < to)
-            .OrderBy(candle => candle.OpenTimeUtc)
-            .GroupBy(candle => candle.OpenTimeUtc)
-            .Select(group => group.Last())
+        return result.Where(c => c.OpenTimeUtc >= from && c.OpenTimeUtc < to)
+            .OrderBy(c => c.OpenTimeUtc)
+            .GroupBy(c => c.OpenTimeUtc)
+            .Select(g => g.Last())
             .ToArray();
     }
 
-    private static DateTime EnsureUtc(DateTime value) => value.Kind switch
-    {
-        DateTimeKind.Utc => value,
-        DateTimeKind.Local => value.ToUniversalTime(),
-        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
-    };
+    private static DateTime EnsureUtc(DateTime value) 
+        => value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
 
     private static decimal ParseDecimal(JsonElement value)
         => decimal.Parse(value.GetString()!, NumberStyles.Any, CultureInfo.InvariantCulture);

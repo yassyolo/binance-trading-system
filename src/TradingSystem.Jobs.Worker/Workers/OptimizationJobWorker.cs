@@ -29,12 +29,7 @@ public sealed class OptimizationJobWorker(
 		{
 			try
 			{
-				var jobs = await queue.ClaimAsync(
-					"Optimization",
-					workerId,
-					1,
-					TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes),
-					ct);
+				var jobs = await queue.ClaimAsync("Optimization", workerId, 1, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
 
 				foreach (var job in jobs)
 					await ProcessSafelyAsync(job, settings, ct);
@@ -65,36 +60,28 @@ public sealed class OptimizationJobWorker(
 		{
 			await queue.ReportProgressAsync(job.JobId, 5, "Preparing parameter combinations", ct);
 
-			var request = JsonSerializer.Deserialize<OptimizationRequest>(
-				job.RequestJson,
-				new JsonSerializerOptions(JsonSerializerDefaults.Web))
+			var request = JsonSerializer.Deserialize<OptimizationRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
 				?? throw new ArgumentException("Invalid optimization request.");
 
 			var runId = await executor.ExecuteAsync(request, settings.Interval, ct);
+			
 			await queue.CompleteAsync(job.JobId, runId, ct);
 		}
 		catch (OperationCanceledException) when (ct.IsCancellationRequested)
 		{
 			throw;
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
-			logger.LogError(exception, "Optimization job {JobId} failed.", job.JobId);
+			logger.LogError(ex, "Optimization job {JobId} failed.", job.JobId);
 
 			try
 			{
-				var maximumAttempts = IsPermanent(exception)
-					? job.AttemptCount
-					: settings.MaximumAttempts;
+				var maximumAttempts = IsPermanent(ex) ? job.AttemptCount : settings.MaximumAttempts;
 
 				var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
-				await queue.FailAsync(
-					job.JobId,
-					exception.ToString(),
-					maximumAttempts,
-					TimeSpan.FromSeconds(retrySeconds),
-					ct);
+				await queue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
 			}
 			catch (OperationCanceledException) when (ct.IsCancellationRequested)
 			{
@@ -107,8 +94,6 @@ public sealed class OptimizationJobWorker(
 		}
 	}
 
-	private static bool IsPermanent(Exception exception) =>
-		exception is ArgumentException
-			or NotSupportedException
-			or JsonException;
+	private static bool IsPermanent(Exception ex) 
+		=> ex is ArgumentException or NotSupportedException or JsonException;
 }

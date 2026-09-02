@@ -17,7 +17,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
 	{
 		const string sql = """
             INSERT INTO trading.performance_runs
-            (run_id, run_type, bot_name, strategy_version, symbol, interval, started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
+            (run_id,run_type, bot_name, strategy_version, symbol, interval, started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
             VALUES (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)
             ON CONFLICT (run_id) DO UPDATE SET status = EXCLUDED.status, completed_at_utc = EXCLUDED.completed_at_utc, notes = EXCLUDED.notes;
             """;
@@ -43,9 +43,26 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 	public async Task CompleteRunAsync(Guid runId, PerformanceRunStatus status, DateTime completedAtUtc, string? notes, CancellationToken ct = default)
 	{
-		const string sql = "UPDATE trading.performance_runs SET status = @Status,  completed_at_utc = @CompletedAtUtc,  notes = COALESCE(@Notes,  notes) WHERE run_id = @RunId";
+		const string sql = """
+		UPDATE trading.performance_runs 
+		SET status = @Status,  
+			completed_at_utc = @CompletedAtUtc, 
+			notes = COALESCE(@Notes,  notes) 
+		WHERE run_id = @RunId
+		""";
+		
 		await using var connection = await connections.OpenAsync(ct);
-		await connection.ExecuteAsync(new CommandDefinition(sql, new { RunId = runId, Status = status.ToString(), CompletedAtUtc = completedAtUtc, Notes = notes }, cancellationToken: ct));
+		
+		await connection.ExecuteAsync(new CommandDefinition(
+			sql, 
+			new 
+			{ 
+				RunId = runId, 
+				Status = status.ToString(), 
+				CompletedAtUtc = completedAtUtc, 
+				Notes = notes 
+			}, cancellationToken: ct));
+
 	}
 
 	public async Task SaveSnapshotAsync(PerformanceSnapshot s, CancellationToken ct = default)
@@ -61,7 +78,9 @@ public sealed class PostgresPerformanceAnalyticsStore(
         ON CONFLICT (run_id) DO UPDATE SET final_balance = EXCLUDED.final_balance,  net_profit = EXCLUDED.net_profit, 
          return_percent = EXCLUDED.return_percent,  maximum_drawdown_percent = EXCLUDED.maximum_drawdown_percent,  score = EXCLUDED.score;
         """;
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(sql, new
 		{
 			s.RunId,
@@ -91,15 +110,35 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 	public async Task SaveTradesAsync(Guid runId, IReadOnlyCollection<PerformanceTrade> trades, CancellationToken ct = default)
 	{
-		if (trades.Count == 0) return;
+		if (trades.Count == 0) 
+			return;
+		
 		const string sql = """
         INSERT INTO trading.performance_trades
         (run_id,  position_id,  side,  entry_time_utc,  entry_price,  exit_time_utc,  exit_price,  quantity,  gross_pnl,  fees,  net_pnl,  exit_reason,  partial_take_profit_reached)
         VALUES (@RunId, @PositionId, @Side, @EntryTimeUtc, @EntryPrice, @ExitTimeUtc, @ExitPrice, @Quantity, @GrossPnl, @Fees, @NetPnl, @ExitReason, @PartialTakeProfitReached)
         ON CONFLICT (run_id,  position_id) DO NOTHING;
         """;
-		var rows = trades.Select(x => new { RunId = runId, x.PositionId, Side = x.Side.ToString(), x.EntryTimeUtc, x.EntryPrice, x.ExitTimeUtc, x.ExitPrice, x.Quantity, x.GrossPnl, x.Fees, x.NetPnl, x.ExitReason, x.PartialTakeProfitReached });
+		
+		var rows = trades.Select(x => new 
+		{ 
+			RunId = runId,
+			x.PositionId, 
+			Side = x.Side.ToString(),
+			x.EntryTimeUtc,
+			x.EntryPrice, 
+			x.ExitTimeUtc, 
+			x.ExitPrice, 
+			x.Quantity, 
+			x.GrossPnl, 
+			x.Fees, 
+			x.NetPnl,
+			x.ExitReason, 
+			x.PartialTakeProfitReached
+		});
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
 	}
 
@@ -120,6 +159,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
 	public async Task SaveWalkForwardWindowsAsync(IReadOnlyCollection<WalkForwardWindow> windows, CancellationToken ct = default)
 	{
 		if (windows.Count == 0) return;
+		
 		const string sql = """
         INSERT INTO trading.walk_forward_windows
         (window_id,  run_id,  window_number,  train_from_utc,  train_to_utc,  test_from_utc,  test_to_utc, 
@@ -128,8 +168,25 @@ public sealed class PostgresPerformanceAnalyticsStore(
          CAST(@SelectedParametersJson AS jsonb), @InSampleScore, @OutOfSampleScore, CAST(@InSampleMetricsJson AS jsonb), CAST(@OutOfSampleMetricsJson AS jsonb))
         ON CONFLICT (window_id) DO NOTHING;
         """;
-		var rows = windows.Select(x => new { x.WindowId, x.RunId, x.WindowNumber, x.TrainFromUtc, x.TrainToUtc, x.TestFromUtc, x.TestToUtc, x.SelectedParametersJson, x.InSampleScore, x.OutOfSampleScore, InSampleMetricsJson = JsonSerializer.Serialize(x.InSampleMetrics, JsonOptions), OutOfSampleMetricsJson = JsonSerializer.Serialize(x.OutOfSampleMetrics, JsonOptions) });
+		
+		var rows = windows.Select(x => new 
+		{
+			x.WindowId,
+			x.RunId,
+			x.WindowNumber,
+			x.TrainFromUtc, 
+			x.TrainToUtc,
+			x.TestFromUtc,
+			x.TestToUtc, 
+			x.SelectedParametersJson,
+			x.InSampleScore,
+			x.OutOfSampleScore, 
+			InSampleMetricsJson = JsonSerializer.Serialize(x.InSampleMetrics, JsonOptions),
+			OutOfSampleMetricsJson = JsonSerializer.Serialize(x.OutOfSampleMetrics, JsonOptions) 
+		});
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
 	}
 
@@ -153,9 +210,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
                 (run_id, run_type, bot_name, strategy_version, symbol, interval,
                  started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
                 VALUES
-                (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval,
-                 @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb),
-                 @ParentRunId, @Notes)
+                (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)
                 ON CONFLICT (run_id) DO UPDATE SET
                     completed_at_utc = EXCLUDED.completed_at_utc,
                     status = EXCLUDED.status,
@@ -184,17 +239,13 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 			const string snapshotSql = """
                 INSERT INTO trading.performance_snapshots
-                (run_id, bot_name, symbol, period_from_utc, period_to_utc, signals,
+                (run_id,bot_name, symbol, period_from_utc, period_to_utc, signals,
                  opened_positions, blocked_signals, closed_positions, winning_positions,
                  losing_positions, initial_balance, final_balance, net_profit,
                  return_percent, win_rate_percent, profit_factor, maximum_drawdown_amount,
                  maximum_drawdown_percent, total_fees, expectancy, score)
                 VALUES
-                (@RunId, @BotName, @Symbol, @PeriodFromUtc, @PeriodToUtc, @Signals,
-                 @OpenedPositions, @BlockedSignals, @ClosedPositions, @WinningPositions,
-                 @LosingPositions, @InitialBalance, @FinalBalance, @NetProfit,
-                 @ReturnPercent, @WinRatePercent, @ProfitFactor, @MaximumDrawdownAmount,
-                 @MaximumDrawdownPercent, @TotalFees, @Expectancy, @Score)
+                (@RunId, @BotName, @Symbol, @PeriodFromUtc, @PeriodToUtc, @Signals, @OpenedPositions, @BlockedSignals, @ClosedPositions, @WinningPositions, @LosingPositions, @InitialBalance, @FinalBalance, @NetProfit, @ReturnPercent, @WinRatePercent, @ProfitFactor, @MaximumDrawdownAmount, @MaximumDrawdownPercent, @TotalFees, @Expectancy, @Score)
                 ON CONFLICT (run_id) DO UPDATE SET
                     bot_name = EXCLUDED.bot_name,
                     symbol = EXCLUDED.symbol,
@@ -264,9 +315,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
                      exit_time_utc, exit_price, quantity, gross_pnl, fees,
                      net_pnl, exit_reason, partial_take_profit_reached)
                     VALUES
-                    (@RunId, @PositionId, @Side, @EntryTimeUtc, @EntryPrice,
-                     @ExitTimeUtc, @ExitPrice, @Quantity, @GrossPnl, @Fees,
-                     @NetPnl, @ExitReason, @PartialTakeProfitReached);
+                    (@RunId, @PositionId, @Side, @EntryTimeUtc, @EntryPrice, @ExitTimeUtc, @ExitPrice, @Quantity, @GrossPnl, @Fees, @NetPnl, @ExitReason, @PartialTakeProfitReached);
                     """;
 
 				var rows = trades.Select(x => new
@@ -286,11 +335,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
 					x.PartialTakeProfitReached
 				});
 
-				await connection.ExecuteAsync(new CommandDefinition(
-					tradeSql,
-					rows,
-					transaction,
-					cancellationToken: ct));
+				await connection.ExecuteAsync(new CommandDefinition(tradeSql, rows, transaction, cancellationToken: ct));
 			}
 
 			await transaction.CommitAsync(ct);

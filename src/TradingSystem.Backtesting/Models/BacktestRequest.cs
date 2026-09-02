@@ -16,7 +16,7 @@ public sealed record BacktestRequest
    
     public decimal InitialBalance { get;  init; } = 10_000m;
     
-    public decimal RiskPerTradePercent { get;  init; }  =  1m;
+    public decimal RiskPerTradePercent { get;  init; } = 1m;
    
     public EntryExecutionMode EntryExecutionMode { get;  init; } = EntryExecutionMode.NextCandleOpen;
    

@@ -18,14 +18,14 @@ public sealed class PaperFillWorker(
     ILogger<PaperFillWorker> logger) 
     : BackgroundService
 {
-    private readonly PaperTradingOptions _options  =  options.Value;
+    private readonly PaperTradingOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!_options.Enabled) 
             return;
         
-        using var timer  =  new PeriodicTimer(TimeSpan.FromMilliseconds(Math.Max(250,  _options.PricePollMilliseconds)));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(Math.Max(250,  _options.PricePollMilliseconds)));
         
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {

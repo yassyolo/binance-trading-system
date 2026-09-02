@@ -7,7 +7,8 @@ using TradingSystem.HistoricalDatabase.Models;
 
 namespace TradingSystem.HistoricalDatabase.EventStore;
 
-public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHistoricalEventSink
+public sealed class PostgresHistoricalEventStore 
+    : IHistoricalEventStore, IHistoricalEventSink
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _connectionString;
@@ -35,74 +36,6 @@ public sealed class PostgresHistoricalEventStore : IHistoricalEventStore, IHisto
         await connection.OpenAsync(ct);
         
         await using var command = CreateInsertCommand(connection, historicalEvent);
-        
-        await command.ExecuteNonQueryAsync(ct);
-    }
-
-    public async Task AppendBatchAsync(IReadOnlyCollection<HistoricalEvent> events, CancellationToken ct)
-    {
-        if (!_options.Enabled || events.Count == 0)
-            return;
-
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-        await using var transaction = await connection.BeginTransactionAsync(ct);
-
-        foreach (var item in events)
-        {
-            await using var command = CreateInsertCommand(connection, item, transaction);
-            await command.ExecuteNonQueryAsync(ct);
-        }
-
-        await transaction.CommitAsync(ct);
-    }
-
-    public async Task UpsertTradeAsync(HistoricalTradeSummary trade, CancellationToken ct)
-    {
-        if (!_options.Enabled)
-            return;
-
-        const string sql = """
-            INSERT INTO trading_history.trade_results
-            (position_id, bot_name, strategy_version, symbol, side, opened_at_utc,
-             closed_at_utc, quantity, entry_price, exit_price, gross_pnl,
-             commission, net_pnl, close_reason, environment, updated_at_utc)
-            VALUES
-            (@position_id, @bot_name, @strategy_version, @symbol, @side, @opened_at_utc,
-             @closed_at_utc, @quantity, @entry_price, @exit_price, @gross_pnl,
-             @commission, @net_pnl, @close_reason, @environment, NOW())
-            ON CONFLICT (position_id, environment)
-            DO UPDATE SET
-                closed_at_utc = EXCLUDED.closed_at_utc,
-                exit_price = EXCLUDED.exit_price,
-                gross_pnl = EXCLUDED.gross_pnl,
-                commission = EXCLUDED.commission,
-                net_pnl = EXCLUDED.net_pnl,
-                close_reason = EXCLUDED.close_reason,
-                updated_at_utc = NOW();
-            """;
-
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-        await using var command = new NpgsqlCommand(sql, connection)
-        {
-            CommandTimeout = _options.CommandTimeoutSeconds
-        };
-        command.Parameters.AddWithValue("position_id", trade.PositionId);
-        command.Parameters.AddWithValue("bot_name", trade.BotName);
-        command.Parameters.AddWithValue("strategy_version", trade.StrategyVersion);
-        command.Parameters.AddWithValue("symbol", trade.Symbol);
-        command.Parameters.AddWithValue("side", trade.Side);
-        command.Parameters.AddWithValue("opened_at_utc", trade.OpenedAtUtc);
-        command.Parameters.AddWithValue("closed_at_utc", trade.ClosedAtUtc);
-        command.Parameters.AddWithValue("quantity", trade.Quantity);
-        command.Parameters.AddWithValue("entry_price", trade.EntryPrice);
-        command.Parameters.AddWithValue("exit_price", trade.ExitPrice);
-        command.Parameters.AddWithValue("gross_pnl", trade.GrossPnl);
-        command.Parameters.AddWithValue("commission", trade.Commission);
-        command.Parameters.AddWithValue("net_pnl", trade.NetPnl);
-        command.Parameters.AddWithValue("close_reason", trade.CloseReason);
-        command.Parameters.AddWithValue("environment", trade.Environment);
         
         await command.ExecuteNonQueryAsync(ct);
     }

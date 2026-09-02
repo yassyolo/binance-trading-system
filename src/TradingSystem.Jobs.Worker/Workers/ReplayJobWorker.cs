@@ -25,11 +25,7 @@ public sealed class ReplayJobWorker(
 		{
 			try
 			{
-				var claimed = await jobs.ClaimAsync(
-					workerId,
-					settings.BatchSize,
-					TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes),
-					ct);
+				var claimed = await jobs.ClaimAsync(workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
 
 				foreach (var job in claimed)
 					await ProcessSafelyAsync(job, ct);
@@ -80,23 +76,17 @@ public sealed class ReplayJobWorker(
 				logger.LogError(persistenceException, "Could not persist cancellation for replay {ReplayId}.", job.ReplayId);
 			}
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
-			logger.LogError(exception, "Replay {ReplayId} failed.", job.ReplayId);
+			logger.LogError(ex, "Replay {ReplayId} failed.", job.ReplayId);
 
 			try
 			{
-				await jobs.FailAsync(
-					job.ReplayId,
-					exception.ToString(),
-					CancellationToken.None);
+				await jobs.FailAsync(job.ReplayId, ex.ToString(), CancellationToken.None);
 			}
-			catch (Exception persistenceException)
+			catch (Exception persistenceEx)
 			{
-				logger.LogError(
-					persistenceException,
-					"Could not persist failure for replay {ReplayId}. It will be reclaimed after the processing timeout.",
-					job.ReplayId);
+				logger.LogError(persistenceEx, "Could not persist failure for replay {ReplayId}. It will be reclaimed after the processing timeout.", job.ReplayId);
 			}
 		}
 	}

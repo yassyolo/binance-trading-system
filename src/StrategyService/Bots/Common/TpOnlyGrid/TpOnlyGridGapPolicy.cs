@@ -1,6 +1,6 @@
 using TradingSystem.Application.Positions.Models;
 using TradingSystem.Application.Strategies.Models;
-using TradingSystem.BotRuntime.Configuration;
+using TradingSystem.BotRuntime.Configuration.Models;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Strategies.Grid;
 using TradingSystem.Strategies.Grid.Models;
@@ -13,7 +13,7 @@ public sealed class TpOnlyGridGapPolicy<TOptions>(
     where TOptions : class,  
     ITpOnlyGridBotOptions
 {
-    public StrategyDecision Evaluate(PositionSide side,  decimal markPrice,  IReadOnlyCollection<ActivePositionView> activePositions,  BotRuntimeConfiguration? runtimeConfiguration  =  null)
+    public StrategyDecision Evaluate(PositionSide side,  decimal markPrice,  IReadOnlyCollection<ActivePositionView> activePositions,  BotRuntimeConfiguration? runtimeConfiguration = null)
     {
         var references = activePositions.Where(x => x.TpPrice is > 0)
             .Select(x => new GridPositionReference(x.Side,  x.TpPrice!.Value,  x.CreatedAtUtc))
@@ -21,7 +21,7 @@ public sealed class TpOnlyGridGapPolicy<TOptions>(
 
         var priceDistance = runtimeConfiguration?.PriceDistance ?? options.PriceDistance;
         var profitDistance = runtimeConfiguration?.ProfitDistance ?? options.ProfitDistance;
-        var sideLimit  =  runtimeConfiguration?.OrderSideLimit ?? options.OrderSideLimit;
+        var sideLimit = runtimeConfiguration?.OrderSideLimit ?? options.OrderSideLimit;
         
         var decision = gridPolicy.Evaluate(side, markPrice, references, new(priceDistance, profitDistance, sideLimit));
         

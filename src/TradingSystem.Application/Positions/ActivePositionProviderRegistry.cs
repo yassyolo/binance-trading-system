@@ -9,13 +9,13 @@ public sealed class ActivePositionProviderRegistry : IActivePositionProvider
 
     public ActivePositionProviderRegistry(IEnumerable<IBotActivePositionProvider> providers)
     {
-        var map  =  new Dictionary<string,  IBotActivePositionProvider>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string,  IBotActivePositionProvider>(StringComparer.OrdinalIgnoreCase);
         foreach (var provider in providers)
         {
             if (!map.TryAdd(provider.BotName,  provider))
                 throw new InvalidOperationException($"Multiple active position providers are registered for bot '{provider.BotName}'.");
         }
-        _providers  =  map;
+        _providers = map;
     }
 
     public Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName, string symbol, CancellationToken ct)

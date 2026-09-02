@@ -14,8 +14,4 @@
 		</PackageReference>
 	</ItemGroup>
 
-	<ItemGroup>
-	  <ProjectReference Include="..\..\src\TradingSystem.HistoricalData\TradingSystem.HistoricalData.csproj" />
-	</ItemGroup>
-
 </Project>

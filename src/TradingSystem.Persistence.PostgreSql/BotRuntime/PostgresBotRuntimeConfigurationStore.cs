@@ -1,6 +1,6 @@
 ﻿using Dapper;
-using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.BotRuntime.Configuration.Contracts;
+using TradingSystem.BotRuntime.Configuration.Models;
 using TradingSystem.Persistence.PostgreSql.Connections;
 
 namespace TradingSystem.Persistence.PostgreSql.BotRuntime;

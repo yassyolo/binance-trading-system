@@ -12,4 +12,4 @@ public sealed record AuditEvent(
     string? IpAddress, 
     string? OldValueJson, 
     string? NewValueJson, 
-    IReadOnlyDictionary<string, string>? Metadata  =  null);
+    IReadOnlyDictionary<string, string>? Metadata = null);

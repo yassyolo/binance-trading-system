@@ -40,15 +40,29 @@ public sealed class ReplayAccumulator
 		ProcessedEvents++;
 		switch (item.Event.EventType)
 		{
-			case TradingEventTypes.SignalReceived: Signals++; break;
-			case TradingEventTypes.StrategyDecisionTaken: StrategyDecisions++; break;
-			case TradingEventTypes.RiskDecisionTaken:
-				if (PayloadBoolean(item.Event.PayloadJson, "allowed")) RiskAllowed++; else RiskBlocked++;
+			case TradingEventTypes.SignalReceived: 
+				Signals++; 
 				break;
-			case TradingEventTypes.ExecutionCompleted: ExecutionsCompleted++; break;
-			case TradingEventTypes.ExecutionFailed: ExecutionsFailed++; break;
-			case TradingEventTypes.PositionOpened: PositionsOpened++; break;
-			case TradingEventTypes.PositionClosed: PositionsClosed++; break;
+			case TradingEventTypes.StrategyDecisionTaken: 
+				StrategyDecisions++;
+				break;
+			case TradingEventTypes.RiskDecisionTaken:
+				if (PayloadBoolean(item.Event.PayloadJson, "allowed")) 
+					RiskAllowed++; 
+				else RiskBlocked++;
+				break;
+			case TradingEventTypes.ExecutionCompleted: 
+				ExecutionsCompleted++; 
+				break;
+			case TradingEventTypes.ExecutionFailed: 
+				ExecutionsFailed++; 
+				break;
+			case TradingEventTypes.PositionOpened:
+				PositionsOpened++;
+				break;
+			case TradingEventTypes.PositionClosed:
+				PositionsClosed++; 
+				break;
 		}
 		var material = $"{HashSeed}|{item.GlobalPosition}|{item.Event.EventId:N}|{item.Event.EventType}|{item.Event.PayloadJson}";
 		HashSeed = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));

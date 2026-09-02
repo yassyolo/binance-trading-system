@@ -59,7 +59,7 @@ public static class BacktestPerformanceMapper
             PartialTakeProfitReached = x.PartialTakeProfitReached
         }).ToArray();
        
-        return (run,  snapshot,  trades);
+        return (run, snapshot, trades);
     }
 
     public static PerformanceMetricSet ToMetrics(BotBacktestMetrics m) => new()

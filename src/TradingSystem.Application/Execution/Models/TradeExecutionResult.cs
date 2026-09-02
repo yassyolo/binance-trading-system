@@ -4,10 +4,10 @@ public sealed record TradeExecutionResult
 {
     private TradeExecutionResult(bool succeeded,  string? shortId,  string reason,  Exception? exception)
     {
-        Succeeded  =  succeeded;
-        ShortId  =  shortId;
-        Reason  =  reason;
-        Exception  =  exception;
+        Succeeded = succeeded;
+        ShortId = shortId;
+        Reason = reason;
+        Exception = exception;
     }
 
     public bool Succeeded { get; }
@@ -15,6 +15,6 @@ public sealed record TradeExecutionResult
     public string Reason { get; }
     public Exception? Exception { get; }
 
-    public static TradeExecutionResult Success(string shortId,  string reason  =  "Position opened")  =>  new(true,  shortId,  reason,  null);
-    public static TradeExecutionResult Failure(string reason,  Exception? exception  =  null)  =>  new(false,  null,  reason,  exception);
+    public static TradeExecutionResult Success(string shortId,  string reason = "Position opened")  =>  new(true,  shortId,  reason,  null);
+    public static TradeExecutionResult Failure(string reason,  Exception? exception = null)  =>  new(false,  null,  reason,  exception);
 }

@@ -105,6 +105,6 @@ SELECT
     sum(s.total_fees) AS total_fees, 
     max(r.completed_at_utc) AS last_completed_at_utc
 FROM trading.performance_runs r
-JOIN trading.performance_snapshots s ON s.run_id  =  r.run_id
-WHERE r.status  =  'Completed'
+JOIN trading.performance_snapshots s ON s.run_id = r.run_id
+WHERE r.status = 'Completed'
 GROUP BY r.bot_name,  r.symbol,  r.run_type;

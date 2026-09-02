@@ -5,7 +5,6 @@ using TradingSystem.Analytics.Models.Enums;
 using TradingSystem.Backtesting.Bots.Bot8012;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Signals;
-using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Dashboard.Contracts.Models.Optimization;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Optimization.Configuration;
@@ -14,8 +13,8 @@ using TradingSystem.Optimization.Mapping;
 using TradingSystem.Optimization.Models;
 namespace TradingSystem.Jobs.Worker.Execution;
 public sealed class OptimizationExecutionService(
-    IHistoricalMarketDataStore market, 
-    IHistoricalSignalStore signalStore, 
+    IHistoricalMarketDataStore historicalMarketDatStore, 
+    IHistoricalSignalStore historicalSignalStore, 
     Bot8012BacktestEngine engine, 
     ParameterTuningEngine tuning, 
     WalkForwardOptimizationEngine walkForward, 
@@ -26,16 +25,16 @@ public sealed class OptimizationExecutionService(
         if (!request.BotName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Dashboard range optimization currently supports BOT8012. Other bots keep their CLI parameter spaces until explicit range binders are added.");
 
-        if (await market.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))
+        if (await historicalMarketDatStore.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))
             throw new InvalidOperationException("Historical data contains unresolved candle gaps for the requested period."); 
         
-        var candles = await market.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct); 
+        var candles = await historicalMarketDatStore.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct); 
         if (candles.Count < 2) 
             throw new InvalidOperationException("Historical candles are missing.");
 
         var signals = request.SignalSource.Equals("Internal", StringComparison.OrdinalIgnoreCase)
             ? new EmaCrossDemoSignalSource().Generate(candles)
-            : await signalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);
+            : await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);
 
         if (signals.Count == 0)
             throw new InvalidOperationException("No historical signals were found.");

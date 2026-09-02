@@ -11,25 +11,25 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
         Func<TOptions, CancellationToken,  Task<TResult>> run, 
         Func<TResult, BotBacktestMetrics> metricsSelector, 
         OptimizationScoreWeights weights, 
-        int top  =  50, 
+        int top = 50, 
         CancellationToken ct = default)
     {
-        var trials  =  new List<ParameterTrial<TOptions>>();
-        var sequence  =  0;
+        var trials = new List<ParameterTrial<TOptions>>();
+        var sequence = 0;
         
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
             
-            var result  =  await run(candidate,  ct);
-            var metrics  =  metricsSelector(result);
+            var result = await run(candidate,  ct);
+            var metrics = metricsSelector(result);
             
             trials.Add(new ParameterTrial<TOptions>
             {
-                Sequence  =  ++sequence, 
-                Options  =  candidate, 
-                Metrics  =  metrics, 
-                Score  =  scoreCalculator.Calculate(metrics,  weights)
+                Sequence = ++sequence, 
+                Options = candidate, 
+                Metrics = metrics, 
+                Score = scoreCalculator.Calculate(metrics,  weights)
             });
         }
 

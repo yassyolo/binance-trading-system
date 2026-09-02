@@ -31,9 +31,9 @@ BEGIN
 
     amount := substring(value from '^[0-9]+')::integer;
     unit := right(value, 1);
-    IF unit  =  'm' THEN RETURN make_interval(mins  =>  amount); END IF;
-    IF unit  =  'h' THEN RETURN make_interval(hours  =>  amount); END IF;
-    IF unit  =  'd' THEN RETURN make_interval(days  =>  amount); END IF;
+    IF unit = 'm' THEN RETURN make_interval(mins  =>  amount); END IF;
+    IF unit = 'h' THEN RETURN make_interval(hours  =>  amount); END IF;
+    IF unit = 'd' THEN RETURN make_interval(days  =>  amount); END IF;
     RAISE EXCEPTION 'Unsupported interval: %',  value;
 END;
 $$;

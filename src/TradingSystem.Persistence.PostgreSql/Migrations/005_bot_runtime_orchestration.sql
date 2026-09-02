@@ -6,7 +6,7 @@ ALTER TABLE trading_dashboard.bot_configurations
     ADD COLUMN IF NOT EXISTS execution_enabled boolean NOT NULL DEFAULT false;
 
 UPDATE trading_dashboard.bot_configurations
-SET runtime_status  =  CASE WHEN runtime_status IN ('Running', 'Paused', 'Stopped', 'EmergencyStopped', 'Faulted') THEN runtime_status ELSE 'Stopped' END;
+SET runtime_status = CASE WHEN runtime_status IN ('Running', 'Paused', 'Stopped', 'EmergencyStopped', 'Faulted') THEN runtime_status ELSE 'Stopped' END;
 
 ALTER TABLE trading_dashboard.bot_commands
     ADD COLUMN IF NOT EXISTS processing_worker_id varchar(128), 

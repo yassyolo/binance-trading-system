@@ -11,4 +11,3 @@ public sealed record DashboardJob(
     int AttemptCount, 
     DateTime CreatedAtUtc, 
     DateTime? StartedAtUtc);
-

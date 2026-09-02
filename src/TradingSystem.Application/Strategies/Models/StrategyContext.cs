@@ -1,6 +1,6 @@
-using TradingSystem.BotRuntime.Configuration;
 using TradingSystem.Domain.Signals;
 using TradingSystem.Application.Positions.Models;
+using TradingSystem.BotRuntime.Configuration.Models;
 
 namespace TradingSystem.Application.Strategies.Models;
 

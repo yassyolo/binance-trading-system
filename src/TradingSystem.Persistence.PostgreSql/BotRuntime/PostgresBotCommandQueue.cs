@@ -24,7 +24,7 @@ public sealed class PostgresBotCommandQueue(
                 from trading_dashboard.bot_commands
                 where (status = 'Pending' 
                     and next_attempt_at_utc <= now())
-                    or (status  =  'Processing' and processing_started_at_utc < now() - @processingTimeout)
+                    or (status = 'Processing' and processing_started_at_utc < now() - @processingTimeout)
                 order by requested_at_utc
                 for update skip locked
                 limit @batchSize
