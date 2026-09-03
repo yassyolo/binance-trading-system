@@ -64,7 +64,9 @@ public sealed class ReplayAccumulator
 				PositionsClosed++; 
 				break;
 		}
+		
 		var material = $"{HashSeed}|{item.GlobalPosition}|{item.Event.EventId:N}|{item.Event.EventType}|{item.Event.PayloadJson}";
+		
 		HashSeed = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
 	}
 

@@ -143,31 +143,49 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 	public async Task SaveCheckpointAsync(Guid replayId, long globalPosition, ReplayAccumulator accumulator, int progressPercent, string progressStage, CancellationToken ct)
 	{
 		var state = JsonSerializer.Serialize(accumulator, EventJson.Options);
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition("""
             insert into trading_replay.checkpoints(replay_id, last_global_position, state, updated_at_utc)
             values(@replayId, @globalPosition, cast(@state as jsonb), now())
             on conflict(replay_id) do update set last_global_position = excluded.last_global_position, state = excluded.state, updated_at_utc = now();
             update trading_replay.jobs set last_global_position = @globalPosition, processed_events = @processed, 
                 failed_events = @failed, progress_percent = @progressPercent, progress_stage = @progressStage where replay_id = @replayId;
-            """, new { replayId, globalPosition, state, processed = accumulator.ProcessedEvents, failed = accumulator.FailedEvents, progressPercent = Math.Clamp(progressPercent, 0, 99), progressStage }, cancellationToken: ct));
+            """, 
+			new 
+			{ 
+				replayId, 
+				globalPosition,
+				state,
+				processed = accumulator.ProcessedEvents, 
+				failed = accumulator.FailedEvents, 
+				progressPercent = Math.Clamp(progressPercent, 0, 99), 
+				progressStage 
+			}, cancellationToken: ct));
 	}
 
 	public async Task SaveStepsAsync(IReadOnlyCollection<ReplayStepResult> steps, CancellationToken ct)
 	{
-		if (steps.Count == 0) return;
+		if (steps.Count == 0) 
+			return;
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition("""
             insert into trading_replay.steps
                 (replay_id, global_position, source_event_id, event_type, virtual_time_utc, succeeded, result, error)
             values(@ReplayId, @GlobalPosition, @SourceEventId, @EventType, @VirtualTimeUtc, @Succeeded, cast(@ResultJson as jsonb), @Error)
             on conflict(replay_id, global_position) do nothing;
-            """, steps, cancellationToken: ct));
+            """,
+			steps, 
+			cancellationToken: ct));
 	}
 
 	public async Task CompleteAsync(Guid replayId, ReplaySummary summary, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition("""
             insert into trading_replay.results(replay_id, summary, deterministic_hash, created_at_utc)
             values(@replayId, cast(@summary as jsonb), @hash, now())
@@ -176,7 +194,15 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
                 processed_events = @processed, failed_events = @failed, deterministic_hash = @hash, completed_at_utc = now(),
                 completed_by_worker_id = processing_worker_id, processing_worker_id = null
             where replay_id = @replayId;
-            """, new { replayId, summary = JsonSerializer.Serialize(summary, EventJson.Options), hash = summary.DeterministicHash, processed = summary.ProcessedEvents, failed = summary.FailedEvents }, cancellationToken: ct));
+            """, 
+			new 
+			{ 
+				replayId, 
+				summary = JsonSerializer.Serialize(summary, EventJson.Options), 
+				hash = summary.DeterministicHash, 
+				processed = summary.ProcessedEvents, 
+				failed = summary.FailedEvents }, 
+			cancellationToken: ct));
 	}
 
 	public async Task FailAsync(Guid replayId, string error, CancellationToken ct)
@@ -296,13 +322,13 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 		var parameters = new
 		{
 			AfterGlobalPosition = Math.Max(0, afterGlobalPosition),
-			FromGlobalPosition = request.FromGlobalPosition,
-			ToGlobalPosition = request.ToGlobalPosition,
-			FromUtc = request.FromUtc,
-			ToUtc = request.ToUtc,
-			BotName = request.BotName,
-			Symbol = request.Symbol,
-			CorrelationId = request.CorrelationId,
+		    request.FromGlobalPosition,
+			request.ToGlobalPosition,
+			request.FromUtc,
+			request.ToUtc,
+			request.BotName,
+			request.Symbol,
+			request.CorrelationId,
 			Take = Math.Clamp(take, 1, 1000)
 		};
 
@@ -355,13 +381,13 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 
 		var parameters = new
 		{
-			FromGlobalPosition = request.FromGlobalPosition,
-			ToGlobalPosition = request.ToGlobalPosition,
-			FromUtc = request.FromUtc,
-			ToUtc = request.ToUtc,
-			BotName = request.BotName,
-			Symbol = request.Symbol,
-			CorrelationId = request.CorrelationId
+			request.FromGlobalPosition,
+			request.ToGlobalPosition,
+			request.FromUtc,
+			request.ToUtc,
+			request.BotName,
+			request.Symbol,
+			request.CorrelationId
 		};
 
 		await using var connection = await connections.OpenAsync(ct);

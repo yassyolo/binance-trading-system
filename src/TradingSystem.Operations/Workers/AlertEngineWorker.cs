@@ -14,6 +14,7 @@ public sealed class AlertEngineWorker(
     : BackgroundService
 {
     private readonly AlertEngineOptions _options = options.Value;
+    
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         if (!_options.Enabled)

@@ -29,29 +29,6 @@ public sealed class TradingMetrics
         "Signal or order processing failures.",
         new CounterConfiguration { LabelNames = ["component", "bot", "exception"] });
 
-    public Counter RiskDecisions { get; } = Metrics.CreateCounter(
-        "trading_risk_decisions_total",
-        "Central risk admission decisions.",
-        new CounterConfiguration { LabelNames = ["bot", "symbol", "side", "decision", "code"] });
-
-    public Histogram SignalProcessingDuration { get; } = Metrics.CreateHistogram(
-        "trading_signal_processing_duration_seconds",
-        "End-to-end signal processing duration.",
-        new HistogramConfiguration
-        {
-            LabelNames = ["bot", "symbol"],
-            Buckets = Histogram.ExponentialBuckets(0.005, 2, 14)
-        });
-
-    public Histogram BinanceRequestDuration { get; } = Metrics.CreateHistogram(
-        "trading_binance_request_duration_seconds",
-        "Binance request duration.",
-        new HistogramConfiguration
-        {
-            LabelNames = ["operation", "result"],
-            Buckets = Histogram.ExponentialBuckets(0.01, 2, 14)
-        });
-
     public Gauge PortfolioEquity { get; } = Metrics.CreateGauge(
         "trading_portfolio_equity",
         "Current estimated portfolio equity.");
@@ -80,9 +57,5 @@ public sealed class TradingMetrics
     public Gauge NetNotionalBySymbol { get; } = Metrics.CreateGauge(
         "trading_symbol_net_notional",
         "Net notional by symbol.",
-        new GaugeConfiguration { LabelNames = ["symbol"] });
-
-    public Gauge ReconciliationCriticalFindings { get; } = Metrics.CreateGauge(
-        "trading_reconciliation_critical_findings",
-        "Current unresolved critical reconciliation findings.");
+        new GaugeConfiguration { LabelNames = ["symbol"] });   
 }

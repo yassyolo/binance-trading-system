@@ -48,7 +48,7 @@ public sealed class ReplayEngine(
             if (batch.Count == 0)
                 break;
 
-            var orderedBatch = batch.OrderBy(item => item.GlobalPosition).ToArray();
+            var orderedBatch = batch.OrderBy(i => i.GlobalPosition).ToArray();
             EnsureStrictlyForward(cursor, orderedBatch);
             var steps = new List<ReplayStepResult>(orderedBatch.Length);
 
@@ -87,7 +87,7 @@ public sealed class ReplayEngine(
                 {
                     throw;
                 }
-                catch (Exception exception)
+                catch (Exception ex)
                 {
                     state.FailedEvents++;
                     steps.Add(new ReplayStepResult(
@@ -98,7 +98,7 @@ public sealed class ReplayEngine(
                         clock.UtcNow,
                         false,
                         "{}",
-                        exception.Message));
+                        ex.Message));
 
                     if (request.StopOnError)
                     {
@@ -111,6 +111,7 @@ public sealed class ReplayEngine(
             }
 
             await replayJobStore.SaveStepsAsync(steps, ct);
+           
             var percent = Math.Clamp((int)Math.Round(state.ProcessedEvents * 100d / total), 0, 99);
             var stage = $"Replayed through global position {cursor}";
             

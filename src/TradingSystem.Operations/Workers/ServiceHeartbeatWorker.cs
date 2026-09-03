@@ -10,7 +10,7 @@ using TradingSystem.Operations.Models.Enums;
 namespace TradingSystem.Operations.Workers;
 
 public sealed class ServiceHeartbeatWorker(
-    IServiceHeartbeatStore store,
+    IServiceHeartbeatStore heartbeatStore,
     IOptions<ServiceHeartbeatOptions> options,
     ILogger<ServiceHeartbeatWorker> logger) 
     : BackgroundService
@@ -39,7 +39,7 @@ public sealed class ServiceHeartbeatWorker(
                         ["machine"] = Environment.MachineName
                     };
                     
-                    await store.UpsertAsync(new ServiceHeartbeat(
+                    await heartbeatStore.UpsertAsync(new ServiceHeartbeat(
                         _options.ServiceName,
                         _instanceId,
                         version,
