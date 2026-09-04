@@ -8,11 +8,10 @@ namespace TradingSystem.Redis.Signals;
 
 public sealed class RedisGeneratedSignalPublisher(
 	IRedisMessagePublisher publisher)
-	:ISignalPublisher
+	: ISignalPublisher
 {
 	public Task PublishAsync(GeneratedTradingSignal x, CancellationToken ct)
-		=> publisher.PublishAsync(
-			RedisChannels.StrategySignals, 
+		=> publisher.PublishAsync(RedisChannels.StrategySignals, 
 			new TradingSignalMessage(x.SignalId, x.BotName, x.Symbol, x.Action, x.Source, x.GeneratedAtUtc), 
 			ct);
 }

@@ -10,7 +10,7 @@ namespace UserStreamService.Services;
 
 public sealed class HealingPublisher(
     IBinanceOrdersSnapshotProvider snapshotProvider,
-    IRedisMessagePublisher publisher,
+    IRedisMessagePublisher redisPublisher,
     IOptions<UserStreamServiceOptions> options,
     TimeProvider time,
     ILogger<HealingPublisher> logger)
@@ -59,7 +59,7 @@ public sealed class HealingPublisher(
                     AlgoOrders = snapshot.AlgoOrders
                 };
 
-                await publisher.PublishAsync(RedisChannels.Healing, message, ct);
+                await redisPublisher.PublishAsync(RedisChannels.Healing, message, ct);
 
                 logger.LogInformation("Healing snapshot published. Symbol = {Symbol}, Active = {Count}, DowntimeSeconds = {DowntimeSeconds}", symbol, activeClientIds.Count, message.DowntimeSeconds);
             }

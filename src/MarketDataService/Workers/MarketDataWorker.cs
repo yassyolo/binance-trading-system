@@ -71,9 +71,9 @@ public sealed class MarketDataWorker(
                             await publisher.PublishAsync(kline, ct);
                         }
                     }
-                    catch (JsonException exception)
+                    catch (JsonException jsonEx)
                     {
-                        logger.LogWarning(exception, "Invalid Binance websocket JSON. Interval = {Interval}", interval);
+                        logger.LogWarning(jsonEx, "Invalid Binance websocket JSON. Interval = {Interval}", interval);
                     }
                 }
             }
@@ -81,11 +81,11 @@ public sealed class MarketDataWorker(
             {
                 break;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 failureCount++;
                 
-                logger.LogError(exception, "Market stream failed. Interval = {Interval}, ConsecutiveFailures = {Failures}", interval, failureCount);
+                logger.LogError(ex, "Market stream failed. Interval = {Interval}, ConsecutiveFailures = {Failures}", interval, failureCount);
             }
 
             if (ct.IsCancellationRequested)

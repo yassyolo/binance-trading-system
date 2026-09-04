@@ -9,6 +9,4 @@ public interface IPositionStore
     Task<BotPosition?> GetAsync(string botName, string shortId, CancellationToken ct);
    
     Task<IReadOnlyCollection<BotPosition>> GetAllAsync(string botName, CancellationToken ct);
-   
-    Task DeleteAsync(string botName, string shortId, CancellationToken ct);
 }

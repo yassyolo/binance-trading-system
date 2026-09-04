@@ -1,5 +1,4 @@
 using TradingSystem.Application.Strategies.Contracts;
-using TradingSystem.Application.Strategies.Models;
 
 namespace TradingSystem.Application.Strategies;
 
@@ -27,9 +26,6 @@ public sealed class TradingStrategyRegistry
 
     public bool TryGet(string nameOrPluginId, out ITradingStrategy strategy)
          => _strategies.TryGetValue(nameOrPluginId, out strategy!);
-
-    public IReadOnlyCollection<StrategyMetadata> GetAllMetadata()
-         => _strategies.Values.Distinct().Select(x => x.Metadata).ToArray();
 
     private static void RegisterKey(IDictionary<string, ITradingStrategy> map, string key, ITradingStrategy strategy)
     {

@@ -166,11 +166,7 @@ public sealed class PostgresReconciliationFindingStore(
                 transaction,
                 cancellationToken: ct))).AsList();
 
-            var idsToResolve = unresolved
-                .Where(r => !currentFingerprints.Contains(Fingerprint(r.BotName, r.Symbol, r.ShortId, r.FindingType)))
-                .Select(r => r.Id)
-                .ToArray();
-
+            var idsToResolve = unresolved.Where(r => !currentFingerprints.Contains(Fingerprint(r.BotName, r.Symbol, r.ShortId, r.FindingType))).Select(r => r.Id).ToArray();
             if (idsToResolve.Length > 0)
             {
                 await connection.ExecuteAsync(new CommandDefinition(
@@ -196,9 +192,9 @@ public sealed class PostgresReconciliationFindingStore(
 
     public async Task<bool> HasUnresolvedCriticalAsync(CancellationToken ct)
     {
-        await using var c = await connections.OpenAsync(ct);
+        await using var connection = await connections.OpenAsync(ct);
 
-        return await c.ExecuteScalarAsync<bool>(new CommandDefinition(
+        return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
             """
             SELECT EXISTS(
                 SELECT 1

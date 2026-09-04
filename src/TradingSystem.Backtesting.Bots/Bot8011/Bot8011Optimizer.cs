@@ -1,5 +1,4 @@
 using TradingSystem.Backtesting.Bots.Bot8011.Models;
-using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Backtesting.Bots.Optimization;

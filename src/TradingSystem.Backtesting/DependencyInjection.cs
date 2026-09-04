@@ -20,14 +20,16 @@ public static class DependencyInjection
         services.AddSingleton<ITradingCostModel>(_  =>  new BinanceFuturesCostModel());
         services.AddSingleton<BacktestStrategyRegistry>();
         services.AddSingleton<BacktestEngine>();
+        
         services.AddBacktestStrategy<EmaCrossStrategyFactory>();
+        
         return services;
     }
 
     public static IServiceCollection AddBacktestStrategy<TFactory>(this IServiceCollection services)
         where TFactory : class,  IBacktestStrategyFactory
     {
-        services.AddSingleton<IBacktestStrategyFactory,  TFactory>();
+        services.AddSingleton<IBacktestStrategyFactory, TFactory>();
         return services;
     }
 }

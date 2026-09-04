@@ -13,7 +13,7 @@ namespace TradingSystem.RiskManagement.Services;
 
 public sealed class CentralRiskManager(
     IOptions<CentralRiskOptions> options,
-    IPortfolioSnapshotProvider portfolioProvider,
+    IPortfolioSnapshotProvider portfolioSnapshotProvider,
     IRiskOrderSizingProvider orderSizingProvider,
     IRiskStateProvider riskStateProvider,
     IRiskAdmissionReservationStore reservations,
@@ -22,21 +22,21 @@ public sealed class CentralRiskManager(
     : ICentralRiskManager, IRiskAdmissionLifecycle
 {
     private readonly CentralRiskOptions _options = options.Value;
-    private readonly SemaphoreSlim _admissionGate = new(1, 1);
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task<RiskDecision> EvaluateOpenAsync(RiskEvaluationContext ctx, CancellationToken ct)
     {
         if (!_options.Enabled)
             return RiskDecision.Allow("Central risk management is disabled.");
 
-        await _admissionGate.WaitAsync(ct);
+        await _gate.WaitAsync(ct);
         
         try
         {
             var now = clock.UtcNow;
 
-            portfolioProvider.Invalidate();
-            var snapshot = await portfolioProvider.GetSnapshotAsync(ct);
+            portfolioSnapshotProvider.Invalidate();
+            var snapshot = await portfolioSnapshotProvider.GetSnapshotAsync(ct);
 
             var orderSizing = await orderSizingProvider.GetAsync(ctx.Signal.BotName, ct);
             if (orderSizing is null || orderSizing.Quantity <= 0)
@@ -97,8 +97,10 @@ public sealed class CentralRiskManager(
             if (_options.MaximumGrossNotionalPerSymbol > 0 && projectedSymbolGross > _options.MaximumGrossNotionalPerSymbol)
                 return RiskDecision.Block("MAX_SYMBOL_GROSS_NOTIONAL", $"Projected gross notional for '{ctx.Signal.Symbol}' is {projectedSymbolGross:F2}.");
 
-            var candidateSignedNotional = ctx.Signal.Side == PositionSide.Long ? candidateNotional : -candidateNotional;
-            var reservedSignedNotional = symbolReservations.Sum(x => x.Side == PositionSide.Long ? x.Notional : -x.Notional);
+            var candidateSignedNotional = ctx.Signal.Side == PositionSide.Long 
+                ? candidateNotional : -candidateNotional;
+            var reservedSignedNotional = symbolReservations.Sum(x => x.Side == PositionSide.Long 
+                ? x.Notional : -x.Notional);
 
             var projectedSymbolNet = (symbol?.NetNotional ?? 0m) + reservedSignedNotional + candidateSignedNotional;
 
@@ -128,7 +130,7 @@ public sealed class CentralRiskManager(
         }
         finally
         {
-            _admissionGate.Release();
+            _gate.Release();
         }
     }
 
@@ -137,19 +139,19 @@ public sealed class CentralRiskManager(
         if (string.IsNullOrWhiteSpace(signalId))
             return;
 
-        await _admissionGate.WaitAsync(ct);
+        await _gate.WaitAsync(ct);
         
         try
         {
             if (executionSucceeded)
-                portfolioProvider.Invalidate();
+                portfolioSnapshotProvider.Invalidate();
 
             if (reservations.RemoveBySignalId(signalId))
                 logger.LogInformation("Risk admission reservation completed. SignalId = {SignalId}, ExecutionSucceeded = {ExecutionSucceeded}", signalId, executionSucceeded);
         }
         finally
         {
-            _admissionGate.Release();
+            _gate.Release();
         }
     }
 }

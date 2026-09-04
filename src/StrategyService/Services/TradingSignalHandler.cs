@@ -13,7 +13,7 @@ namespace StrategyService.Services;
 
 public sealed class TradingSignalHandler(
     TradingEngine engine,
-    TradingStrategyRegistry strategies,
+    TradingStrategyRegistry strategyRegistry,
     ITradingPipelineRecorder history,
     ITradingEnvironmentProvider environment,
     IBotRuntimeConfigurationProvider configurations,
@@ -163,11 +163,11 @@ public sealed class TradingSignalHandler(
     {
         try 
         { 
-            return strategies.GetRequired(botName).Metadata.Version;
+            return strategyRegistry.GetRequired(botName).Metadata.Version;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Strategy version could not be resolved for bot {Bot}. History will use 'unknown'.", botName);
+            logger.LogWarning(ex, "Strategy version could not be resolved for bot {Bot}. History will use 'unknown'.", botName);
            
             return "unknown";
         }

@@ -34,10 +34,8 @@ public sealed class RedisTradingOperationLockProvider(
         private int _disposed;
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-                return;
-           
-            await db.ScriptEvaluateAsync(ReleaseScript, new[] { key }, new[] { token });
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                await db.ScriptEvaluateAsync(ReleaseScript, [key], [token]);
         }
     }
 }

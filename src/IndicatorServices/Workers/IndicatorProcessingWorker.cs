@@ -12,7 +12,7 @@ namespace IndicatorServices.Workers;
 
 public sealed class IndicatorProcessingWorker(
 	IEnumerable<IIndicatorProcessor> processors,
-	IHistoricalCandleSource history,
+	IHistoricalCandleSource historicalCandleSource,
 	IConnectionMultiplexer redis,
 	IRedisStatePublisher publisher,
 	TimeProvider timeProvider,
@@ -39,11 +39,9 @@ public sealed class IndicatorProcessingWorker(
 					var normalizedSymbol = symbol.Trim().ToUpperInvariant();
 					var normalizedInterval = interval.Trim().ToLowerInvariant();
 
-					var candles = await history.LoadLatestAsync(normalizedSymbol, normalizedInterval, processor.RequiredHistory, ct);
+					var candles = await historicalCandleSource.LoadLatestAsync(normalizedSymbol, normalizedInterval, processor.RequiredHistory, ct);
 
-					var closedCandles = candles.Where(x => x.IsClosed)
-						.OrderBy(x => x.OpenTimeUtc)
-						.ToArray();
+					var closedCandles = candles.Where(x => x.IsClosed).OrderBy(x => x.OpenTimeUtc).ToArray();
 
 					processor.Initialize(normalizedSymbol, normalizedInterval, closedCandles);
 
@@ -147,13 +145,13 @@ public sealed class IndicatorProcessingWorker(
 		}
 		catch (OperationCanceledException) when (ct.IsCancellationRequested)
 		{ }
-		catch (JsonException exception)
+		catch (JsonException jsonEx)
 		{
-			logger.LogWarning(exception, "Invalid kline JSON received from Redis.");
+			logger.LogWarning(jsonEx, "Invalid kline JSON received from Redis.");
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
-			logger.LogError(exception, "Indicator processing failed.");
+			logger.LogError(ex, "Indicator processing failed.");
 		}
 	}
 

@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TradingSystem.Backtesting\TradingSystem.Backtesting.csproj" />
     <ProjectReference Include="..\..\src\TradingSystem.Domain\TradingSystem.Domain.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />

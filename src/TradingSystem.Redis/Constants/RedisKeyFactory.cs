@@ -23,9 +23,6 @@ public sealed class RedisKeyFactory(string prefix)
     public RedisKey PositionIndex(string bot)
         => Key($"{Normalize(bot)}:positions");
 
-    public RedisValue PositionPattern(string bot)
-        => Key($"{Normalize(bot)}:position:*").ToString();
-
     private RedisKey Key(string value) 
         => _prefix + value;
 

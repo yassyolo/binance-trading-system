@@ -254,10 +254,15 @@ public sealed class Bot8011BacktestEngine
 
     private static void Validate(decimal initialBalance, Bot8011BacktestOptions options, IReadOnlyList<MarketCandle> candles)
     {
-        if (initialBalance <= 0) throw new ArgumentOutOfRangeException(nameof(initialBalance));
-        if (candles.Count < 2) throw new InvalidOperationException("At least two candles are required.");
+        if (initialBalance <= 0) 
+            throw new ArgumentOutOfRangeException(nameof(initialBalance));
+        
+        if (candles.Count < 2)
+            throw new InvalidOperationException("At least two candles are required.");
+        
         if (options.Quantity <= 0 || options.Leverage <= 0 || options.TakeProfitPercent <= 0 || options.InitialStopLossDistance <= 0)
             throw new ArgumentException("Invalid BOT8011 options.");
+        
         if (options.TakeProfitCloseFraction is <= 0 or > 1)
             throw new ArgumentException("TakeProfitCloseFraction must be in (0,  1].");
     }    

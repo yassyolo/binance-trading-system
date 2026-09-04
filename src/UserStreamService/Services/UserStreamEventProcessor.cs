@@ -67,9 +67,9 @@ public sealed class UserStreamEventProcessor(
         {
             throw;
         }
-        catch (JsonException ex)
+        catch (JsonException jsonEx)
         {
-            logger.LogWarning(ex, "Invalid Binance user-stream JSON.");
+            logger.LogWarning(jsonEx, "Invalid Binance user-stream JSON.");
         }
     }
 }

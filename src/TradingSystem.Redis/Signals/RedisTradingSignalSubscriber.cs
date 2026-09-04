@@ -12,18 +12,18 @@ namespace TradingSystem.Redis.Signals;
 
 public sealed class RedisTradingSignalSubscriber(
     IConnectionMultiplexer redis,
-    ITradingSignalHandler handler,
+    ITradingSignalHandler signalHandler,
     IClock clock,
     ILogger<RedisTradingSignalSubscriber> logger)
     : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var channel = RedisChannel.Literal(RedisChannels.StrategySignals);
 
-        while (!stoppingToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             var subscriber = redis.GetSubscriber();
             var subscribed = false;
@@ -32,28 +32,28 @@ public sealed class RedisTradingSignalSubscriber(
             {
                 await subscriber.SubscribeAsync(channel, async (_, value) =>
                 {
-                    if (!value.HasValue || stoppingToken.IsCancellationRequested)
+                    if (!value.HasValue || ct.IsCancellationRequested)
                         return;
 
-                    await ProcessSafelyAsync(value.ToString(), stoppingToken);
+                    await ProcessSafelyAsync(value.ToString(), ct);
                 });
 
                 subscribed = true;
                 logger.LogInformation("Subscribed to trading signals. Channel = {Channel}", channel);
 
-                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
-            catch (RedisException exception)
+            catch (RedisException redisEx)
             {
-                logger.LogWarning(exception, "Could not subscribe to trading signals because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
+                logger.LogWarning(redisEx, "Could not subscribe to trading signals because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(exception, "Trading signal subscription failed. Channel = {Channel}. Retrying.", channel);
+                logger.LogError(ex, "Trading signal subscription failed. Channel = {Channel}. Retrying.", channel);
             }
             finally
             {
@@ -63,14 +63,14 @@ public sealed class RedisTradingSignalSubscriber(
                     {
                         await subscriber.UnsubscribeAsync(channel);
                     }
-                    catch (Exception exception)
+                    catch (Exception ex)
                     {
-                        logger.LogWarning(exception, "Could not unsubscribe cleanly from trading signal channel {Channel}", channel);
+                        logger.LogWarning(ex, "Could not unsubscribe cleanly from trading signal channel {Channel}", channel);
                     }
                 }
             }
 
-            await DelayBeforeRetryAsync(stoppingToken);
+            await DelayBeforeRetryAsync(ct);
         }
 
         logger.LogInformation("Trading signal subscriber stopped. Channel = {Channel}", channel);
@@ -92,17 +92,17 @@ public sealed class RedisTradingSignalSubscriber(
             var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
             await HandleWithTransientRetryAsync(signal, cancellationToken);
 
-            logger.LogInformation("Trading signal handler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
+            logger.LogInformation("Trading signal signalHandler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {}
-        catch (JsonException exception)
+        catch (JsonException jsonEx)
         {
-            logger.LogError(exception, "Trading signal JSON is invalid. Raw = {Raw}", raw);
+            logger.LogError(jsonEx, "Trading signal JSON is invalid. Raw = {Raw}", raw);
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Trading signal processing failed. Raw = {Raw}", raw);
+            logger.LogError(ex, "Trading signal processing failed. Raw = {Raw}", raw);
         }
     }
 
@@ -118,7 +118,7 @@ public sealed class RedisTradingSignalSubscriber(
 
             try
             {
-                _ = await handler.HandleAsync(signal, ct);
+                _ = await signalHandler.HandleAsync(signal, ct);
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

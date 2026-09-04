@@ -19,7 +19,4 @@ public sealed class TradingStrategyResolver(
 
         return registry.GetRequired(botName);
     }
-
-    public ITradingStrategy ResolveByPluginId(string pluginId) 
-        => registry.GetRequired(pluginId);
 }

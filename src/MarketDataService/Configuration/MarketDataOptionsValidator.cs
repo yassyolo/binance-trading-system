@@ -17,9 +17,7 @@ public sealed class MarketDataOptionsValidator : IValidateOptions<MarketDataOpti
         if (!Uri.TryCreate(options.BinanceWebSocketBaseUrl, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeWs &&
              uri.Scheme != Uri.UriSchemeWss))
-        {
             e.Add("BinanceWebSocketBaseUrl must be a valid ws:// or wss:// URL.");
-        }
 
         if (options.ReconnectDelaySeconds <= 0)
             e.Add("ReconnectDelaySeconds must be positive.");
