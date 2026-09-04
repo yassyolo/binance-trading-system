@@ -1,5 +1,5 @@
 ﻿using TradingSystem.Backtesting.Bots.Bot8011.Models.Enums;
-using TradingSystem.Backtesting.Models.Enums;
+using TradingSystem.Backtesting.Bots.Models.Enums;
 
 namespace TradingSystem.Backtesting.Bots.Bot8011.Models;
 

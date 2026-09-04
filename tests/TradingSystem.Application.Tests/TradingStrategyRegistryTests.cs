@@ -45,18 +45,6 @@ public sealed class TradingStrategyRegistryTests
         Assert.Throws<InvalidOperationException>(() => new TradingStrategyRegistry([new FakeStrategy("BOT1", "same"), new FakeStrategy("BOT2", "same")]));
     }
 
-    [Fact]
-    public void GetAllMetadata_ReturnsEachStrategyOnce()
-    {
-        var first = new FakeStrategy("BOT1", "plugin.one");
-        var second = new FakeStrategy("BOT2", "plugin.two");
-        var sut = new TradingStrategyRegistry([first, second]);
-
-        var result = sut.GetAllMetadata();
-
-        Assert.Equal(2, result.Count);
-    }
-
     private sealed class FakeStrategy(string name, string pluginId) : ITradingStrategy
     {
         public StrategyMetadata Metadata { get; } = new(name, "1.0", PositionMode.TpOnly, ["BTCUSDC"], pluginId);

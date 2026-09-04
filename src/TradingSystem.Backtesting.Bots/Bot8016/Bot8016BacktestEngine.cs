@@ -1,13 +1,14 @@
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
-using TradingSystem.Backtesting.Models;
-using TradingSystem.Backtesting.Models.Enums;
+using TradingSystem.Backtesting.Bots.Models.Enums;
 using TradingSystem.Domain.Enums;
 using TradingSystem.Domain.MarketData;
 using TradingSystem.Strategies.Alligator;
 using TradingSystem.Strategies.Protection;
+
 namespace TradingSystem.Backtesting.Bots.Bot8016;
+
 public sealed class Bot8016BacktestEngine(AlligatorEntryPolicy entryPolicy, Stop3Policy stop3Policy)
 {
     public BotBacktestResult<Bot8016BacktestOptions> Run(IReadOnlyList<MarketCandle> sourceCandles, IReadOnlyList<HistoricalAlligatorSnapshot> sourceIndicators, Bot8016BacktestOptions o)
