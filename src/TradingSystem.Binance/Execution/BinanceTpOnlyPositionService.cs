@@ -25,7 +25,7 @@ public sealed class BinanceTpOnlyPositionService(
         CancellationToken ct)
     {
         var id = BinanceClientOrderId.NewShortId();
-        var pId = BinanceClientOrderId.Create(botName, "P", id);
+        var parentId = BinanceClientOrderId.Create(botName, "P", id);
         var tpId = BinanceClientOrderId.Create(botName, "TP", id);
 
         var parentOrder = await safeOrders.SafePlaceMarketOrderAsync(
@@ -33,10 +33,10 @@ public sealed class BinanceTpOnlyPositionService(
             BinanceOrderSide.Entry(side),
             BinanceOrderSide.Position(side),
             quantity,
-            pId,
+            parentId,
             ct);
 
-        var filled = await safeOrders.WaitForFillAsync(symbol, parentOrder, pId, ct);
+        var filled = await safeOrders.WaitForFillAsync(symbol, parentOrder, parentId, ct);
 
         var entry = ResolvePrice(filled);
         if (entry <= 0)
@@ -71,7 +71,7 @@ public sealed class BinanceTpOnlyPositionService(
             Quantity = quantity,
             RemainingQuantity = quantity,
             EntryPrice = entry,
-            ParentClientId = pId,
+            ParentClientId = parentId,
             ParentOrderId = filled.OrderId,
             ParentFilledAtUtc = now,
             TpClientId = tpId,

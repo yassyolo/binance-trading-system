@@ -7,13 +7,13 @@ using TradingSystem.Strategies.Grid.Models;
 
 namespace TradingSystem.Backtesting.Bots.Common;
 
-public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
+public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy)
 {
     public BotBacktestResult<TOptions> Run<TOptions>(
         IReadOnlyList<MarketCandle> sourceCandles,
         IReadOnlyList<HistoricalBotSignal> sourceSignals,
         TOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
         where TOptions : ITpOnlyGridBacktestOptions
     {
         Validate(sourceCandles, options);
@@ -31,7 +31,7 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
 
         foreach (var candle in candles)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
             while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.OpenTimeUtc)
             {
@@ -55,7 +55,7 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
                 var references = active
                     .Select(x => new GridPositionReference(ToPositionSide(x.Side), x.TakeProfit, x.EntryTimeUtc))
                     .ToArray();
-                var check = policy.Evaluate(
+                var check = gridSpacingPolicy.Evaluate(
                     positionSide,
                     candle.Open,
                     references,
@@ -167,11 +167,11 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy policy)
         }
     }
 
-    private static void Validate<TOptions>(IReadOnlyList<MarketCandle> candles, TOptions options)
-        where TOptions : ITpOnlyGridBacktestOptions
+    private static void Validate<TOptions>(IReadOnlyList<MarketCandle> candles, TOptions options) where TOptions : ITpOnlyGridBacktestOptions
     {
         if (candles.Count < 2)
             throw new InvalidOperationException("At least two candles are required.");
+        
         if (options.InitialBalance <= 0
             || options.Quantity <= 0
             || options.Leverage <= 0

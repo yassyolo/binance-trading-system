@@ -11,13 +11,7 @@ public sealed class SafeBinanceOrderService(
     private static readonly TimeSpan FillWaitTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan RecoveryDelay = TimeSpan.FromMilliseconds(500);
 
-    public async Task<BinanceOrderResult> SafePlaceMarketOrderAsync(
-        string symbol,
-        string side,
-        string positionSide,
-        decimal quantity,
-        string clientOrderId,
-        CancellationToken ct)
+    public async Task<BinanceOrderResult> SafePlaceMarketOrderAsync(string symbol, string side, string positionSide, decimal quantity, string clientOrderId, CancellationToken ct)
     {
         try
         {
@@ -278,10 +272,11 @@ public sealed class SafeBinanceOrderService(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                lastException = exception;
-                logger.LogWarning(exception, "Could not recover Binance order by client order id. Attempt = {Attempt}/3", i);
+                lastException = ex;
+                
+                logger.LogWarning(ex, "Could not recover Binance order by client order id. Attempt = {Attempt}/3", i);
             }
         }
 

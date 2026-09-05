@@ -55,24 +55,6 @@ public sealed class BotPosition
     public long? SignalCandleCloseTime { get; set; }
     public bool HighReached { get; set; }
 
-    public void MarkParentFilled(decimal entryPrice, string orderId, DateTime occurredAtUtc)
-    {
-        if (entryPrice <= 0)
-            throw new ArgumentOutOfRangeException(nameof(entryPrice));
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
-
-        if (Closed)
-            throw new InvalidOperationException("A closed position cannot be opened again.");
-
-        EntryPrice = entryPrice;
-        ParentOrderId = orderId;
-        ParentFilledAtUtc = occurredAtUtc;
-        RemainingQuantity = RemainingQuantity > 0 ? RemainingQuantity : Quantity;
-        Status = PositionStatus.Open;
-        UpdatedAtUtc = occurredAtUtc;
-    }
-
     public void MarkTpFilled(decimal executedQuantity, DateTime occurredAtUtc)
     {
         if (executedQuantity <= 0)
@@ -108,28 +90,6 @@ public sealed class BotPosition
         ProtectiveActive = false;
         UpdatedAtUtc = occurredAtUtc;
     }
-
-    public void MarkSlOrderTerminal(string status, DateTime occurredAtUtc)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(status);
-        SlStatus = status;
-        ProtectiveActive = false;
-        UpdatedAtUtc = occurredAtUtc;
-    }
-
-    public void MarkStop3OrderTerminal(string status, DateTime occurredAtUtc)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(status);
-        Stop3Status = status;
-        Stop3Pending = false;
-        TrailingInProgress = false;
-        ProtectiveActive = false;
-        UpdatedAtUtc = occurredAtUtc;
-    }
-
-    [Obsolete("Use MarkTpOrderTerminal, MarkSlOrderTerminal or MarkStop3OrderTerminal.")]
-    public void MarkProtectiveOrderTerminal(string status, DateTime occurredAtUtc) =>
-        MarkTpOrderTerminal(status, occurredAtUtc);
 
     public void MarkClosing(DateTime occurredAtUtc)
     {

@@ -20,11 +20,11 @@ public sealed class UserStreamOrderSubscriber(
     IConnectionMultiplexer redis,
     IEnumerable<IBotOrderEventHandler> handlers,
     IEventDeduplicationStore eventDeduplication,
-    ITradingPipelineRecorder history,
+    ITradingPipelineRecorder pipelineRecorder,
     IHistoricalEventSink historicalEvents,
     TradingMetrics metrics,
     ITradingEnvironmentProvider environment,
-    IBotRuntimeConfigurationProvider configurations,
+    IBotRuntimeConfigurationProvider configProvider,
     LivePositionLifecycleRecorder positionLifecycle,
     ILogger<UserStreamOrderSubscriber> logger) : BackgroundService
 {
@@ -61,13 +61,13 @@ public sealed class UserStreamOrderSubscriber(
             {
                 break;
             }
-            catch (RedisException ex)
+            catch (RedisException redisEx)
             {
-                logger.LogWarning(ex, "Could not subscribe to user-stream orders because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
+                logger.LogWarning(redisEx, "Could not subscribe to user-stream orders because Redis is unavailable. Channel = {Channel}. Retrying.", channel);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(exception, "User-stream order subscription failed. Channel = {Channel}. Retrying.", channel);
+                logger.LogError(ex, "User-stream order subscription failed. Channel = {Channel}. Retrying.", channel);
             }
             finally
             {
@@ -77,9 +77,9 @@ public sealed class UserStreamOrderSubscriber(
                     {
                         await subscriber.UnsubscribeAsync(channel);
                     }
-                    catch (Exception exception)
+                    catch (Exception ex)
                     {
-                        logger.LogWarning(exception, "Could not unsubscribe cleanly from user-stream order channel {Channel}", channel);
+                        logger.LogWarning(ex, "Could not unsubscribe cleanly from user-stream order channel {Channel}", channel);
                     }
                 }
             }
@@ -139,7 +139,7 @@ public sealed class UserStreamOrderSubscriber(
 
             metrics.OrderEvents.WithLabels(bot, symbol, role, status ?? "unknown").Inc();
 
-            await history.RecordOrderEventAsync(new OrderEventHistoryRecord(
+            await pipelineRecorder.RecordOrderEventAsync(new OrderEventHistoryRecord(
                 key,
                 bot,
                 shortId,
@@ -207,7 +207,7 @@ public sealed class UserStreamOrderSubscriber(
 
     private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
     {
-        var config = await configurations.GetAsync(botName, ct);
+        var config = await configProvider.GetAsync(botName, ct);
 
         return config is not null && !string.IsNullOrWhiteSpace(config.Environment)
             ? config.Environment.Trim()

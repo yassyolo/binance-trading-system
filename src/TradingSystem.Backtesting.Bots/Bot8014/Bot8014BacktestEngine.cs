@@ -5,8 +5,8 @@ using TradingSystem.Domain.MarketData;
 
 namespace TradingSystem.Backtesting.Bots.Bot8014;
 
-public sealed class Bot8014BacktestEngine(TpOnlyGridBacktestEngine engine)
+public sealed class Bot8014BacktestEngine(TpOnlyGridBacktestEngine tpOnlyGridEngine)
 {
     public BotBacktestResult<Bot8014BacktestOptions> Run(IReadOnlyList<MarketCandle> candles, IReadOnlyList<HistoricalBotSignal> signals, Bot8014BacktestOptions options) 
-        => engine.Run(candles, signals, options);
+        => tpOnlyGridEngine.Run(candles, signals, options);
 }

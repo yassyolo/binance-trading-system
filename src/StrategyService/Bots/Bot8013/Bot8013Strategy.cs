@@ -7,5 +7,5 @@ namespace StrategyService.Bots.Bot8013;
 public sealed class Bot8013Strategy(
     IOptions<Bot8013Options> options, 
     TpOnlyGridGapPolicy<Bot8013Options> tpGridPolicy)
-    :TpOnlyGridStrategy<Bot8013Options>(options.Value, tpGridPolicy);
+    : TpOnlyGridStrategy<Bot8013Options>(options.Value, tpGridPolicy);
 

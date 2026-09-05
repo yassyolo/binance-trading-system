@@ -22,10 +22,10 @@ public abstract class TpOnlyGridStrategy<TOptions>(
         
         var side = ctx.Signal.Side;
         
-        if(side==PositionSide.Long && !options.EnableLong)
+        if(side == PositionSide.Long && !options.EnableLong)
             return Task.FromResult(StrategyDecision.Block(side, "LONG is disabled."));
         
-        if(side==PositionSide.Short && !options.EnableShort)
+        if(side == PositionSide.Short && !options.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
         
         return Task.FromResult(tpGridPolicy.Evaluate(side, ctx.MarkPrice, ctx.ActivePositions, ctx.RuntimeConfiguration));

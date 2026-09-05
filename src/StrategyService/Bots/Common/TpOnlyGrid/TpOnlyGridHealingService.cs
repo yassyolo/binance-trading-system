@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TradingSystem.Application.Healing.Contracts;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.Application.Time;
@@ -24,11 +25,11 @@ public abstract class TpOnlyGridHealingService<TOptions>(
             && !string.IsNullOrWhiteSpace(p.TpClientId) 
             && !snapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase).Contains(p.TpClientId));
 
-        foreach (var position in positionsWithMissingTakeProfit)
+        foreach (var p in positionsWithMissingTakeProfit)
         {
-            position.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
+            p.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
             
-            await positionStore.SaveAsync(position, ct);
+            await positionStore.SaveAsync(p, ct);
         }
     }
 }

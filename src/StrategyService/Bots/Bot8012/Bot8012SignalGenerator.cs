@@ -10,19 +10,19 @@ public sealed class Bot8012SignalGenerator(
     IOptions<Bot8012Options> options)
     :ITradingSignalGenerator
 {
-    private readonly Bot8012Options _o = options.Value;
+    private readonly Bot8012Options _options = options.Value;
     
-    public string BotName => _o.BotName;
+    public string BotName => _options.BotName;
     
-    public string StrategyVersion => _o.StrategyVersion;
+    public string StrategyVersion => _options.StrategyVersion;
    
-    public IReadOnlyCollection<string> SupportedSymbols => [_o.Symbol];
+    public IReadOnlyCollection<string> SupportedSymbols => [_options.Symbol];
  
     public ValueTask<GeneratedTradingSignal?> GenerateAsync(MarketIndicatorSnapshot x, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         
-        if(!_o.SignalRules.Enabled)
+        if(!_options.SignalRules.Enabled)
             return ValueTask.FromResult<GeneratedTradingSignal?>(null);
         
         var side = Match(x, true) 
@@ -30,8 +30,8 @@ public sealed class Bot8012SignalGenerator(
             ? "SHORT" : null;
         
         if(side is null 
-            || (side=="LONG" && !_o.EnableLong) 
-            || (side=="SHORT" && !_o.EnableShort))
+            || (side=="LONG" && !_options.EnableLong) 
+            || (side=="SHORT" && !_options.EnableShort))
             return ValueTask.FromResult<GeneratedTradingSignal?>(null);
         
         return ValueTask.FromResult<GeneratedTradingSignal?>(new(
@@ -51,7 +51,7 @@ public sealed class Bot8012SignalGenerator(
     
     private bool Match(MarketIndicatorSnapshot x, bool longSide)
     {
-        var r = _o.SignalRules;
+        var r = _options.SignalRules;
         
         if(r.RequireBollingerBreakout 
             && (!x.TryGet(longSide ? IndicatorKeys.BollingerUpper : IndicatorKeys.BollingerLower, out var b) 

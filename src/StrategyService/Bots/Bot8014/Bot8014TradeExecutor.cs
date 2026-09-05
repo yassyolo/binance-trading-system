@@ -9,9 +9,9 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 namespace StrategyService.Bots.Bot8014;
 
 public sealed class Bot8014TradeExecutor(
-    IOptions<Bot8014Options> o,
-    BinanceTpOnlyPositionService e,
-    IPositionStore s,
-    IClock c,
-    IBotRuntimeConfigurationProvider r)
-    : TpOnlyGridTradeExecutor<Bot8014Options>(o.Value, e, s, c, r);
+    IOptions<Bot8014Options> options,
+    BinanceTpOnlyPositionService tpOnlyPositionService,
+    IPositionStore positionStore,
+    IClock clock,
+    IBotRuntimeConfigurationProvider configProvider)
+    : TpOnlyGridTradeExecutor<Bot8014Options>(options.Value, tpOnlyPositionService, positionStore, clock, configProvider);

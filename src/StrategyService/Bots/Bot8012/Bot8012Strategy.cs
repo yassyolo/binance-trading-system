@@ -1,33 +1,10 @@
 using Microsoft.Extensions.Options;
 using StrategyService.Bots.Bot8012.Configuration;
-using TradingSystem.Application.Strategies.Contracts;
-using TradingSystem.Application.Strategies.Models;
-using TradingSystem.Domain.Enums;
+using StrategyService.Bots.Common.TpOnlyGrid;
 
 namespace StrategyService.Bots.Bot8012;
 
 public sealed class Bot8012Strategy(
-    IOptions<Bot8012Options> options, 
-    Bot8012GapPolicy policy)
-    :ITradingStrategy, IHasSignalCooldown
-{
-    private readonly Bot8012Options _options = options.Value;
-    
-    public StrategyMetadata Metadata 
-        => new(_options.BotName, _options.StrategyVersion, PositionMode.TpOnly, [_options.Symbol]);
-    public TimeSpan SignalCooldown => TimeSpan.FromSeconds(_options.CooldownSeconds);
-    
-    public Task<StrategyDecision> DecideAsync(StrategyContext c, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        
-        var side = c.Signal.Side;
-        if(side == PositionSide.Long && !_options.EnableLong)
-            return Task.FromResult(StrategyDecision.Block(side, "LONG is disabled."));
-        
-        if(side == PositionSide.Short && !_options.EnableShort)
-            return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
-        
-        return Task.FromResult(policy.Evaluate(side,  c.MarkPrice,  c.ActivePositions,  c.RuntimeConfiguration));
-    }
-}
+    IOptions<Bot8012Options> options,
+    TpOnlyGridGapPolicy<Bot8012Options> tpGridPolicy)
+    : TpOnlyGridStrategy<Bot8012Options>(options.Value, tpGridPolicy);

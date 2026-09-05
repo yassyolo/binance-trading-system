@@ -12,7 +12,7 @@ public sealed class Bot8012BacktestEngine
         IReadOnlyList<MarketCandle> sourceCandles,
         IReadOnlyList<HistoricalBotSignal> sourceSignals,
         Bot8012BacktestOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         Validate(sourceCandles, options);
         var started = DateTime.UtcNow;
@@ -31,7 +31,7 @@ public sealed class Bot8012BacktestEngine
 
         foreach (var candle in candles)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
             while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.OpenTimeUtc)
                 pending.Enqueue(signals[signalIndex++]);
@@ -161,19 +161,13 @@ public sealed class Bot8012BacktestEngine
         }
     }
 
-    private static (bool Open, string Reason) ValidateGap(
-        TradeSide side,
-        decimal markPrice,
-        IReadOnlyCollection<Position> active,
-        Bot8012BacktestOptions options)
+    private static (bool Open, string Reason) ValidateGap(TradeSide side, decimal markPrice, IReadOnlyCollection<Position> active, Bot8012BacktestOptions options)
     {
-        var sameSide = active
-            .Where(x => x.Side == side)
-            .OrderByDescending(x => x.EntryTimeUtc)
-            .ToArray();
+        var sameSide = active.Where(x => x.Side == side).OrderByDescending(x => x.EntryTimeUtc).ToArray();
 
         if (sameSide.Length >= options.OrderSideLimit)
             return (false, $"ORDER_SIDE_LIMIT reached ({sameSide.Length}/{options.OrderSideLimit})");
+        
         if (sameSide.Length == 0)
             return (true, "No active TP positions for this side");
 
@@ -181,12 +175,14 @@ public sealed class Bot8012BacktestEngine
         if (side == TradeSide.Long)
         {
             var maximum = newestTakeProfit - options.ProfitDistance - options.PriceDistance;
+           
             return markPrice <= maximum
                 ? (true, $"LONG spacing valid: mark={markPrice}, maximum={maximum}")
                 : (false, $"GAP fail LONG: mark={markPrice}, maximum={maximum}");
         }
 
         var minimum = newestTakeProfit + options.ProfitDistance + options.PriceDistance;
+        
         return markPrice >= minimum
             ? (true, $"SHORT spacing valid: mark={markPrice}, minimum={minimum}")
             : (false, $"GAP fail SHORT: mark={markPrice}, minimum={minimum}");
@@ -196,6 +192,7 @@ public sealed class Bot8012BacktestEngine
     {
         if (candles.Count < 2)
             throw new InvalidOperationException("At least two candles are required.");
+        
         if (options.InitialBalance <= 0
             || options.Quantity <= 0
             || options.Leverage <= 0

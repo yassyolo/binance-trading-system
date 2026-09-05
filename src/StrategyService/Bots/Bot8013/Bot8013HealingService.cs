@@ -7,7 +7,8 @@ using TradingSystem.Application.Time;
 namespace StrategyService.Bots.Bot8013;
 
 public sealed class Bot8013HealingService(
-    IOptions<Bot8013Options> o,
-    IPositionStore s, IClock c)
-    : TpOnlyGridHealingService<Bot8013Options>(o.Value, s, c);
+    IOptions<Bot8013Options> options,
+    IPositionStore positionStore, 
+    IClock clock)
+    : TpOnlyGridHealingService<Bot8013Options>(options.Value, positionStore, clock);
 

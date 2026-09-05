@@ -7,8 +7,8 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 
 public abstract class TpOnlyGridActivePositionProvider<TOptions>(
     TOptions options, 
-    IBinanceFuturesOrderClient orders):
-    IBotActivePositionProvider where TOptions: class, ITpOnlyGridBotOptions
+    IBinanceFuturesOrderClient orders)
+    : IBotActivePositionProvider where TOptions : class, ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
     
@@ -23,8 +23,8 @@ public abstract class TpOnlyGridActivePositionProvider<TOptions>(
         {
             if(!BinanceClientOrderId.TryParse(o.ClientOrderId, out var bot, out var role, out var id) 
                 || !bot.Equals(BotName, StringComparison.OrdinalIgnoreCase) 
-                || role!= "TP" 
-                || o.Price<=0 
+                || role != "TP" 
+                || o.Price <= 0 
                 || !BinanceOrderSide.TryParsePosition(o.PositionSide, out var side))
                 continue;
             

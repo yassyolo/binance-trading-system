@@ -35,10 +35,25 @@ public sealed class Bot8013SignalGenerator(IOptions<Bot8013Options> options) : I
         return ValueTask.FromResult<GeneratedTradingSignal?>(Create(x, side, "Alligator trend alignment.", jaw, teeth, lips));
     }
 
-    private GeneratedTradingSignal Create(MarketIndicatorSnapshot x, string side, string reason, decimal jaw, decimal teeth, decimal lips) =>
-        new(Guid.NewGuid().ToString("N"), BotName, StrategyVersion, x.Symbol, side, "internal-indicators", x.CandleCloseTimeUtc,
-            x.CandleOpenTimeUtc, x.Interval, x.Close, reason,
-            new Dictionary<string, object?> { ["jaw"] = jaw, ["teeth"] = teeth, ["lips"] = lips, ["close"] = x.Close });
+    private GeneratedTradingSignal Create(MarketIndicatorSnapshot x, string side, string reason, decimal jaw, decimal teeth, decimal lips) 
+        => new(Guid.NewGuid().ToString("N"), 
+            BotName, 
+            StrategyVersion, 
+            x.Symbol, 
+            side, 
+            "internal-indicators", 
+            x.CandleCloseTimeUtc,
+            x.CandleOpenTimeUtc, 
+            x.Interval, 
+            x.Close, 
+            reason,
+            new Dictionary<string, object?> 
+            { 
+                ["jaw"] = jaw, 
+                ["teeth"] = teeth, 
+                ["lips"] = lips, 
+                ["close"] = x.Close 
+            });
 
     private static bool TryAlligator(MarketIndicatorSnapshot x, out decimal jaw, out decimal teeth, out decimal lips)
     {
