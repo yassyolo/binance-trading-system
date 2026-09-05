@@ -59,9 +59,7 @@ public sealed class Bot8012BacktestEngine
                     continue;
                 }
 
-                var entry = BotBacktestMath.RoundToStep(
-                    BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints),
-                    options.TickSize);
+                var entry = BotBacktestMath.RoundToStep(BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints), options.TickSize);
                 var margin = entry * options.Quantity / options.Leverage;
                 var usedMargin = active.Sum(x => x.Margin);
                 var entryFee = entry * options.Quantity * options.EntryFeeRate;
@@ -90,6 +88,7 @@ public sealed class Bot8012BacktestEngine
                     options.Quantity,
                     margin,
                     entryFee);
+                
                 active.Add(position);
                 executions.Add(new(position.Id, candle.OpenTimeUtc, "ENTRY", position.Side, entry, position.Quantity, 0, entryFee, signal.Source));
                 decisions.Add(new(signal.TimeUtc, signal.Side, "Open", policy.Reason, entry, signal.SignalId));
