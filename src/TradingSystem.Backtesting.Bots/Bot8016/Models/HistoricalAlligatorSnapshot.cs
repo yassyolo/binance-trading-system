@@ -1,4 +1,4 @@
-namespace TradingSystem.Backtesting.Bots.Bot8016;
+namespace TradingSystem.Backtesting.Bots.Bot8016.Models;
 
 public sealed record HistoricalAlligatorSnapshot(
     DateTime TimeUtc, 

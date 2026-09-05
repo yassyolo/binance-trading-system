@@ -19,7 +19,7 @@ public sealed class BotCommandWorker(
     IBotRuntimeStateProvider stateProvider,
     ITradeExecutor tradeExecutor,
     IPositionStore positionStore,
-    LivePositionLifecycleRecorder LivePositionLifecycleRecorder,
+    LivePositionLifecycleRecorder livePositionLifecycleRecorder,
     IAuditLog auditLog,
     IOptions<BotRuntimeOptions> options,
     ILogger<BotCommandWorker> logger)
@@ -96,14 +96,10 @@ public sealed class BotCommandWorker(
 
     private async Task ProcessAsync(BotCommand command, CancellationToken ct)
     {
-        switch (command.Command)
+        if(command.Command == BotCommandType.ClosePosition)
         {
-            case BotCommandType.ClosePosition:
-                await ProcessClosePositionAsync(command, ct);
-                return;
-            case BotCommandType.CancelTakeProfit:
-            case BotCommandType.RecreateTakeProfit:
-                throw new UnsupportedBotCommandException($"Command '{command.Command}' requires a protected order-command handler which is not implemented yet.");
+            await ProcessClosePositionAsync(command, ct);
+            return;
         }
 
         await ProcessRuntimeStateCommandAsync(command, ct);
@@ -180,7 +176,7 @@ public sealed class BotCommandWorker(
             if (!result.Succeeded)
                 throw new InvalidOperationException($"Runtime command '{command.Command}' changed the bot state but failed to close position '{position.ShortId}' for bot '{command.BotName}': {result.Reason}", result.Exception);
 
-            await LivePositionLifecycleRecorder.RecordClosedAsync(command.BotName, position.ShortId, reason, ct);
+            await livePositionLifecycleRecorder.RecordClosedAsync(command.BotName, position.ShortId, reason, ct);
 
             logger.LogInformation("Runtime stop side effect closed position. CommandId = {CommandId} Bot = {Bot} Position = {Position} Command = {Command}", command.CommandId, command.BotName, position.ShortId, command.Command);
         }
@@ -189,11 +185,10 @@ public sealed class BotCommandWorker(
     private async Task ProcessClosePositionAsync(BotCommand command, CancellationToken ct)
     {
         var positionIdentifier = ReadRequiredPositionIdentifier(command);
-        var reason = string.IsNullOrWhiteSpace(command.Reason)
-            ? "MANUAL_POSITION_CLOSE"
-            : command.Reason.Trim();
+        
+        var reason = string.IsNullOrWhiteSpace(command.Reason) ? "MANUAL_POSITION_CLOSE" : command.Reason.Trim();
 
-        var result = await tradeExecutor.CloseAsync(command.BotName, positionIdentifier, reason,  ct);
+        var result = await tradeExecutor.CloseAsync(command.BotName, positionIdentifier, reason, ct);
 
         if (!result.Succeeded)
         {
@@ -205,7 +200,7 @@ public sealed class BotCommandWorker(
             throw new InvalidOperationException(message, result.Exception);
         }
 
-        await LivePositionLifecycleRecorder.RecordClosedAsync(command.BotName, positionIdentifier, reason, ct);
+        await livePositionLifecycleRecorder.RecordClosedAsync(command.BotName, positionIdentifier, reason, ct);
 
         logger.LogInformation("Position close command executed. CommandId = {CommandId} Bot = {Bot} Position = {Position} Result = {Reason}", command.CommandId, command.BotName, positionIdentifier, result.Reason);
     }
@@ -230,8 +225,10 @@ public sealed class BotCommandWorker(
     {
         if (TryReadBoolean(root, pascalCase, out var value))
             return value;
+       
         if (TryReadBoolean(root, camelCase, out value))
             return value;
+        
         return false;
     }
 
@@ -246,6 +243,7 @@ public sealed class BotCommandWorker(
             return false;
 
         value = property.GetBoolean();
+        
         return true;
     }
 
@@ -264,6 +262,7 @@ public sealed class BotCommandWorker(
             return false;
 
         value = parsedValue.Trim();
+       
         return true;
     }
 

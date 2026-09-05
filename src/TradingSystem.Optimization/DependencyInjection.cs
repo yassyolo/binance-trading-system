@@ -9,6 +9,7 @@ public static class DependencyInjection
     public static IServiceCollection AddTradingOptimization(this IServiceCollection services)
     {
         services.AddSingleton<PerformanceScoreCalculator>();
+        
         services.AddSingleton<ParameterTuningEngine>();
         services.AddSingleton<WalkForwardOptimizationEngine>();
         

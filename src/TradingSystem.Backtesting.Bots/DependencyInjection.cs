@@ -19,6 +19,7 @@ public static class DependencyInjection
         s.AddSingleton<GridSpacingPolicy>();
         s.AddSingleton<Stop3Policy>();
         s.AddSingleton<AlligatorEntryPolicy>();
+        
         s.AddSingleton<TpOnlyGridBacktestEngine>();
         s.AddSingleton<Bot8011BacktestEngine>();
         s.AddSingleton<Bot8012BacktestEngine>();

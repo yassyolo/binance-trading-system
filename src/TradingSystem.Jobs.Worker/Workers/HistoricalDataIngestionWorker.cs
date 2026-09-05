@@ -91,6 +91,7 @@ public sealed class HistoricalDataIngestionWorker(
 		var all = await historicalMarketDataStore.LoadCandlesAsync(symbol, interval, from, to, ct);
 
 		var gaps = DetectGaps(symbol, interval, all, duration);
+		
 		await historicalMarketDataStore.ReplaceGapsAsync(symbol, interval, gaps, ct);
 
 		logger.LogInformation("Historical data {Symbol} {Interval}: requested {FromUtc:o} - {ToUtc:o}, downloaded {Downloaded}, persisted closed {Persisted}, first {FirstUtc:o}, last {LastUtc:o}, gaps {Gaps}",
@@ -120,16 +121,9 @@ public sealed class HistoricalDataIngestionWorker(
 			if (ordered[i].OpenTimeUtc <= expected)
 				continue;
 
-			var missing = checked((int)(
-				(ordered[i].OpenTimeUtc - expected).Ticks /
-				duration.Ticks));
+			var missing = checked((int)((ordered[i].OpenTimeUtc - expected).Ticks / duration.Ticks));
 
-			gaps.Add(new HistoricalDataGap(
-				symbol,
-				interval,
-				expected,
-				ordered[i].OpenTimeUtc - duration,
-				missing));
+			gaps.Add(new HistoricalDataGap(symbol, interval, expected, ordered[i].OpenTimeUtc - duration, missing));
 		}
 
 		return gaps;

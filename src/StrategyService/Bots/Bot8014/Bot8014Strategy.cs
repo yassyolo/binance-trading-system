@@ -5,6 +5,6 @@ using StrategyService.Bots.Bot8014.Configuration;
 namespace StrategyService.Bots.Bot8014;
 
 public sealed class Bot8014Strategy(
-    IOptions<Bot8014Options> o, 
-    TpOnlyGridGapPolicy<Bot8014Options> p)
-    :TpOnlyGridStrategy<Bot8014Options>(o.Value, p);
+    IOptions<Bot8014Options> options, 
+    TpOnlyGridGapPolicy<Bot8014Options> tpGridPolicy)
+    :TpOnlyGridStrategy<Bot8014Options>(options.Value, tpGridPolicy);

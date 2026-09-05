@@ -8,10 +8,9 @@ using TradingSystem.Backtesting.Bots.Bot8013;
 using TradingSystem.Backtesting.Bots.Bot8014;
 using TradingSystem.Backtesting.Bots.Bot8015;
 using TradingSystem.Backtesting.Bots.Bot8016;
-using TradingSystem.Backtesting.Bots.Common;
+using TradingSystem.Backtesting.Bots.Bot8016.Models;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
-using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.Dashboard.Contracts.Models.Backtesting;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Jobs.Worker.Exceptions;
@@ -51,10 +50,7 @@ public sealed class BacktestExecutionService(
         if (candles.Count < 2)
             throw new HistoricalDataUnavailableException("Historical candles are missing for the requested period.");
 
-        var signals = string.Equals(request.SignalSource, "Internal", StringComparison.OrdinalIgnoreCase)
-            ? new EmaCrossDemoSignalSource().Generate(candles)
-            : await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, fromUtc, toUtc, ct);
-
+        var signals = await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, fromUtc, toUtc, ct);
         if (signals.Count == 0)
             throw new HistoricalDataUnavailableException("No historical signals were found for the requested source and period.");
 

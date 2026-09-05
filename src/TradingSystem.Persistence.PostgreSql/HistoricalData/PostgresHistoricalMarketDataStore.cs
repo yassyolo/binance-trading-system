@@ -51,7 +51,14 @@ public sealed class PostgresHistoricalMarketDataStore(
             return; 
         
         const string sql = "insert into trading_dashboard.market_candles" +
-            "(symbol, interval, open_time_utc, open, high, low, close, volume) " +
+            "(symbol, " +
+            "interval, " +
+            "open_time_utc, " +
+            "open, " +
+            "high, " +
+            "low, " +
+            "close, " +
+            "volume) " +
             "values(@Symbol, @Interval, @OpenTimeUtc, @Open, @High, @Low, @Close, @Volume) " +
             "on conflict(symbol, interval, open_time_utc) " +
             "do update set open = excluded.open, " +
@@ -80,7 +87,11 @@ public sealed class PostgresHistoricalMarketDataStore(
         if (gaps.Count > 0) 
             await connection.ExecuteAsync(
                 new CommandDefinition("insert into trading_dashboard.historical_data_gaps" +
-                "(symbol, interval, gap_from_utc, gap_to_utc, missing_candles) " +
+                "(symbol, " +
+                "interval, " +
+                "gap_from_utc, " +
+                "gap_to_utc," +
+                " missing_candles) " +
                 "values(@Symbol, @Interval, @FromUtc, @ToUtc, @MissingCandles)", 
                 gaps, 
                 transaction, 
@@ -100,8 +111,8 @@ public sealed class PostgresHistoricalMarketDataStore(
                     "from trading_dashboard.historical_data_gaps " +
                     "where symbol = @symbol " +
                     "and interval = @interval " +
-                    "and gap_from_utc<=@to " +
-                    "and gap_to_utc>=@from)", 
+                    "and gap_from_utc <= @to " +
+                    "and gap_to_utc >= @from)", 
                 new { symbol, interval, from, to }, 
                 cancellationToken: ct)); 
     }

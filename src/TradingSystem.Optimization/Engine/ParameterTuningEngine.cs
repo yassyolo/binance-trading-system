@@ -8,7 +8,7 @@ public sealed class ParameterTuningEngine(PerformanceScoreCalculator scoreCalcul
 {
     public async Task<IReadOnlyList<ParameterTrial<TOptions>>> RunAsync<TOptions,  TResult>(
         IEnumerable<TOptions> candidates, 
-        Func<TOptions, CancellationToken,  Task<TResult>> run, 
+        Func<TOptions, CancellationToken, Task<TResult>> run, 
         Func<TResult, BotBacktestMetrics> metricsSelector, 
         OptimizationScoreWeights weights, 
         int top = 50, 

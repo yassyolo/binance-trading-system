@@ -4,20 +4,21 @@ using TradingSystem.Analytics.Models;
 using TradingSystem.Analytics.Models.Enums;
 using TradingSystem.Backtesting.Bots.Bot8012;
 using TradingSystem.Backtesting.Bots.Configuration;
-using TradingSystem.Backtesting.Bots.Signals;
 using TradingSystem.Dashboard.Contracts.Models.Optimization;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Optimization.Configuration;
 using TradingSystem.Optimization.Engine;
 using TradingSystem.Optimization.Mapping;
 using TradingSystem.Optimization.Models;
+
 namespace TradingSystem.Jobs.Worker.Execution;
+
 public sealed class OptimizationExecutionService(
-    IHistoricalMarketDataStore historicalMarketDatStore, 
+    IHistoricalMarketDataStore historicalMarketDataStore, 
     IHistoricalSignalStore historicalSignalStore, 
     Bot8012BacktestEngine engine, 
-    ParameterTuningEngine tuning, 
-    WalkForwardOptimizationEngine walkForward, 
+    ParameterTuningEngine parameterTuningEngine, 
+    WalkForwardOptimizationEngine walkForwardOptimizationEngine, 
     IPerformanceAnalyticsStore analytics)
 {
     public async Task<Guid> ExecuteAsync(OptimizationRequest request, string interval, CancellationToken ct)
@@ -25,17 +26,14 @@ public sealed class OptimizationExecutionService(
         if (!request.BotName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Dashboard range optimization currently supports BOT8012. Other bots keep their CLI parameter spaces until explicit range binders are added.");
 
-        if (await historicalMarketDatStore.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))
+        if (await historicalMarketDataStore.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))
             throw new InvalidOperationException("Historical data contains unresolved candle gaps for the requested period."); 
         
-        var candles = await historicalMarketDatStore.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct); 
+        var candles = await historicalMarketDataStore.LoadCandlesAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct); 
         if (candles.Count < 2) 
             throw new InvalidOperationException("Historical candles are missing.");
 
-        var signals = request.SignalSource.Equals("Internal", StringComparison.OrdinalIgnoreCase)
-            ? new EmaCrossDemoSignalSource().Generate(candles)
-            : await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);
-
+        var signals = await historicalSignalStore.LoadAsync(request.BotName, request.Symbol, request.FromUtc, request.ToUtc, ct);
         if (signals.Count == 0)
             throw new InvalidOperationException("No historical signals were found.");
 
@@ -63,8 +61,11 @@ public sealed class OptimizationExecutionService(
 
             if (request.WalkForward)
             {
-                var wf = await walkForward.RunAsync(request.BotName, candles, signals, candidates, (o, c, s, _)
-                    => Task.FromResult(engine.Run(c, s, o)), 
+                var wf = await walkForwardOptimizationEngine.RunAsync(
+                    request.BotName,
+                    candles, 
+                    signals, 
+                    candidates, (o, c, s, _) => Task.FromResult(engine.Run(c, s, o)), 
                     x => x.Metrics, 
                     new WalkForwardOptions 
                     { 
@@ -95,8 +96,8 @@ public sealed class OptimizationExecutionService(
             }
             else
             {
-                var rows = await tuning.RunAsync(candidates, (o, _) 
-                    => Task.FromResult(engine.Run(candles, signals, o)), 
+                var rows = await parameterTuningEngine.RunAsync(
+                    candidates, (o, _) => Task.FromResult(engine.Run(candles, signals, o)), 
                     x => x.Metrics, 
                     new OptimizationScoreWeights(), 
                     request.TopResults, 
@@ -130,15 +131,10 @@ public sealed class OptimizationExecutionService(
     
     private static IEnumerable<Bot8012BacktestOptions> BuildCandidates(OptimizationRequest request)
     {
-        var values = request.Ranges.ToDictionary(
-            x => x.Name, 
-            x => Range(x).ToArray(), 
-            StringComparer.OrdinalIgnoreCase);
+        var values = request.Ranges.ToDictionary(x => x.Name, x => Range(x).ToArray(), StringComparer.OrdinalIgnoreCase);
         
         decimal[] V(string name, decimal fallback) 
-            => values.TryGetValue(name, out var x) 
-            ? x 
-            : [fallback];
+            => values.TryGetValue(name, out var x) ? x : [fallback];
         
         foreach (var profit in V("ProfitDistance", 200)) 
             foreach (var gap in V("PriceDistance", 400)) 

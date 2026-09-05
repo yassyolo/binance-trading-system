@@ -7,7 +7,5 @@ public enum BotCommandType
 	Pause, 
 	Resume, 
 	EmergencyStop, 
-	ClosePosition, 
-	CancelTakeProfit, 
-	RecreateTakeProfit 
+	ClosePosition
 }

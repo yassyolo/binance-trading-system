@@ -1,4 +1,4 @@
-﻿namespace TradingSystem.Backtesting.Bots.Models.Enums;
+﻿namespace TradingSystem.Backtesting.Bots.Bot8011.Models.Enums;
 
 public enum IntrabarConflictPolicy
 {

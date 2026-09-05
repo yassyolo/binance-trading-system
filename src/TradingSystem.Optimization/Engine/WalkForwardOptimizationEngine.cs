@@ -22,6 +22,7 @@ public sealed class WalkForwardOptimizationEngine(
         CancellationToken ct = default)
     {
         Validate(options, candles.Count);
+        
         ArgumentNullException.ThrowIfNull(candidates);
 
         var candidateSet = candidates as IReadOnlyList<TOptions> ?? candidates.ToArray();

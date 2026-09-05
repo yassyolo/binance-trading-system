@@ -15,12 +15,24 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 	public async Task CreateRunAsync(PerformanceRun run, CancellationToken ct = default)
 	{
-		const string sql = """
-            INSERT INTO trading.performance_runs
-            (run_id,run_type, bot_name, strategy_version, symbol, interval, started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
-            VALUES (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)
-            ON CONFLICT (run_id) DO UPDATE SET status = EXCLUDED.status, completed_at_utc = EXCLUDED.completed_at_utc, notes = EXCLUDED.notes;
-            """;
+		const string sql = "INSERT INTO trading.performance_runs" +
+			"(run_id," +
+			"run_type, " +
+			"bot_name, " +
+			"strategy_version, " +
+			"symbol, " +
+			"interval, " +
+			"started_at_utc, " +
+			"completed_at_utc, " +
+			"status," +
+			" parameters, " +
+			"parent_run_id, " +
+			"notes)" +
+			" VALUES (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)" +
+			" ON CONFLICT (run_id) " +
+			"DO UPDATE SET status = EXCLUDED.status, " +
+			"completed_at_utc = EXCLUDED.completed_at_utc, " +
+			"notes = EXCLUDED.notes;";
 		
 		await using var connection = await connections.OpenAsync(ct);
 		
@@ -145,29 +157,56 @@ public sealed class PostgresPerformanceAnalyticsStore(
 	public async Task SaveOptimizationTrialsAsync(IReadOnlyCollection<OptimizationTrial> trials, CancellationToken ct = default)
 	{
 		if (trials.Count == 0) return;
-		const string sql = """
-        INSERT INTO trading.optimization_trials
-        (trial_id,  optimization_run_id,  sequence,  parameters,  score,  metrics,  selected)
-        VALUES (@TrialId, @OptimizationRunId, @Sequence, CAST(@ParametersJson AS jsonb), @Score, CAST(@MetricsJson AS jsonb), @Selected)
-        ON CONFLICT (trial_id) DO NOTHING;
-        """;
-		var rows = trials.Select(x => new { x.TrialId, x.OptimizationRunId, x.Sequence, x.ParametersJson, x.Score, MetricsJson = JsonSerializer.Serialize(x.Metrics, JsonOptions), x.Selected });
+		
+		const string sql = "" +
+			"INSERT INTO trading.optimization_trials" +
+			" (trial_id,  " +
+			"optimization_run_id,  " +
+			"sequence,  " +
+			"parameters,  " +
+			"score,  " +
+			"metrics,  " +
+			"selected)" +
+			" VALUES (@TrialId, @OptimizationRunId, @Sequence, CAST(@ParametersJson AS jsonb), @Score, CAST(@MetricsJson AS jsonb), @Selected)" +
+			" ON CONFLICT (trial_id) DO NOTHING;";
+		
+		var rows = trials.Select(x => new 
+		{
+			x.TrialId, 
+			x.OptimizationRunId, 
+			x.Sequence,
+			x.ParametersJson, 
+			x.Score,
+			MetricsJson = JsonSerializer.Serialize(x.Metrics, JsonOptions), 
+			x.Selected 
+		});
+		
 		await using var connection = await connections.OpenAsync(ct);
+		
 		await connection.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
 	}
 
 	public async Task SaveWalkForwardWindowsAsync(IReadOnlyCollection<WalkForwardWindow> windows, CancellationToken ct = default)
 	{
-		if (windows.Count == 0) return;
+		if (windows.Count == 0)
+			return;
 		
-		const string sql = """
-        INSERT INTO trading.walk_forward_windows
-        (window_id,  run_id,  window_number,  train_from_utc,  train_to_utc,  test_from_utc,  test_to_utc, 
-         selected_parameters,  in_sample_score,  out_of_sample_score,  in_sample_metrics,  out_of_sample_metrics)
-        VALUES (@WindowId, @RunId, @WindowNumber, @TrainFromUtc, @TrainToUtc, @TestFromUtc, @TestToUtc, 
-         CAST(@SelectedParametersJson AS jsonb), @InSampleScore, @OutOfSampleScore, CAST(@InSampleMetricsJson AS jsonb), CAST(@OutOfSampleMetricsJson AS jsonb))
-        ON CONFLICT (window_id) DO NOTHING;
-        """;
+		const string sql = "" +
+			"INSERT INTO trading.walk_forward_windows" +
+			" (window_id,  " +
+			"run_id,  " +
+			"window_number,  " +
+			"train_from_utc,  " +
+			"train_to_utc, " +
+			" test_from_utc, " +
+			" test_to_utc, " +
+			" selected_parameters, " +
+			" in_sample_score,  " +
+			"out_of_sample_score,  " +
+			"in_sample_metrics,  " +
+			"out_of_sample_metrics)" +
+			" VALUES (@WindowId, @RunId, @WindowNumber, @TrainFromUtc, @TrainToUtc, @TestFromUtc, @TestToUtc, CAST(@SelectedParametersJson AS jsonb), @InSampleScore, @OutOfSampleScore, CAST(@InSampleMetricsJson AS jsonb), CAST(@OutOfSampleMetricsJson AS jsonb))" +
+			" ON CONFLICT (window_id) DO NOTHING;";
 		
 		var rows = windows.Select(x => new 
 		{
@@ -205,20 +244,28 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 		try
 		{
-			const string runSql = """
-                INSERT INTO trading.performance_runs
-                (run_id, run_type, bot_name, strategy_version, symbol, interval,
-                 started_at_utc, completed_at_utc, status, parameters, parent_run_id, notes)
-                VALUES
-                (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)
-                ON CONFLICT (run_id) DO UPDATE SET
-                    completed_at_utc = EXCLUDED.completed_at_utc,
-                    status = EXCLUDED.status,
-                    notes = EXCLUDED.notes;
-                """;
+			const string sql = "" +
+				"INSERT INTO trading.performance_runs " +
+				"(run_id, " +
+				"run_type, " +
+				"bot_name, " +
+				"strategy_version," +
+				"symbol, " +
+				"interval," +
+				" started_at_utc, " +
+				"completed_at_utc, " +
+				"status, " +
+				"parameters, " +
+				"parent_run_id, " +
+				"notes)" +
+				" VALUES (@RunId, @RunType, @BotName, @StrategyVersion, @Symbol, @Interval, @StartedAtUtc, @CompletedAtUtc, @Status, CAST(@ParametersJson AS jsonb), @ParentRunId, @Notes)" +
+				" ON CONFLICT (run_id) DO UPDATE SET" +
+				" completed_at_utc = EXCLUDED.completed_at_utc," +
+				" status = EXCLUDED.status," +
+				" notes = EXCLUDED.notes;";
 
 			await connection.ExecuteAsync(new CommandDefinition(
-				runSql,
+				sql,
 				new
 				{
 					run.RunId,
@@ -345,36 +392,5 @@ public sealed class PostgresPerformanceAnalyticsStore(
 			await transaction.RollbackAsync(CancellationToken.None);
 			throw;
 		}
-	}
-
-	public async Task<IReadOnlyList<PerformanceSnapshot>> QuerySnapshotsAsync(PerformanceQuery query, CancellationToken ct = default)
-	{
-		const string sql = """
-        SELECT s.* FROM trading.performance_snapshots s
-        JOIN trading.performance_runs r ON r.run_id = s.run_id
-        WHERE (@BotName IS NULL OR r.bot_name = @BotName) AND (@Symbol IS NULL OR r.symbol = @Symbol)
-          AND (@RunType IS NULL OR r.run_type = @RunType) AND (@FromUtc IS NULL OR s.period_to_utc>=@FromUtc)
-          AND (@ToUtc IS NULL OR s.period_from_utc<=@ToUtc)
-        ORDER BY s.period_to_utc DESC LIMIT @Take;
-        """;
-		await using var connection = await connections.OpenAsync(ct);
-		var result = await connection.QueryAsync<PerformanceSnapshot>(new CommandDefinition(sql, new { query.BotName, query.Symbol, RunType = query.RunType?.ToString(), query.FromUtc, query.ToUtc, Take = Math.Clamp(query.Take, 1, 1000) }, cancellationToken: ct));
-		return result.AsList();
-	}
-
-	public async Task<IReadOnlyList<PerformanceRun>> QueryRunsAsync(PerformanceQuery query, CancellationToken ct = default)
-	{
-		const string sql = """
-        SELECT run_id RunId,  run_type RunType,  bot_name BotName,  strategy_version StrategyVersion,  symbol Symbol,  interval Interval, 
-        started_at_utc StartedAtUtc,  completed_at_utc CompletedAtUtc,  status Status,  parameters::text ParametersJson,  parent_run_id ParentRunId,  notes Notes
-        FROM trading.performance_runs
-        WHERE (@BotName IS NULL OR bot_name = @BotName) AND (@Symbol IS NULL OR symbol = @Symbol)
-          AND (@RunType IS NULL OR run_type = @RunType) AND (@FromUtc IS NULL OR started_at_utc>=@FromUtc)
-          AND (@ToUtc IS NULL OR started_at_utc<=@ToUtc)
-        ORDER BY started_at_utc DESC LIMIT @Take;
-        """;
-		await using var connection = await connections.OpenAsync(ct);
-		var result = await connection.QueryAsync<PerformanceRun>(new CommandDefinition(sql, new { query.BotName, query.Symbol, RunType = query.RunType?.ToString(), query.FromUtc, query.ToUtc, Take = Math.Clamp(query.Take, 1, 1000) }, cancellationToken: ct));
-		return result.AsList();
-	}
+	}	
 }

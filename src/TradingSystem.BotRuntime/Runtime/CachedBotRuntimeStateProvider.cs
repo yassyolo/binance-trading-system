@@ -5,7 +5,7 @@ using TradingSystem.BotRuntime.Runtime.Models;
 namespace TradingSystem.BotRuntime.Runtime;
 
 public sealed class CachedBotRuntimeStateProvider(
-    IBotRuntimeStateStore store,  
+    IBotRuntimeStateStore botRuntimeStateStore,  
     IMemoryCache cache) 
     : IBotRuntimeStateProvider
 {
@@ -17,7 +17,7 @@ public sealed class CachedBotRuntimeStateProvider(
         if (cache.TryGetValue(Key(botName), out BotRuntimeState? state) && state is not null)
             return state;
 
-        state = await store.GetAsync(botName,  ct)
+        state = await botRuntimeStateStore.GetAsync(botName, ct)
             ?? throw new InvalidOperationException($"Runtime state was not found for bot '{botName}'.");
         
         cache.Set(Key(botName), state, TimeSpan.FromSeconds(15));

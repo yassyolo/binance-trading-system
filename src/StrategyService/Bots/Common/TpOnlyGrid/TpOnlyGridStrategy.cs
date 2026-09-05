@@ -6,7 +6,7 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 
 public abstract class TpOnlyGridStrategy<TOptions>(
     TOptions options, 
-    TpOnlyGridGapPolicy<TOptions> policy):
+    TpOnlyGridGapPolicy<TOptions> tpGridPolicy):
     ITradingStrategy, 
     IHasSignalCooldown where TOptions : class, 
     ITpOnlyGridBotOptions
@@ -28,6 +28,6 @@ public abstract class TpOnlyGridStrategy<TOptions>(
         if(side==PositionSide.Short && !options.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
         
-        return Task.FromResult(policy.Evaluate(side, ctx.MarkPrice, ctx.ActivePositions, ctx.RuntimeConfiguration));
+        return Task.FromResult(tpGridPolicy.Evaluate(side, ctx.MarkPrice, ctx.ActivePositions, ctx.RuntimeConfiguration));
     }
 }

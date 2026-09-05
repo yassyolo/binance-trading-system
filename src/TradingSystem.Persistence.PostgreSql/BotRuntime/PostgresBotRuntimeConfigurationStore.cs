@@ -51,6 +51,7 @@ public sealed class PostgresBotRuntimeConfigurationStore(
                 Projection + " where updated_at_utc > @changedSinceUtc " +
                 "order by updated_at_utc", 
                 new { changedSinceUtc }, 
-                cancellationToken: ct))).AsList();
+                cancellationToken: ct)))
+                .AsList();
     }
 }

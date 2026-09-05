@@ -1,3 +1,4 @@
+using TradingSystem.Backtesting.Bots.Bot8016.Models;
 using TradingSystem.Backtesting.Bots.Common;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;

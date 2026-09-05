@@ -2,34 +2,34 @@ using Microsoft.Extensions.Options;
 
 namespace StrategyService.Bots.Bot8013.Configuration;
 
-public sealed class Bot8013OptionsValidator:IValidateOptions<Bot8013Options>
+public sealed class Bot8013OptionsValidator : IValidateOptions<Bot8013Options>
 {
-    public ValidateOptionsResult Validate(string? n, Bot8013Options x)
+    public ValidateOptionsResult Validate(string? name, Bot8013Options options)
     {
         var e = new List<string>();
         
-        if(string.IsNullOrWhiteSpace(x.BotName))
+        if(string.IsNullOrWhiteSpace(options.BotName))
             e.Add("BotName is required.");
         
-        if(string.IsNullOrWhiteSpace(x.Symbol))
+        if(string.IsNullOrWhiteSpace(options.Symbol))
             e.Add("Symbol is required.");
         
-        if(x.Quantity<=0)
+        if(options.Quantity <= 0)
             e.Add("Quantity must be positive.");
         
-        if(x.Leverage is<1 or>125)
+        if(options.Leverage is < 1 or > 125)
             e.Add("Leverage must be between 1 and 125.");
         
-        if(x.PriceDistance<=0)
+        if(options.PriceDistance <= 0)
             e.Add("PriceDistance must be positive.");
         
-        if(x.ProfitDistance<=0)
+        if(options.ProfitDistance <= 0)
             e.Add("ProfitDistance must be positive.");
         
-        if(x.OrderSideLimit<=0)
+        if(options.OrderSideLimit <= 0)
             e.Add("OrderSideLimit must be positive.");
         
-        if(x.CooldownSeconds<0)
+        if(options.CooldownSeconds < 0)
             e.Add("CooldownSeconds cannot be negative.");
         
         return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);

@@ -56,44 +56,44 @@ public sealed class LivePositionLifecycleRecorder(
 
     public async Task RecordClosedAsync(string botName, string shortId, string? reason, CancellationToken ct)
     {
-        var position = await positionStore.GetAsync(botName, shortId, ct);
-        if (position is null || !position.Closed)
+        var p = await positionStore.GetAsync(botName, shortId, ct);
+        if (p is null || !p.Closed)
             return;
 
         var environment = await ResolveEnvironmentAsync(botName, ct);
         if (!IsLive(environment))
             return;
 
-        await PersistProjectionBestEffortAsync(position, environment, null, UnknownStrategyVersion, reason, ct);
+        await PersistProjectionBestEffortAsync(p, environment, null, UnknownStrategyVersion, reason, ct);
 
         await TryHistoryEventAsync(new PositionEventHistoryRecord(
-            position.ShortId,
-            position.BotName,
+            p.ShortId,
+            p.BotName,
             "LIVE_POSITION_CLOSED",
-            position.Status.ToString(),
-            (position.ClosedAtUtc ?? position.UpdatedAtUtc) ?? DateTime.UtcNow,
+            p.Status.ToString(),
+            (p.ClosedAtUtc ?? p.UpdatedAtUtc) ?? DateTime.UtcNow,
             null,
-            position.Quantity,
+            p.Quantity,
             new Dictionary<string, object?>
             {
                 ["env"] = environment,
-                ["reason"] = reason ?? position.CloseStatus,
-                ["remainingQuantity"] = position.RemainingQuantity
+                ["reason"] = reason ?? p.CloseStatus,
+                ["remainingQuantity"] = p.RemainingQuantity
             }), ct);
 
         await AppendLifecycleBestEffortAsync(
-            position,
+            p,
             TradingEventTypes.PositionClosed,
             environment,
             null,
-            (position.ClosedAtUtc ?? position.UpdatedAtUtc) ?? DateTime.UtcNow,
+            (p.ClosedAtUtc ?? p.UpdatedAtUtc) ?? DateTime.UtcNow,
             new
             {
-                position.Status,
-                position.CloseStatus,
-                position.RemainingQuantity,
-                position.CloseOrderId,
-                Reason = reason ?? position.CloseStatus
+                p.Status,
+                p.CloseStatus,
+                p.RemainingQuantity,
+                p.CloseOrderId,
+                Reason = reason ?? p.CloseStatus
             },
             ct);
     }
@@ -245,7 +245,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Live position EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
+            logger.LogError(ex, "Live p EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
         }
     }
 

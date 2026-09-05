@@ -7,4 +7,4 @@ public interface IBotRuntimeConfigurationProvider
     Task<BotRuntimeConfiguration?> GetAsync(string botName, CancellationToken ct);
         
     void Set(BotRuntimeConfiguration configuration);
-   }
+}

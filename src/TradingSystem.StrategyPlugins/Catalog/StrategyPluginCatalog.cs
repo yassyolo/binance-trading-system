@@ -39,9 +39,6 @@ public sealed class StrategyPluginCatalog : IStrategyPluginCatalog
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    public IReadOnlyCollection<StrategyPluginDescriptor> GetAll()
-         => _plugins.Values.OrderBy(x => x.DisplayName).ToArray();
-
     public StrategyPluginDescriptor GetRequired(string pluginId)
          => _plugins.TryGetValue(pluginId,  out var descriptor)
             ? descriptor
