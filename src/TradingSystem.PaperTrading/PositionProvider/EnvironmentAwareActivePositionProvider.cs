@@ -6,7 +6,7 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 namespace TradingSystem.PaperTrading.Position;
 
 public sealed class EnvironmentAwareActivePositionProvider(
-    LivePositionProviderRegistry livePositionProvider,
+    LivePositionProviderRegistry livePositionProviderRegistry,
     PaperActivePositionProvider paperPositionProvider,
     IBotRuntimeConfigurationProvider configProvider) 
     : IActivePositionProvider
@@ -19,9 +19,9 @@ public sealed class EnvironmentAwareActivePositionProvider(
         if (config.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase))
             return await paperPositionProvider.GetAsync(botName, symbol, ct);
 
-        if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-            config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
-            return await livePositionProvider.GetActivePositionsAsync(botName, symbol, ct);
+        if (config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) 
+            || config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase))
+            return await livePositionProviderRegistry.GetActivePositionsAsync(botName, symbol, ct);
 
         throw new InvalidOperationException($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }

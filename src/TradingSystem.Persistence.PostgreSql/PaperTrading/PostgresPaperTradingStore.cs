@@ -203,8 +203,7 @@ public sealed class PostgresPaperTradingStore(
             where archived = false;
             """;
 
-        await using var connection = await connections.OpenAsync(ct);
-        
+        await using var connection = await connections.OpenAsync(ct);    
         await using var transaction = await connection.BeginTransactionAsync(ct);
         
         await connection.ExecuteAsync(new CommandDefinition(

@@ -21,7 +21,7 @@ public sealed class PaperTradeExecutor(
     IPaperTradingStore store,
     IMarketPriceProvider markPriceProvider,
     IBotRuntimeConfigurationProvider configProvider,
-    ITradingPipelineRecorder history,
+    ITradingPipelineRecorder tradingPipelineRecorder,
     ITradingEventStore eventStore,
     ITradingSignalContextAccessor signalContext,
     IOptions<PaperTradingOptions> options,
@@ -141,17 +141,17 @@ public sealed class PaperTradeExecutor(
         return await ClosePositionAtPriceAsync(position!, triggerPrice, reason, ct);
     }
 
-    private async Task<TradeExecutionResult> ClosePositionAtPriceAsync(PaperTradingPosition position, decimal marketPrice, string reason, CancellationToken ct)
+    private async Task<TradeExecutionResult> ClosePositionAtPriceAsync(PaperTradingPosition p, decimal marketPrice, string reason, CancellationToken ct)
     {
-        var exitPrice = ApplySlippage(marketPrice, position.Side, opening: false);
-        var exitFee = CalculateFee(exitPrice, position.Quantity);
-        var grossPnl = CalculateGrossPnl(position, exitPrice);
-        var realizedPnl = grossPnl - position.EntryFee - exitFee;
+        var exitPrice = ApplySlippage(marketPrice, p.Side, opening: false);
+        var exitFee = CalculateFee(exitPrice, p.Quantity);
+        var grossPnl = CalculateGrossPnl(p, exitPrice);
+        var realizedPnl = grossPnl - p.EntryFee - exitFee;
         var closedAtUtc = DateTime.UtcNow;
 
         var closed = await store.TryCloseAsync(
-            position.PositionId,
-            position.Version,
+            p.PositionId,
+            p.Version,
             exitPrice,
             exitFee,
             realizedPnl,
@@ -163,7 +163,7 @@ public sealed class PaperTradeExecutor(
             return TradeExecutionResult.Failure("Paper p changed concurrently; close was not applied.");
 
         await TryRecordPositionClosedAsync(
-            position,
+            p,
             exitPrice,
             exitFee,
             grossPnl,
@@ -172,33 +172,30 @@ public sealed class PaperTradeExecutor(
             closedAtUtc,
             ct);
 
-        await TryRecordDomainPositionEventAsync(position, TradingEventTypes.PositionClosed,
+        await TryRecordDomainPositionEventAsync(
+            p, 
+            TradingEventTypes.PositionClosed,
             new
             {
-                position.ShortId,
-                position.Symbol,
-                Side = position.Side.ToString(),
-                position.Quantity,
+                p.ShortId,
+                p.Symbol,
+                Side = p.Side.ToString(),
+                p.Quantity,
                 ExitPrice = exitPrice,
                 ExitFee = exitFee,
                 GrossPnl = grossPnl,
                 RealizedPnl = realizedPnl,
                 Reason = reason,
-                position.Source
+                p.Source
             },
             closedAtUtc,
             ct);
 
-        return TradeExecutionResult.Success(position.ShortId, reason);
+        return TradeExecutionResult.Success(p.ShortId, reason);
     }
 
 
-    private async Task TryRecordDomainPositionEventAsync(
-        PaperTradingPosition p,
-        string eventType,
-        object payload,
-        DateTime occurredAtUtc,
-        CancellationToken ct)
+    private async Task TryRecordDomainPositionEventAsync(PaperTradingPosition p, string eventType, object payload, DateTime occurredAtUtc, CancellationToken ct)
     {
         try
         {
@@ -224,7 +221,7 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Paper position domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
+            logger.LogError(ex, "Paper p domain event could not be persisted. EventType = {EventType}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
         }
     }
 
@@ -232,9 +229,9 @@ public sealed class PaperTradeExecutor(
     {
         try
         {
-            await history.UpsertPositionAsync(CreateOpenHistoryRecord(p), ct);
+            await tradingPipelineRecorder.UpsertPositionAsync(CreateOpenHistoryRecord(p), ct);
 
-            await history.RecordPositionEventAsync(
+            await tradingPipelineRecorder.RecordPositionEventAsync(
                 new PositionEventHistoryRecord(
                     PositionId: ToHistoryPositionId(p.PositionId),
                     BotName: p.BotName,
@@ -259,13 +256,9 @@ public sealed class PaperTradeExecutor(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(
-                exception,
-                "Paper p was opened, but its history record could not be persisted. Bot = {Bot}, Position = {Position}",
-                p.BotName,
-                p.ShortId);
+            logger.LogError(ex, "Paper p was opened, but its tradingPipelineRecorder record could not be persisted. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
         }
     }
 
@@ -281,7 +274,7 @@ public sealed class PaperTradeExecutor(
     {
         try
         {
-            await history.UpsertPositionAsync(
+            await tradingPipelineRecorder.UpsertPositionAsync(
                 CreateClosedHistoryRecord(
                     position,
                     exitPrice,
@@ -292,7 +285,7 @@ public sealed class PaperTradeExecutor(
                     closedAtUtc),
                 ct);
 
-            await history.RecordPositionEventAsync(
+            await tradingPipelineRecorder.RecordPositionEventAsync(
                 new PositionEventHistoryRecord(
                     PositionId: ToHistoryPositionId(position.PositionId),
                     BotName: position.BotName,
@@ -322,7 +315,7 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Paper p was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
+            logger.LogError(exception, "Paper p was closed, but its tradingPipelineRecorder record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
         }
     }
 
@@ -420,7 +413,7 @@ public sealed class PaperTradeExecutor(
     internal decimal ApplySlippage(decimal price, PositionSide side, bool opening)
     {
         var slippageRate = _options.SlippagePercent / 100m;
-        var isBuyOperation = opening  ? side == PositionSide.Long  : side == PositionSide.Short;
+        var isBuyOperation = opening ? side == PositionSide.Long : side == PositionSide.Short;
 
         return isBuyOperation ? price * (1m + slippageRate) : price * (1m - slippageRate);
     }

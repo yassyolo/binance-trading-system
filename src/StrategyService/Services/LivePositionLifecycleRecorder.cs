@@ -100,22 +100,16 @@ public sealed class LivePositionLifecycleRecorder(
 
     public async Task RepairAsync(BotPosition position, CancellationToken ct)
     {
-        var environment = await ResolveEnvironmentAsync(position.BotName, ct);
-        if (!IsLive(environment))
+        var env = await ResolveEnvironmentAsync(position.BotName, ct);
+        if (!IsLive(env))
             return;
 
-        await PersistProjectionBestEffortAsync(
-            position,
-            environment,
-            null,
-            UnknownStrategyVersion,
-            position.CloseStatus,
-            ct);
+        await PersistProjectionBestEffortAsync(position, env, null, UnknownStrategyVersion, position.CloseStatus, ct);
 
         await AppendLifecycleBestEffortAsync(
             position,
             TradingEventTypes.PositionOpened,
-            environment,
+            env,
             null,
             position.ParentFilledAtUtc ?? position.CreatedAtUtc,
             new
@@ -134,7 +128,7 @@ public sealed class LivePositionLifecycleRecorder(
             await AppendLifecycleBestEffortAsync(
                 position,
                 TradingEventTypes.PositionClosed,
-                environment,
+                env,
                 null,
                 (position.ClosedAtUtc ?? position.UpdatedAtUtc) ?? DateTime.UtcNow,
                 new
@@ -261,9 +255,9 @@ public sealed class LivePositionLifecycleRecorder(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Runtime env could not be resolved for {Bot}. Falling back to observability env.", botName);
+            logger.LogWarning(ex, "Runtime env could not be resolved for {Bot}. Falling back to observability env.", botName);
         }
 
         return fallbackEnvironment.EnvironmentName;

@@ -301,9 +301,9 @@ public sealed class TradingEngine(
 		{
 			await tradingEngineNotifier.ExecutionCompletedAsync(signal, result, CancellationToken.None);
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
-			logger.LogWarning(exception, "Execution notification failed. SignalId = {SignalId}", signal.SignalId);
+			logger.LogWarning(ex, "Execution notification failed. SignalId = {SignalId}", signal.SignalId);
 		}
 	}
 

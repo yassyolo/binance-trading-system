@@ -1,5 +1,4 @@
-﻿using StrategyService.Services;
-using TradingSystem.Application.Execution.Contracts;
+﻿using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.BotRuntime.Configuration.Contracts;
 
@@ -7,21 +6,20 @@ namespace StrategyService.Reliability;
 
 public sealed class PositionHistoryProjectionRepairWorker(
     IEnumerable<IBotTradeExecutor> executors,
-    IPositionStore positions,
-    IBotRuntimeConfigurationProvider configurations,
-    LivePositionLifecycleRecorder lifecycle,
+    IPositionStore positionStore,
+    IBotRuntimeConfigurationProvider configProvider,
+    LivePositionLifecycleRecorder lifecycleRecorder,
     ILogger<PositionHistoryProjectionRepairWorker> logger)
     : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
-            var botNames = executors
-                .Select(executor => executor.BotName)
-                .Where(bot => !string.IsNullOrWhiteSpace(bot))
+            var botNames = executors.Select(e => e.BotName)
+                .Where(b => !string.IsNullOrWhiteSpace(b))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
@@ -29,37 +27,34 @@ public sealed class PositionHistoryProjectionRepairWorker(
 
             foreach (var botName in botNames)
             {
-                stoppingToken.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
-                var configuration = await configurations.GetAsync(botName, stoppingToken);
-                if (configuration is null || !IsLive(configuration.Environment))
+                var config = await configProvider.GetAsync(botName, ct);
+                if (config is null || !IsLive(config.Environment))
                     continue;
 
-                var botPositions = await positions.GetAllAsync(botName, stoppingToken);
-
+                var botPositions = await positionStore.GetAllAsync(botName, ct);
                 foreach (var position in botPositions)
                 {
-                    stoppingToken.ThrowIfCancellationRequested();
-                    await lifecycle.RepairAsync(position, stoppingToken);
+                    ct.ThrowIfCancellationRequested();
+                   
+                    await lifecycleRecorder.RepairAsync(position, ct);
+                   
                     repaired++;
                 }
             }
 
-            logger.LogInformation(
-                "Live position history projection repair completed. Positions evaluated = {Count}",
-                repaired);
+            logger.LogInformation("Live position history projection repair completed. Positions evaluated = {Count}", repaired);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
+        catch (Exception ex)
         {
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(exception,
-                "Live position history projection startup repair failed. Normal trading can continue.");
+            logger.LogError(ex, "Live position history projection startup repair failed. Normal trading can continue.");
         }
     }
 
-    private static bool IsLive(string environment) =>
-        environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-        environment.Equals("Production", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLive(string env) 
+        => env.Equals("Demo", StringComparison.OrdinalIgnoreCase) 
+        || env.Equals("Production", StringComparison.OrdinalIgnoreCase);
 }

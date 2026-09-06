@@ -20,11 +20,8 @@ public sealed class BinanceExchangeStateProvider(
             .Select(x => new ExchangePositionSnapshot(x.Symbol, x.PositionSide, Math.Abs(x.PositionAmount), x.EntryPrice))
             .ToArray();
 
-        var normal = (await normalOpenOrdersTask)
-            .Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientOrderId, x.Type, x.Quantity, null));
-
-        var algo = (await algoOrdersTask)
-            .Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientAlgoId, x.OrderType, x.Quantity, x.TriggerPrice));
+        var normal = (await normalOpenOrdersTask).Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientOrderId, x.Type, x.Quantity, null));
+        var algo = (await algoOrdersTask).Select(x => new ExchangeOrderSnapshot(x.Symbol, x.ClientAlgoId, x.OrderType, x.Quantity, x.TriggerPrice));
 
         return new ExchangeStateSnapshot(positions, normal.Concat(algo).ToArray());
     }

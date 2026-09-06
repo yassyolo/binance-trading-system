@@ -12,8 +12,8 @@ namespace TradingSystem.PaperTrading.Workers;
 
 public sealed class PaperFillWorker(
     IPaperTradingStore store, 
-    IMarketPriceProvider prices, 
-    PaperTradeExecutor executor, 
+    IMarketPriceProvider marketPriceProvider, 
+    PaperTradeExecutor paperTradeExecutor, 
     IOptions<PaperTradingOptions> options, 
     ILogger<PaperFillWorker> logger) 
     : BackgroundService
@@ -48,15 +48,15 @@ public sealed class PaperFillWorker(
         
         foreach (var group in positions.GroupBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase))
         {
-            var markPrice = await prices.GetMarkPriceAsync(group.Key,  ct);
+            var markPrice = await marketPriceProvider.GetMarkPriceAsync(group.Key,  ct);
             
             foreach (var position in group)
             {
-                var reason = ResolveCloseReason(position,  markPrice);           
+                var reason = ResolveCloseReason(position, markPrice);           
                 if (reason is null) 
                     continue;
                 
-                await executor.CloseAsync(position.BotName,  position.ShortId,  reason,  ct);
+                await paperTradeExecutor.CloseAsync(position.BotName, position.ShortId, reason, ct);
             }
         }
     }
@@ -79,6 +79,7 @@ public sealed class PaperFillWorker(
             if (price >= position.StopLossPrice) 
                 return "PAPER_STOP_LOSS";
         }
+        
         return null;
     }
 }

@@ -8,8 +8,8 @@ namespace StrategyService.Runtime;
 
 public sealed class PaperPositionCloseWorker(
     IPaperTradingStore store,
-    IMarketPriceProvider prices,
-    PaperTradeExecutor executor,
+    IMarketPriceProvider marketPriceProvider,
+    PaperTradeExecutor paperTradeExecutor,
     ILogger<PaperPositionCloseWorker> logger)
     : BackgroundService
 {
@@ -69,7 +69,7 @@ public sealed class PaperPositionCloseWorker(
         decimal markPrice;
         try
         {
-            markPrice = await prices.GetMarkPriceAsync(symbol, ct);
+            markPrice = await marketPriceProvider.GetMarkPriceAsync(symbol, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -124,7 +124,7 @@ public sealed class PaperPositionCloseWorker(
             p.StopLossPrice,
             closeReason);
 
-        var result = await executor.CloseAtPriceAsync(p.BotName, p.ShortId, markPrice, closeReason, ct);
+        var result = await paperTradeExecutor.CloseAtPriceAsync(p.BotName, p.ShortId, markPrice, closeReason, ct);
         if (result.Succeeded)
         {
             logger.LogInformation("Paper position closed successfully. Bot = {Bot}, Position = {Position}, TriggerPrice = {TriggerPrice}, Reason = {Reason}", p.BotName, p.ShortId, markPrice, closeReason);

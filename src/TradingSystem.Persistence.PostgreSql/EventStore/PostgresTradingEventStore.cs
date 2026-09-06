@@ -22,10 +22,10 @@ public sealed class PostgresTradingEventStore(
         await using var transaction = await connection.BeginTransactionAsync(ct);
        
         await connection.ExecuteAsync(new CommandDefinition(
-                "SELECT pg_advisory_xact_lock(hashtextextended(@StreamKey,  0));",
-                new { StreamKey = $"{request.AggregateType}:{request.AggregateId}" }, 
-                transaction, 
-                cancellationToken: ct));
+            "SELECT pg_advisory_xact_lock(hashtextextended(@StreamKey, 0));",
+            new { StreamKey = $"{request.AggregateType}:{request.AggregateId}" }, 
+            transaction, 
+            cancellationToken: ct));
 
         if (request.EventType == TradingEventTypes.SignalReceived && !string.IsNullOrWhiteSpace(request.SignalId))
         {
@@ -136,23 +136,7 @@ public sealed class PostgresTradingEventStore(
                  actor, 
                  payload, 
                  metadata)
-            SELECT 
-                @EventId, 
-                @EventType,  
-                @EventVersion,  
-                @AggregateType,  
-                @AggregateId,  
-                next_version.value,
-                @OccurredAtUtc,  
-                @BotName,  
-                @Symbol,  
-                @PositionId,  
-                @SignalId, 
-                @CorrelationId,  
-                @CausationId,  
-                @Actor,  
-                CAST(@Payload AS jsonb),  
-                CAST(@Metadata AS jsonb)
+            SELECT @EventId, @EventType, @EventVersion, @AggregateType, @AggregateId, next_version.value, @OccurredAtUtc, @BotName, @Symbol, @PositionId, @SignalId, @CorrelationId, @CausationId, @Actor, CAST(@Payload AS jsonb), CAST(@Metadata AS jsonb)
             FROM next_version
             RETURNING 
                 global_position AS GlobalPosition,  

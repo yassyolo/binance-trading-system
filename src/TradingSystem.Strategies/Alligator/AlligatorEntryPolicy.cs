@@ -19,12 +19,10 @@ public sealed class AlligatorEntryPolicy
         if (parameters.MinimumCandleRange < 0)
             throw new ArgumentOutOfRangeException(nameof(parameters), "Minimum candle range cannot be negative.");
 
-        if (!input.IsClosed ||
-            !input.Symbol.Equals(parameters.Symbol, StringComparison.OrdinalIgnoreCase) ||
-            !input.Interval.Equals(parameters.Interval, StringComparison.OrdinalIgnoreCase))
-        {
+        if (!input.IsClosed
+            || !input.Symbol.Equals(parameters.Symbol, StringComparison.OrdinalIgnoreCase) 
+            || !input.Interval.Equals(parameters.Interval, StringComparison.OrdinalIgnoreCase))
             return null;
-        }
 
         var candleRange = input.High - input.Low;
         if (candleRange < parameters.MinimumCandleRange)

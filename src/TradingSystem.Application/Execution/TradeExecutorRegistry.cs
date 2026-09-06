@@ -10,7 +10,15 @@ public sealed class TradeExecutorRegistry : ITradeExecutor
 
     public TradeExecutorRegistry(IEnumerable<IBotTradeExecutor> executors)
     {
-        _executors = BuildUniqueMap(executors);
+        var map = new Dictionary<string, IBotTradeExecutor>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var executor in executors)
+        {
+            if (!map.TryAdd(executor.BotName, executor))
+                throw new InvalidOperationException($"Multiple trade executors are registered for bot '{executor.BotName}'.");
+        }
+
+        _executors = map;
     }
 
     public Task<TradeExecutionResult> OpenAsync(string botName, string symbol,  PositionSide side,  string? source,  CancellationToken ct)
@@ -23,15 +31,4 @@ public sealed class TradeExecutorRegistry : ITradeExecutor
          => _executors.TryGetValue(botName, out var executor)
             ? executor
             : throw new InvalidOperationException($"Trade executor is not registered for bot '{botName}'.");
-
-    private static IReadOnlyDictionary<string, IBotTradeExecutor> BuildUniqueMap(IEnumerable<IBotTradeExecutor> executors)
-    {
-        var map = new Dictionary<string, IBotTradeExecutor>(StringComparer.OrdinalIgnoreCase);
-        foreach (var executor in executors)
-        {
-            if (!map.TryAdd(executor.BotName,  executor))
-                throw new InvalidOperationException($"Multiple trade executors are registered for bot '{executor.BotName}'.");
-        }
-        return map;
-    }
 }

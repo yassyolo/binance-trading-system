@@ -13,7 +13,7 @@ public sealed class PositionReconciliationService(
     IOptions<ReconciliationOptions> options,
     IPositionStore localPositionStore,
     IExchangeStateProvider exchangeStateProvider,
-    IHealingActionExecutor healer,
+    IHealingActionExecutor healerExecutor,
     IReconciliationFindingStore reconciliationFindingStore,
     IBotRuntimeConfigurationProvider configProvider)
 {
@@ -109,10 +109,9 @@ public sealed class PositionReconciliationService(
         foreach (var side in new[] { "Long", "Short" })
         {
             var localForSide = localPositions.Where(p => p.Side.ToString().Equals(side, StringComparison.OrdinalIgnoreCase)).ToArray();
+            
             var localQuantity = localForSide.Sum(p => Math.Abs(p.RemainingQuantity));
-
-            var remoteQuantity = remotePositions.Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) 
-                    && p.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
+            var remoteQuantity = remotePositions.Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) && p.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
                 .Sum(p => Math.Abs(p.Quantity));
 
             if (localQuantity == 0 && remoteQuantity > _options.QuantityTolerance)
@@ -136,7 +135,6 @@ public sealed class PositionReconciliationService(
                 continue;
 
             var botNames = string.Join(", ", localForSide.Select(x => x.BotName).Distinct(StringComparer.OrdinalIgnoreCase));
-
             findings.Add(new ReconciliationFinding(
                 Guid.NewGuid(),
                 DateTime.UtcNow,
@@ -244,7 +242,7 @@ public sealed class PositionReconciliationService(
         {
             ct.ThrowIfCancellationRequested();
 
-            if (await healer.ExecuteAsync(finding, ct))
+            if (await healerExecutor.ExecuteAsync(finding, ct))
                 healedCount++;
         }
 

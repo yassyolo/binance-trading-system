@@ -8,7 +8,7 @@ using TradingSystem.Domain.Enums;
 namespace TradingSystem.PaperTrading.Executor;
 
 public sealed class EnvironmentAwareTradeExecutor(
-    TradeExecutorRegistry liveExecutor,
+    TradeExecutorRegistry liveExecutorRegistry,
     PaperTradeExecutor paperExecutor,
     IBotRuntimeConfigurationProvider configurations) 
     : ITradeExecutor
@@ -21,9 +21,8 @@ public sealed class EnvironmentAwareTradeExecutor(
 
         return IsPaper(config)
             ? await paperExecutor.OpenAsync(botName, symbol, side, source, ct)
-            : IsLive(config)
-                ? await liveExecutor.OpenAsync(botName, symbol, side, source, ct)
-                : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
+            : IsLive(config) ? await liveExecutorRegistry.OpenAsync(botName, symbol, side, source, ct)
+            : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }
 
     public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
@@ -34,15 +33,14 @@ public sealed class EnvironmentAwareTradeExecutor(
 
         return IsPaper(config)
             ? await paperExecutor.CloseAsync(botName, shortId, reason, ct)
-            : IsLive(config)
-                ? await liveExecutor.CloseAsync(botName, shortId, reason, ct)
-                : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
+            : IsLive(config) ? await liveExecutorRegistry.CloseAsync(botName, shortId, reason, ct)
+            : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }
 
-    private static bool IsPaper(BotRuntimeConfiguration config) =>
-        config.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase);
+    private static bool IsPaper(BotRuntimeConfiguration config) 
+        => config.Environment.Equals("Paper", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsLive(BotRuntimeConfiguration config) =>
-        config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-        config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLive(BotRuntimeConfiguration config)
+        => config.Environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) 
+        || config.Environment.Equals("Production", StringComparison.OrdinalIgnoreCase);
 }
