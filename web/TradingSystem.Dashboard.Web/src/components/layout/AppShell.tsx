@@ -21,12 +21,7 @@ export function AppShell() {
     <div className="min-h-screen bg-[var(--color-app)] text-[var(--color-text-primary)]">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((current) => !current)} />
 
-      <div
-        className={[
-          'min-h-screen transition-[padding-left] duration-200',
-          collapsed ? 'pl-[72px]' : 'pl-[248px]',
-        ].join(' ')}
-      >
+      <div className={['min-h-screen transition-[padding-left] duration-200', collapsed ? 'pl-[72px]' : 'pl-[248px]',].join(' ')}>
         <Outlet key={location.pathname} />
       </div>
     </div>

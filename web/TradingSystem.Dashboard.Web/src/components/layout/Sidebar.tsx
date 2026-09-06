@@ -25,15 +25,13 @@ export function Sidebar({
 
   return (
     <aside
-      className={[
-        'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)] transition-[width] duration-200',
+      className={['fixed inset-y-0 left-0 z-30 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)] transition-[width] duration-200',
         collapsed
           ? 'w-[72px]'
           : 'w-[248px]',
       ].join(' ')}
     >
-      <div
-        className={
+      <div className={
           collapsed
             ? 'flex h-[72px] items-center justify-center'
             : 'flex h-[72px] items-center gap-3 px-5'
@@ -58,13 +56,7 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         {navigationGroups.map(
           (group, index) => (
-            <div
-              key={group.label}
-              className={
-                index === 0
-                  ? 'mt-1'
-                  : 'mt-6'
-              }
+            <div key={group.label} className={index === 0 ? 'mt-1' : 'mt-6'}
             >
               {!collapsed && (
                 <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
@@ -72,8 +64,7 @@ export function Sidebar({
                 </p>
               )}
 
-              {collapsed &&
-                index > 0 && (
+              {collapsed && index > 0 && (
                   <div className="mx-auto mb-3 h-px w-7 bg-[var(--color-border)]" />
                 )}
 

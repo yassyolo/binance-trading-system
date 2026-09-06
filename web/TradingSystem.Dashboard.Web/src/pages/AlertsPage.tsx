@@ -15,10 +15,7 @@ export function AlertsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Alerts"
-        description="Operational alerts produced by the alert engine and trading safety rules."
-      />
+      <PageHeader title="Alerts" description="Operational alerts produced by the alert engine and trading safety rules."/>
 
       <main className="space-y-8 p-8">
         <PageSection

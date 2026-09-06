@@ -11,9 +11,7 @@ export function SidebarItem({ item, collapsed }: SidebarItemProps) {
   const Icon = item.icon
 
   return (
-    <NavLink
-      to={item.path}
-      title={collapsed ? item.label : undefined}
+    <NavLink to={item.path} title={collapsed ? item.label : undefined}
       className={({ isActive }) =>
         [
           'group flex h-10 items-center rounded-xl text-sm transition-colors',

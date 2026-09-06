@@ -34,12 +34,7 @@ export const router =
       children: [
         {
           path: '/',
-          element: (
-            <Navigate
-              to="/overview"
-              replace
-            />
-          ),
+          element: ( <Navigate to="/overview" replace />),
         },
         {
           element: <AppShell />,

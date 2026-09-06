@@ -39,10 +39,7 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Analytics"
-        description="Performance, equity, signal quality and historical market context."
-      />
+      <PageHeader title="Analytics" description="Performance, equity, signal quality and historical market context."/>
 
       <main className="space-y-8 p-8">
         <AnalyticsFilters onApply={setFilter} />

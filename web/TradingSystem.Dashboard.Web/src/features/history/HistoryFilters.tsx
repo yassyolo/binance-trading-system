@@ -37,8 +37,7 @@ export function HistoryFilters({
 
       <div className="flex items-end gap-3">
         <Field label="Bot">
-          <input
-            className={inputClass}
+          <input className={inputClass}
             value={values.botName}
             onChange={(event) =>
               onChange({ ...values, botName: event.target.value })
@@ -48,8 +47,7 @@ export function HistoryFilters({
         </Field>
 
         <Field label="Symbol">
-          <input
-            className={inputClass}
+          <input className={inputClass}
             value={values.symbol}
             onChange={(event) =>
               onChange({ ...values, symbol: event.target.value })
@@ -60,8 +58,7 @@ export function HistoryFilters({
 
         {showStatus && (
           <Field label="Status">
-            <input
-              className={inputClass}
+            <input className={inputClass}
               value={values.status}
               onChange={(event) =>
                 onChange({ ...values, status: event.target.value })

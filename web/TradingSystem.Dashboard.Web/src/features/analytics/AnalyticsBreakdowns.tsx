@@ -37,16 +37,8 @@ export function AnalyticsBreakdowns({
         </p>
 
         <div className="mt-7 space-y-5">
-          <FunnelRow
-            label="Signals"
-            value={analytics.signals}
-            max={Math.max(analytics.signals, 1)}
-          />
-          <FunnelRow
-            label="Opened"
-            value={analytics.openedSignals}
-            max={Math.max(analytics.signals, 1)}
-          />
+          <FunnelRow label="Signals" value={analytics.signals} max={Math.max(analytics.signals, 1)} />
+          <FunnelRow label="Opened" value={analytics.openedSignals} max={Math.max(analytics.signals, 1)} />
           <FunnelRow
             label="Blocked"
             value={analytics.blockedSignals}
