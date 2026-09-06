@@ -15,18 +15,18 @@ namespace StrategyService.Services;
 
 public sealed class TradingEngineHistoryNotifier(
     TelegramTradingEngineNotifier telegramNotifier,
-    TradingStrategyRegistry strategies,
-    IPositionStore positions,
+    TradingStrategyRegistry strategyRegistry,
+    IPositionStore positionStore,
     IHistoricalEventSink historicalDatabase,
     TradingMetrics metrics,
-    ITradingEnvironmentProvider environment,
-    IBotRuntimeConfigurationProvider configurations,
-    LivePositionLifecycleRecorder lifecycle)
+    ITradingEnvironmentProvider envProvider,
+    IBotRuntimeConfigurationProvider configProvider,
+    LivePositionLifecycleRecorder lifecycleRecorder)
     : ITradingEngineNotifier
 {
     public async Task DecisionMadeAsync(TradeSignal signal, decimal markPrice, StrategyDecision decision, CancellationToken ct)
     {
-        var strategy = strategies.GetRequired(signal.BotName);
+        var strategy = strategyRegistry.GetRequired(signal.BotName);
         var decisionName = decision.ShouldOpen ? "Open" : "Block";
         var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
@@ -70,14 +70,14 @@ public sealed class TradingEngineHistoryNotifier(
 
         if (result.Succeeded && !string.IsNullOrWhiteSpace(result.ShortId))
         {
-            var position = await positions.GetAsync(signal.BotName, result.ShortId, ct);
+            var position = await positionStore.GetAsync(signal.BotName, result.ShortId, ct);
 
             if (position is not null)
             {
-                var strategy = strategies.GetRequired(signal.BotName);
+                var strategy = strategyRegistry.GetRequired(signal.BotName);
                 strategyVersion = strategy.Metadata.Version;
                 
-                await lifecycle.RecordOpenedAsync(position, signal.SignalId, strategyVersion, ct);
+                await lifecycleRecorder.RecordOpenedAsync(position, signal.SignalId, strategyVersion, ct);
             }
         }
 
@@ -143,10 +143,10 @@ public sealed class TradingEngineHistoryNotifier(
 
     private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
     {
-        var config = await configurations.GetAsync(botName, ct);
+        var config = await configProvider.GetAsync(botName, ct);
 
         return config is not null && !string.IsNullOrWhiteSpace(config.Environment)
             ? config.Environment.Trim()
-            : environment.EnvironmentName;
+            : envProvider.EnvironmentName;
     }
 }

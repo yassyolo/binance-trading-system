@@ -69,12 +69,12 @@ public sealed class PortfolioSnapshotProvider(
 
         var botNames = _options.Bots.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
-        var redisPositionsTask = LoadRedisPositionsAsync(botNames, ct);
+        var livePositionsTask = LoadRedisPositionsAsync(botNames, ct);
         var paperPositionsTask = paperPositionSource.GetOpenAsync(ct);
 
-        await Task.WhenAll(redisPositionsTask, paperPositionsTask);
+        await Task.WhenAll(livePositionsTask, paperPositionsTask);
 
-        var redisPositions = await redisPositionsTask;
+        var redisPositions = await livePositionsTask;
         var paperPositions = await paperPositionsTask;
 
         var symbols = redisPositions.Select(x => x.Symbol)
@@ -85,7 +85,7 @@ public sealed class PortfolioSnapshotProvider(
 
         var prices = await LoadPricesAsync(symbols, ct);
 
-        var positions = redisPositions.Select(x => MapRedisPosition(x, prices[x.Symbol]))
+        var positions = redisPositions.Select(x => MapLivePosition(x, prices[x.Symbol]))
             .Concat(paperPositions.Select(x => MapPaperPosition(x, prices[x.Symbol])))
             .GroupBy(x => new { x.BotName, x.PositionId })
             .Select(x => x.First())
@@ -168,10 +168,7 @@ public sealed class PortfolioSnapshotProvider(
         if (symbols.Count == 0)
             return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
 
-        var tasks = symbols.ToDictionary(
-            s => s,
-            s => marketPriceProvider.GetMarkPriceAsync(s, ct),
-            StringComparer.OrdinalIgnoreCase);
+        var tasks = symbols.ToDictionary(s => s, s => marketPriceProvider.GetMarkPriceAsync(s, ct), StringComparer.OrdinalIgnoreCase);
 
         await Task.WhenAll(tasks.Values);
 
@@ -193,7 +190,7 @@ public sealed class PortfolioSnapshotProvider(
         Exception? lastError = null;
         var attempts = _options.LoadRetryCount + 1;
 
-        for (var i = 1; i <= attempts; i++)
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -205,24 +202,24 @@ public sealed class PortfolioSnapshotProvider(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                lastError = exception;
+                lastError = ex;
 
-                if (i == attempts)
+                if (attempt == attempts)
                     break;
 
-                logger.LogWarning(exception, "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.", operation, i, attempts);
+                logger.LogWarning(ex, "Transient {Operation} failure. Attempt = {Attempt}/{Attempts}. Retrying.", operation, attempt, attempts);
 
                 if (_options.LoadRetryDelayMilliseconds > 0)
                     await Task.Delay(TimeSpan.FromMilliseconds(_options.LoadRetryDelayMilliseconds), ct);
             }
         }
 
-        throw new InvalidOperationException($"Could not build {operation} after {attempts} i(s). Risk evaluation must fail closed.", lastError);
+        throw new InvalidOperationException($"Could not build {operation} after {attempts} attempt(s). Risk evaluation must fail closed.", lastError);
     }
 
-    private PortfolioPositionSnapshot MapRedisPosition(BotPosition p, decimal markPrice)
+    private PortfolioPositionSnapshot MapLivePosition(BotPosition p, decimal markPrice)
     {
         var entryPrice = p.EntryPrice ?? markPrice;
         var quantity = p.RemainingQuantity;

@@ -33,7 +33,8 @@ public sealed class PostgresPortfolioPerformanceSource(
                 sql,
                 new { DayStartUtc = dayStartUtc, DayEndUtc = dayEndUtc },
                 commandTimeout: connectionFactory.CommandTimeoutSeconds,
-                cancellationToken: ct))).AsList();
+                cancellationToken: ct)))
+                .AsList();
 
         var realizedToday = closedPnls.Sum();
         var runningEquity = startingEquity;

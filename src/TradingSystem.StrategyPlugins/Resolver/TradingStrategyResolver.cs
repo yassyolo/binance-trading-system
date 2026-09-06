@@ -5,18 +5,18 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 namespace TradingSystem.StrategyPlugins.Resolver;
 
 public sealed class TradingStrategyResolver(
-    TradingStrategyRegistry registry, 
-    IBotRuntimeConfigurationProvider configurations) 
+    TradingStrategyRegistry startegyRegistry, 
+    IBotRuntimeConfigurationProvider configProvider) 
     : ITradingStrategyResolver
 {
     public async Task<ITradingStrategy> ResolveAsync(string botName, CancellationToken ct)
     {
-        var config = await configurations.GetAsync(botName, ct);
+        var config = await configProvider.GetAsync(botName, ct);
         
         if (!string.IsNullOrWhiteSpace(config?.StrategyType) 
-            && registry.TryGet(config.StrategyType, out var configured))
+            && startegyRegistry.TryGet(config.StrategyType, out var configured))
             return configured;
 
-        return registry.GetRequired(botName);
+        return startegyRegistry.GetRequired(botName);
     }
 }

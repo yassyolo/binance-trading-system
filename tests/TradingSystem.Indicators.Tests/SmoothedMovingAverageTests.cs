@@ -1,4 +1,4 @@
-﻿using TradingSystem.Indicators.Common;
+﻿using TradingSystem.Indicators.Alligator.Models;
 using Xunit;
 
 namespace TradingSystem.Indicators.Tests;

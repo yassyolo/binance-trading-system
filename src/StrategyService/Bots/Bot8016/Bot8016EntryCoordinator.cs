@@ -50,6 +50,7 @@ public sealed class Bot8016EntryCoordinator(
         };
 
         signalContexts.Set(signalId, entrySignal);
+       
         try
         {
             await HandleWithTransientRetryAsync(signal, cancellationToken);
@@ -64,6 +65,7 @@ public sealed class Bot8016EntryCoordinator(
     {
         var deadline = DateTime.UtcNow.AddSeconds(60);
         var attempt = 0;
+       
         while (true)
         {
             ct.ThrowIfCancellationRequested();
@@ -77,17 +79,18 @@ public sealed class Bot8016EntryCoordinator(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 var remaining = deadline - DateTime.UtcNow;
                 if (remaining <= TimeSpan.Zero)
                     throw;
+               
                 var delay = TimeSpan.FromSeconds(Math.Min(attempt, 5));
                 if (delay > remaining)
                     delay = remaining;
-                logger.LogWarning(exception,
-                    "BOT8016 common trading pipeline hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.",
-                    signal.SignalId, attempt, delay);
+                
+                logger.LogWarning(ex,"BOT8016 common trading pipeline hit a transient infrastructure failure. SignalId = {SignalId}, Attempt = {Attempt}. Retrying in {Delay}.", signal.SignalId, attempt, delay);
+               
                 await Task.Delay(delay, ct);
             }
         }
@@ -103,7 +106,9 @@ public sealed class Bot8016EntryCoordinator(
             signal.Candle.OpenTime,
             signal.Candle.CloseTime,
             signal.Side.ToString().ToUpperInvariant());
+       
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
+       
         return Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant();
     }
 }

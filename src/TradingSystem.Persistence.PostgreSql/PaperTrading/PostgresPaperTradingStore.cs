@@ -83,16 +83,11 @@ public sealed class PostgresPaperTradingStore(
             p.Side,
             p.Quantity,
             p.EntryPrice,
-            p.OpenedAtUtc)).ToArray();
+            p.OpenedAtUtc))
+            .ToArray();
     }
 
-    public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(
-        string? botName,
-        string? symbol,
-        PaperPositionStatus? status,
-        int skip,
-        int take,
-        CancellationToken ct)
+    public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(string? botName, string? symbol, PaperPositionStatus? status, int skip, int take, CancellationToken ct)
     {
         const string where = """
              and (@botName is null or bot_name = @botName)
@@ -223,27 +218,28 @@ public sealed class PostgresPaperTradingStore(
     }
 
     private const string BaseSelect = """
-        select position_id PositionId,
-               short_id ShortId,
-               signal_id SignalId,
-               strategy_version StrategyVersion,
-               bot_name BotName,
-               symbol Symbol,
-               side Side,
-               quantity Quantity,
-               entry_price EntryPrice,
-               take_profit_price TakeProfitPrice,
-               stop_loss_price StopLossPrice,
-               entry_fee EntryFee,
-               exit_price ExitPrice,
-               exit_fee ExitFee,
-               realized_pnl RealizedPnl,
-               status Status,
-               source Source,
-               opened_at_utc OpenedAtUtc,
-               closed_at_utc ClosedAtUtc,
-               close_reason CloseReason,
-               version Version
+        select 
+            position_id PositionId,
+            short_id ShortId,
+            signal_id SignalId,
+            strategy_version StrategyVersion,
+            bot_name BotName,
+            symbol Symbol,
+            side Side,
+            quantity Quantity,
+            entry_price EntryPrice,
+            take_profit_price TakeProfitPrice,
+            stop_loss_price StopLossPrice,
+            entry_fee EntryFee,
+            exit_price ExitPrice,
+            exit_fee ExitFee,
+            realized_pnl RealizedPnl,
+            status Status,
+            source Source,
+            opened_at_utc OpenedAtUtc,
+            closed_at_utc ClosedAtUtc,
+            close_reason CloseReason,
+            version Version
         from trading_paper.positions
         where archived = false
         """;

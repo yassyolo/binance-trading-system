@@ -33,7 +33,7 @@ public sealed class TradingEngine(
 	ICentralRiskManager riskManager,
 	IRiskAdmissionLifecycle riskAdmissionLifecycle,
 	IBotRuntimeStateProvider runtimeStateProvider,
-	IBotRuntimeConfigurationProvider runtimeConfigurationProvider,
+	IBotRuntimeConfigurationProvider configProvider,
 	IClock clock,
 	IOptions<TradingEngineOptions> options,
 	ILogger<TradingEngine> logger,
@@ -44,6 +44,7 @@ public sealed class TradingEngine(
 	public async Task<TradingEngineResult> ProcessSignalAsync(TradeSignal signal, CancellationToken ct)
 	{
 		ValidateSignal(signal);
+		
 		var now = clock.UtcNow;
 
 		await AppendEventAsync(signal, TradingEventTypes.SignalReceived, new { signal.Side, signal.Source, signal.GeneratedAtUtc }, ct);
@@ -68,7 +69,6 @@ public sealed class TradingEngine(
 			if (operationLock is null)
 			{
 				await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
-
 				return new(false, false, false, "Another operation is already processing this bot/symbol/side.");
 			}
 
@@ -76,7 +76,7 @@ public sealed class TradingEngine(
 			if (!runtimeState.AcceptsNewSignals)
 				return await CompleteBlockedAsync(signal, $"BOT_RUNTIME_BLOCKED [{runtimeState.Status}]: {runtimeState.Reason ?? "Bot does not accept new signals."}", ct);
 
-			var runtimeConfiguration = await runtimeConfigurationProvider.GetAsync(signal.BotName, ct);
+			var runtimeConfiguration = await configProvider.GetAsync(signal.BotName, ct);
 			if (runtimeConfiguration is not null)
 			{
 				if (!runtimeConfiguration.Symbol.Equals(signal.Symbol, StringComparison.OrdinalIgnoreCase))
@@ -84,7 +84,6 @@ public sealed class TradingEngine(
 
 				var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong 
 					|| signal.Side == PositionSide.Short && !runtimeConfiguration.EnableShort;
-
 				if (sideDisabled)
 					return await CompleteBlockedAsync(signal, $"{signal.Side} is disabled by dynamic configuration version {runtimeConfiguration.Version}.", ct);
 			}
@@ -163,12 +162,7 @@ public sealed class TradingEngine(
 
 			var execution = await tradeExecutor.OpenAsync(signal.BotName, signal.Symbol, signal.Side, signal.Source, ct);
 
-			await AppendEventAsync(
-				signal,
-				execution.Succeeded ? TradingEventTypes.ExecutionCompleted : TradingEventTypes.ExecutionFailed,
-				new { execution.Succeeded, execution.ShortId, execution.Reason },
-				ct,
-				execution.ShortId);
+			await AppendEventAsync(signal, execution.Succeeded ? TradingEventTypes.ExecutionCompleted : TradingEventTypes.ExecutionFailed, new { execution.Succeeded, execution.ShortId, execution.Reason }, ct, execution.ShortId);
 
 			await TryNotifyExecutionAsync(signal, execution);
 
@@ -255,6 +249,7 @@ public sealed class TradingEngine(
 	private async Task MarkCompletedAfterExecutionAsync(string signalId)
 	{
 		Exception? lastError = null;
+		
 		for (var attempt = 1; attempt <= _options.PostExecutionCompletionRetryCount; attempt++)
 		{
 			try
@@ -263,10 +258,10 @@ public sealed class TradingEngine(
 
 				return;
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
-				lastError = exception;
-				logger.LogWarning(exception, "Could not persist completed idempotency state. SignalId = {SignalId}, Attempt = {Attempt}/{Attempts}", signalId, attempt, _options.PostExecutionCompletionRetryCount);
+				lastError = ex;
+				logger.LogWarning(ex, "Could not persist completed idempotency state. SignalId = {SignalId}, Attempt = {Attempt}/{Attempts}", signalId, attempt, _options.PostExecutionCompletionRetryCount);
 
 				if (attempt < _options.PostExecutionCompletionRetryCount && _options.PostExecutionCompletionRetryDelay > TimeSpan.Zero)
 					await Task.Delay(_options.PostExecutionCompletionRetryDelay);
@@ -294,9 +289,9 @@ public sealed class TradingEngine(
 		{
 			await tradingEngineNotifier.DecisionMadeAsync(signal, markPrice, decision, CancellationToken.None);
 		}
-		catch (Exception exception)
+		catch (Exception ex)
 		{
-			logger.LogWarning(exception, "Decision notification failed. SignalId = {SignalId}", signal.SignalId);
+			logger.LogWarning(ex, "Decision notification failed. SignalId = {SignalId}", signal.SignalId);
 		}
 	}
 
@@ -337,12 +332,7 @@ public sealed class TradingEngine(
 		return TradeExecutionResult.Success("close-batch", "Required positions closed.");
 	}
 
-	private async Task AppendEventAsync(
-		TradeSignal signal,
-		string eventType,
-		object payload,
-		CancellationToken ct,
-		string? positionId = null)
+	private async Task AppendEventAsync(TradeSignal signal, string eventType, object payload, CancellationToken ct, string? positionId = null)
 	{
 		var request = new AppendTradingEvent(
 			EventType: eventType,
@@ -374,7 +364,7 @@ public sealed class TradingEngine(
 			catch (Exception ex) when (IsTransientEventStoreFailure(ex))
 			{
 				lastError = ex;
-				logger.LogWarning(ex,"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5", signal.SignalId,eventType, attempt);
+				logger.LogWarning(ex,"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5", signal.SignalId, eventType, attempt);
 
 				if (attempt < 5)
 					await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt, 3)), ct);
@@ -384,15 +374,15 @@ public sealed class TradingEngine(
 		throw new InvalidOperationException($"EventStore remained unavailable while persisting '{eventType}' for signal '{signal.SignalId}'.", lastError);
 	}
 
-	private static bool IsTransientEventStoreFailure(Exception exception)
+	private static bool IsTransientEventStoreFailure(Exception ex)
 	{
-		if (exception is TimeoutException)
+		if (ex is TimeoutException)
 			return true;
 
-		if (exception.InnerException is TimeoutException)
+		if (ex.InnerException is TimeoutException)
 			return true;
 
-		var typeName = exception.GetType().FullName ?? exception.GetType().Name;
+		var typeName = ex.GetType().FullName ?? ex.GetType().Name;
 		return typeName.StartsWith("Npgsql.", StringComparison.Ordinal);
 	}
 
@@ -403,12 +393,14 @@ public sealed class TradingEngine(
 
 		if (now - signal.GeneratedAtUtc > _options.MaximumSignalAge)
 			return new(false, false, false, $"Signal is stale. Age = {now - signal.GeneratedAtUtc:g}.");
+		
 		return null;
 	}
 
 	private static void ValidateSignal(TradeSignal signal)
 	{
 		ArgumentNullException.ThrowIfNull(signal);
+		
 		if (string.IsNullOrWhiteSpace(signal.SignalId))
 			throw new ArgumentException("SignalId is required.", nameof(signal));
 		

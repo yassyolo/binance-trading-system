@@ -9,8 +9,8 @@ namespace StrategyService.Bots.Bot8011;
 
 public sealed class Bot8011ActivePositionProvider(
     IOptions<Bot8011Options> options, 
-    IPositionStore store, 
-    IBinanceFuturesOrderClient orders)
+    IPositionStore positionStore, 
+    IBinanceFuturesOrderClient ordersClient)
     :IBotActivePositionProvider
 {
     readonly Bot8011Options _options = options.Value;
@@ -18,9 +18,9 @@ public sealed class Bot8011ActivePositionProvider(
     
     public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string symbol, CancellationToken ct)
     {
-        var positions = await store.GetAllAsync(BotName, ct);
-        var normal = await orders.GetOpenOrdersAsync(symbol, ct);
-        var algo = await orders.GetOpenAlgoOrdersAsync(symbol, ct);
+        var positions = await positionStore.GetAllAsync(BotName, ct);
+        var normal = await ordersClient.GetOpenOrdersAsync(symbol, ct);
+        var algo = await ordersClient.GetOpenAlgoOrdersAsync(symbol, ct);
         
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         
@@ -43,7 +43,8 @@ public sealed class Bot8011ActivePositionProvider(
                     Quantity = x.Quantity, 
                     RemainingQuantity = x.RemainingQuantity, 
                     EntryPrice = x.EntryPrice ?? 0, 
-                    TpPrice = x.TpPrice, CreatedAtUtc = x.ParentFilledAtUtc ?? x.CreatedAtUtc
+                    TpPrice = x.TpPrice,
+                    CreatedAtUtc = x.ParentFilledAtUtc ?? x.CreatedAtUtc
                 })
                 .ToArray();
     }

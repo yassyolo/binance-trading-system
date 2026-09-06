@@ -7,7 +7,7 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 
 public abstract class TpOnlyGridActivePositionProvider<TOptions>(
     TOptions options, 
-    IBinanceFuturesOrderClient orders)
+    IBinanceFuturesOrderClient ordersClient)
     : IBotActivePositionProvider where TOptions : class, ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
@@ -19,13 +19,13 @@ public abstract class TpOnlyGridActivePositionProvider<TOptions>(
         
         var result = new List<ActivePositionView>();
         
-        foreach(var o in await orders.GetOpenOrdersAsync(symbol, ct))
+        foreach(var order in await ordersClient.GetOpenOrdersAsync(symbol, ct))
         {
-            if(!BinanceClientOrderId.TryParse(o.ClientOrderId, out var bot, out var role, out var id) 
+            if(!BinanceClientOrderId.TryParse(order.ClientOrderId, out var bot, out var role, out var id) 
                 || !bot.Equals(BotName, StringComparison.OrdinalIgnoreCase) 
                 || role != "TP" 
-                || o.Price <= 0 
-                || !BinanceOrderSide.TryParsePosition(o.PositionSide, out var side))
+                || order.Price <= 0 
+                || !BinanceOrderSide.TryParsePosition(order.PositionSide, out var side))
                 continue;
             
             result.Add(new ActivePositionView
@@ -34,10 +34,10 @@ public abstract class TpOnlyGridActivePositionProvider<TOptions>(
                 BotName = BotName, 
                 Symbol = symbol, 
                 Side = side, 
-                TpPrice = o.Price, 
-                Quantity = o.Quantity, 
-                RemainingQuantity = o.Quantity, 
-                CreatedAtUtc = o.UpdateTimeUtc});
+                TpPrice = order.Price, 
+                Quantity = order.Quantity, 
+                RemainingQuantity = order.Quantity, 
+                CreatedAtUtc = order.UpdateTimeUtc});
         }
         
         return result.OrderByDescending(x => x.CreatedAtUtc).ToArray();

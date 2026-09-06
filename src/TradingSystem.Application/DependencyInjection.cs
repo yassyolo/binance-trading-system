@@ -26,8 +26,8 @@ public static class DependencyInjection
         services.AddSingleton<TradingStrategyRegistry>();
         services.AddSingleton<TradeExecutorRegistry>();
         services.AddSingleton<ITradeExecutor>(sp => sp.GetRequiredService<TradeExecutorRegistry>());
-        services.AddSingleton<ActivePositionProviderRegistry>();
-        services.AddSingleton<IActivePositionProvider>(sp => sp.GetRequiredService<ActivePositionProviderRegistry>());
+        services.AddSingleton<LivePositionProviderRegistry>();
+        services.AddSingleton<IActivePositionProvider>(sp => sp.GetRequiredService<LivePositionProviderRegistry>());
         services.AddSingleton<HealingServiceRegistry>();
         services.TryAddSingleton<ITradingEngineNotifier, NullTradingEngineNotifier>();
         services.TryAddSingleton<ICentralRiskManager, NullCentralRiskManager>();

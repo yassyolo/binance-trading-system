@@ -11,4 +11,3 @@ public sealed class NullPaperPortfolioPositionSource : IPaperPortfolioPositionSo
         return Task.FromResult<IReadOnlyCollection<PaperPortfolioPosition>>([]);
     }
 }
-

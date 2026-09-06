@@ -11,7 +11,5 @@ public sealed class RedisGeneratedSignalPublisher(
 	: ISignalPublisher
 {
 	public Task PublishAsync(GeneratedTradingSignal x, CancellationToken ct)
-		=> publisher.PublishAsync(RedisChannels.StrategySignals, 
-			new TradingSignalMessage(x.SignalId, x.BotName, x.Symbol, x.Action, x.Source, x.GeneratedAtUtc), 
-			ct);
+		=> publisher.PublishAsync(RedisChannels.StrategySignals, new TradingSignalMessage(x.SignalId, x.BotName, x.Symbol, x.Action, x.Source, x.GeneratedAtUtc), ct);
 }

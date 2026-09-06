@@ -116,6 +116,7 @@ public sealed class RedisTradingSignalSubscriber(
         while (true)
         {
             ct.ThrowIfCancellationRequested();
+           
             attempt++;
 
             try

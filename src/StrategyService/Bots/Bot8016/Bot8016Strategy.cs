@@ -10,20 +10,14 @@ public sealed class Bot8016Strategy(IOptions<Bot8016Options> options, ILogger<Bo
 {
     private readonly Bot8016Options _options = options.Value;
 
-    public StrategyMetadata Metadata => new(
-        _options.BotName,
-        _options.StrategyVersion,
-        PositionMode.Stop3,
-        [_options.Symbol],
-        "bot8016.alligator",
-        "BOT8016 Alligator",
-        "Alligator/MA200 entry with BOT8016 protection lifecycle.");
+    public StrategyMetadata Metadata => new(_options.BotName, _options.StrategyVersion, PositionMode.Stop3, [_options.Symbol],
+        "bot8016.alligator", "BOT8016 Alligator", "Alligator/MA200 entry with BOT8016 protection lifecycle.");
 
-    public Task<StrategyDecision> DecideAsync(StrategyContext context, CancellationToken ct)
+    public Task<StrategyDecision> DecideAsync(StrategyContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         
-        var side = context.Signal.Side;
+        var side = ctx.Signal.Side;
         
         if (side == PositionSide.Long && !_options.EnableLong)
             return Task.FromResult(StrategyDecision.Block(side, "LONG is disabled."));
@@ -31,8 +25,8 @@ public sealed class Bot8016Strategy(IOptions<Bot8016Options> options, ILogger<Bo
         if (side == PositionSide.Short && !_options.EnableShort)
             return Task.FromResult(StrategyDecision.Block(side, "SHORT is disabled."));
 
-        var sideLimit = context.RuntimeConfiguration?.OrderSideLimit ?? _options.PositionSideLimit;     
-        var sameSideCount = context.ActivePositions.Count(x => x.Side == side);
+        var sideLimit = ctx.RuntimeConfiguration?.OrderSideLimit ?? _options.PositionSideLimit;     
+        var sameSideCount = ctx.ActivePositions.Count(x => x.Side == side);
        
         if (sameSideCount >= sideLimit)
             return Task.FromResult(StrategyDecision.Block(side, $"ORDER_SIDE_LIMIT reached ({sameSideCount}/{sideLimit})."));
@@ -40,7 +34,7 @@ public sealed class Bot8016Strategy(IOptions<Bot8016Options> options, ILogger<Bo
         logger.LogInformation("BOT8016 accepted pre-evaluated Alligator signal. Side = {Side}, ActiveSameSide = {Count}, Limit = {Limit}", side, sameSideCount, sideLimit);
         
         return Task.FromResult(StrategyDecision.Open(side,
-            context.Signal.Metadata.TryGetValue("reason", out var reason) && !string.IsNullOrWhiteSpace(reason)
+            ctx.Signal.Metadata.TryGetValue("reason", out var reason) && !string.IsNullOrWhiteSpace(reason)
                 ? reason
                 : "BOT8016 Alligator entry accepted."));
     }

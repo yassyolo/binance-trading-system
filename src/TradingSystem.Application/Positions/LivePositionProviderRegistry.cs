@@ -3,23 +3,25 @@ using TradingSystem.Application.Positions.Models;
 
 namespace TradingSystem.Application.Positions;
 
-public sealed class ActivePositionProviderRegistry : IActivePositionProvider
+public sealed class LivePositionProviderRegistry : IActivePositionProvider
 {
-    private readonly IReadOnlyDictionary<string,  IBotActivePositionProvider> _providers;
+    private readonly IReadOnlyDictionary<string, IBotActivePositionProvider> _providers;
 
-    public ActivePositionProviderRegistry(IEnumerable<IBotActivePositionProvider> providers)
+    public LivePositionProviderRegistry(IEnumerable<IBotActivePositionProvider> providers)
     {
-        var map = new Dictionary<string,  IBotActivePositionProvider>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, IBotActivePositionProvider>(StringComparer.OrdinalIgnoreCase);
+       
         foreach (var provider in providers)
         {
-            if (!map.TryAdd(provider.BotName,  provider))
+            if (!map.TryAdd(provider.BotName, provider))
                 throw new InvalidOperationException($"Multiple active position providers are registered for bot '{provider.BotName}'.");
         }
+      
         _providers = map;
     }
 
     public Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string botName, string symbol, CancellationToken ct)
-         => _providers.TryGetValue(botName,  out var provider)
-            ? provider.GetActivePositionsAsync(symbol,  ct)
+         => _providers.TryGetValue(botName, out var provider)
+            ? provider.GetActivePositionsAsync(symbol, ct)
             : throw new InvalidOperationException($"Active position provider is not registered for bot '{botName}'.");
 }

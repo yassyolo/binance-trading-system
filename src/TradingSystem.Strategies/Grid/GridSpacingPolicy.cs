@@ -20,7 +20,6 @@ public sealed class GridSpacingPolicy
             return PolicyDecision.Block("Grid distances cannot be negative.");
 
         var sameSidePositions = positions.Where(p => p.Side == side).OrderByDescending(p => p.OpenedAtUtc).ToArray();
-
         if (sameSidePositions.Length >= parameters.SideLimit)
             return PolicyDecision.Block($"ORDER_SIDE_LIMIT reached ({sameSidePositions.Length}/{parameters.SideLimit}).");
 

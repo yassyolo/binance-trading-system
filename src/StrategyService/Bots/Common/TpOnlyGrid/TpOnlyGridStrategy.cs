@@ -11,8 +11,7 @@ public abstract class TpOnlyGridStrategy<TOptions>(
     IHasSignalCooldown where TOptions : class, 
     ITpOnlyGridBotOptions
 {
-    public StrategyMetadata Metadata 
-        => new(options.BotName, options.StrategyVersion, PositionMode.TpOnly, [options.Symbol]);
+    public StrategyMetadata Metadata => new(options.BotName, options.StrategyVersion, PositionMode.TpOnly, [options.Symbol]);
     
     public TimeSpan SignalCooldown => TimeSpan.FromSeconds(options.CooldownSeconds);
     

@@ -1,9 +1,9 @@
-﻿using System.Globalization;
-using System.Text.Json;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using StrategyService.Bots.Bot8016.Configuration;
 using StrategyService.Bots.Bot8016.Models;
+using System.Globalization;
+using System.Text.Json;
 using TradingSystem.Contracts.Messaging;
 
 namespace StrategyService.Bots.Bot8016;
@@ -24,51 +24,56 @@ public sealed class Bot8016RedisMarketSubscriber(
     private Bot8016Candle? _pendingEntryCandle;
     private long _lastProcessedEntryCloseTime;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             var subscriber = redis.GetSubscriber();
             var subscribedChannels = new List<RedisChannel>();
 
             try
             {
-                await SubscribeAsync(subscriber, subscribedChannels, stoppingToken);
+                await SubscribeAsync(subscriber, subscribedChannels, ct);
 
-                logger.LogInformation(
-                    "BOT8016 Redis market subscriptions established. Channels = {Channels}",
-                    string.Join(", ", subscribedChannels.Select(x => x.ToString())));
+                logger.LogInformation("BOT8016 Redis market subscriptions established. Channels = {Channels}", string.Join(", ", subscribedChannels.Select(x => x.ToString())));
 
-                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
-            catch (RedisException exception)
+            catch (RedisException redisEx)
             {
-                logger.LogWarning(
-                    exception,
-                    "BOT8016 could not establish Redis subscriptions. Retrying in {RetryDelay}.",
-                    RetryDelay);
+                logger.LogWarning(redisEx, "BOT8016 could not establish Redis subscriptions. Retrying in {RetryDelay}.", RetryDelay);
             }
-            catch (Exception exception)
+            catch (Exception ex)
             {
-                logger.LogError(
-                    exception,
-                    "BOT8016 Redis subscription loop failed. Retrying in {RetryDelay}.",
-                    RetryDelay);
+                logger.LogError(ex, "BOT8016 Redis subscription loop failed. Retrying in {RetryDelay}.", RetryDelay);
             }
             finally
             {
-                await UnsubscribeSafelyAsync(subscriber, subscribedChannels);
+                foreach (var channel in subscribedChannels)
+                {
+                    try
+                    {
+                        await subscriber.UnsubscribeAsync(channel);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "BOT8016 could not unsubscribe cleanly from {Channel}", channel);
+                    }
+                }
+
+                if (subscribedChannels.Count > 0)
+                    logger.LogInformation("BOT8016 unsubscribed from Redis market channels.");
             }
 
             try
             {
-                await Task.Delay(RetryDelay, stoppingToken);
+                await Task.Delay(RetryDelay, ct);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
             }
@@ -77,10 +82,7 @@ public sealed class Bot8016RedisMarketSubscriber(
         logger.LogInformation("BOT8016 Redis market subscriber stopped.");
     }
 
-    private async Task SubscribeAsync(
-        ISubscriber subscriber,
-        ICollection<RedisChannel> subscribedChannels,
-        CancellationToken ct)
+    private async Task SubscribeAsync(ISubscriber subscriber, ICollection<RedisChannel> subscribedChannels, CancellationToken ct)
     {
         var indicatorChannel = RedisChannel.Literal(_options.AlligatorChannel);
 
@@ -89,18 +91,14 @@ public sealed class Bot8016RedisMarketSubscriber(
             if (!message.HasValue || ct.IsCancellationRequested)
                 return;
 
-            await ProcessWithGateAsync(
-                () => ProcessIndicatorAsync(indicatorChannel, message.ToString(), ct),
-                "indicator",
-                message.ToString(),
-                ct);
+            await ProcessWithGateAsync(() => ProcessIndicatorAsync(indicatorChannel, message.ToString(), ct), "indicator", message.ToString(), ct);
         });
 
         subscribedChannels.Add(indicatorChannel);
+       
         logger.LogInformation("BOT8016 subscribed to indicator channel {Channel}", indicatorChannel);
 
-        var marketIntervals = new[] { _options.EntryTimeframe, _options.ExitTimeframe }
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var marketIntervals = new[] { _options.EntryTimeframe, _options.ExitTimeframe }.Distinct(StringComparer.OrdinalIgnoreCase);
 
         foreach (var interval in marketIntervals)
         {
@@ -113,49 +111,35 @@ public sealed class Bot8016RedisMarketSubscriber(
                 if (!message.HasValue || ct.IsCancellationRequested)
                     return;
 
-                await ProcessWithGateAsync(
-                    () => ProcessCandleAsync(message.ToString(), ct),
-                    $"kline:{channel}",
-                    message.ToString(),
-                    ct);
+                await ProcessWithGateAsync(() => ProcessCandleAsync(message.ToString(), ct), $"kline:{channel}", message.ToString(), ct);
             });
 
             subscribedChannels.Add(channel);
+            
             logger.LogInformation("BOT8016 subscribed to {Channel}", channel);
         }
     }
 
-    private async Task ProcessWithGateAsync(
-        Func<Task> action,
-        string source,
-        string payload,
-        CancellationToken ct)
+    private async Task ProcessWithGateAsync(Func<Task> action, string source, string payload, CancellationToken ct)
     {
         var lockTaken = false;
 
         try
         {
             await _processingGate.WaitAsync(ct);
+            
             lockTaken = true;
             await action();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {}
+        catch (JsonException jsonEx)
         {
+            logger.LogWarning(jsonEx, "BOT8016 invalid Redis JSON. Source = {Source}, Payload = {Payload}", source, payload);
         }
-        catch (JsonException exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(
-                exception,
-                "BOT8016 invalid Redis JSON. Source = {Source}, Payload = {Payload}",
-                source,
-                payload);
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "BOT8016 Redis message processing failed. Source = {Source}",
-                source);
+            logger.LogError(ex, "BOT8016 Redis message processing failed. Source = {Source}", source);
         }
         finally
         {
@@ -163,41 +147,12 @@ public sealed class Bot8016RedisMarketSubscriber(
                 _processingGate.Release();
         }
     }
-
-    private async Task UnsubscribeSafelyAsync(
-        ISubscriber subscriber,
-        IReadOnlyCollection<RedisChannel> channels)
-    {
-        foreach (var channel in channels)
-        {
-            try
-            {
-                await subscriber.UnsubscribeAsync(channel);
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(
-                    exception,
-                    "BOT8016 could not unsubscribe cleanly from {Channel}",
-                    channel);
-            }
-        }
-
-        if (channels.Count > 0)
-            logger.LogInformation("BOT8016 unsubscribed from Redis market channels.");
-    }
-
-    private async Task ProcessIndicatorAsync(
-        RedisChannel channel,
-        string json,
-        CancellationToken cancellationToken)
+    private async Task ProcessIndicatorAsync(RedisChannel channel, string json, CancellationToken cancellationToken)
     {
         var indicator = ParseIndicator(json);
-
         if (indicator is null)
         {
-            logger.LogWarning(
-                "BOT8016 ignored indicator because the payload could not be parsed as alligator_ma.");
+            logger.LogWarning("BOT8016 ignored indicator because the payload could not be parsed as alligator_ma.");
             return;
         }
 
@@ -217,12 +172,9 @@ public sealed class Bot8016RedisMarketSubscriber(
         await TryProcessPendingEntryAsync(indicator, cancellationToken);
     }
 
-    private async Task ProcessCandleAsync(
-        string json,
-        CancellationToken cancellationToken)
+    private async Task ProcessCandleAsync(string json, CancellationToken ct)
     {
         var candle = ParseCandle(json);
-
         if (candle is null)
         {
             logger.LogWarning("BOT8016 could not parse kline payload. Payload = {Payload}", json);
@@ -234,23 +186,17 @@ public sealed class Bot8016RedisMarketSubscriber(
 
         if (!IsExpectedCandle(candle))
         {
-            logger.LogWarning(
-                "BOT8016 ignored unexpected candle. Symbol = {Symbol}, Interval = {Interval}, OpenTime = {OpenTime}, CloseTime = {CloseTime}, Close = {Close}",
-                candle.Symbol,
-                candle.Interval,
-                candle.OpenTime,
-                candle.CloseTime,
-                candle.Close);
+            logger.LogWarning("BOT8016 ignored unexpected candle. Symbol = {Symbol}, Interval = {Interval}, OpenTime = {OpenTime}, CloseTime = {CloseTime}, Close = {Close}", candle.Symbol, candle.Interval, candle.OpenTime, candle.CloseTime, candle.Close);
             return;
         }
 
         state.UpdateCandle(candle);
 
         if (IsEntryTimeframe(candle))
-            await ProcessEntryCandleAsync(candle, cancellationToken);
+            await ProcessEntryCandleAsync(candle, ct);
 
         if (IsExitTimeframe(candle))
-            await ProcessExitCandleAsync(candle, cancellationToken);
+            await ProcessExitCandleAsync(candle, ct);
     }
 
     private async Task ProcessEntryCandleAsync(Bot8016Candle candle, CancellationToken cancellationToken)
@@ -299,34 +245,29 @@ public sealed class Bot8016RedisMarketSubscriber(
         await entry.ProcessAsync(candle, indicator, cancellationToken);
     }
 
-    private async Task ProcessExitCandleAsync(
-        Bot8016Candle candle,
-        CancellationToken cancellationToken)
+    private async Task ProcessExitCandleAsync(Bot8016Candle candle, CancellationToken ct)
     {
-        await lifecycle.TryCreateStop3AfterBreakoutAsync(candle.Close, cancellationToken);
+        await lifecycle.TryCreateStop3AfterBreakoutAsync(candle.Close, ct);
 
         var indicator = state.GetIndicator();
         if (indicator is null || !IsFresh(indicator))
             return;
 
-        await lifecycle.ExitOnTeethCrossAsync(
-            candle.Close,
-            indicator.Teeth,
-            cancellationToken);
+        await lifecycle.ExitOnTeethCrossAsync(candle.Close, indicator.Teeth, ct);
     }
 
-    private bool IsEntryTimeframe(Bot8016Candle candle) =>
-        candle.Interval.Equals(_options.EntryTimeframe, StringComparison.OrdinalIgnoreCase);
+    private bool IsEntryTimeframe(Bot8016Candle candle) 
+        => candle.Interval.Equals(_options.EntryTimeframe, StringComparison.OrdinalIgnoreCase);
 
-    private bool IsExitTimeframe(Bot8016Candle candle) =>
-        candle.Interval.Equals(_options.ExitTimeframe, StringComparison.OrdinalIgnoreCase);
+    private bool IsExitTimeframe(Bot8016Candle candle)
+        => candle.Interval.Equals(_options.ExitTimeframe, StringComparison.OrdinalIgnoreCase);
 
-    private bool IsExpectedCandle(Bot8016Candle candle) =>
-        candle.Symbol.Equals(_options.Symbol, StringComparison.OrdinalIgnoreCase) &&
-        (IsEntryTimeframe(candle) || IsExitTimeframe(candle)) &&
-        candle.OpenTime > 0 &&
-        candle.CloseTime >= candle.OpenTime &&
-        candle.Close > 0;
+    private bool IsExpectedCandle(Bot8016Candle candle) 
+        => candle.Symbol.Equals(_options.Symbol, StringComparison.OrdinalIgnoreCase) 
+        && (IsEntryTimeframe(candle) || IsExitTimeframe(candle)) 
+        && candle.OpenTime > 0 
+        && candle.CloseTime >= candle.OpenTime
+        && candle.Close > 0;
 
     private bool IsExpectedIndicator(Bot8016IndicatorSnapshot indicator) =>
         indicator.Symbol.Equals(_options.Symbol, StringComparison.OrdinalIgnoreCase) &&
@@ -363,13 +304,8 @@ public sealed class Bot8016RedisMarketSubscriber(
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
-        if (!string.Equals(
-                GetString(root, "type"),
-                "alligator_ma",
-                StringComparison.OrdinalIgnoreCase))
-        {
+        if (!string.Equals(GetString(root, "type"), "alligator_ma", StringComparison.OrdinalIgnoreCase))
             return null;
-        }
 
         if (!root.TryGetProperty("indicators", out var indicators))
             return null;
