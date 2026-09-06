@@ -39,6 +39,7 @@ public sealed class RedisTradingSignalSubscriber(
                 });
 
                 subscribed = true;
+                
                 logger.LogInformation("Subscribed to trading signals. Channel = {Channel}", channel);
 
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct);
@@ -90,6 +91,7 @@ public sealed class RedisTradingSignalSubscriber(
             }
 
             var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
+           
             await HandleWithTransientRetryAsync(signal, cancellationToken);
 
             logger.LogInformation("Trading signal signalHandler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);

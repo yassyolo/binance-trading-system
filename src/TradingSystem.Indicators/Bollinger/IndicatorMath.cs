@@ -1,4 +1,4 @@
-namespace TradingSystem.Indicators.Common;
+namespace TradingSystem.Indicators.Bollinger;
 
 public static class IndicatorMath
 {

@@ -49,9 +49,7 @@ public sealed class RedisPositionStore(
 		if (missingIds.Length > 0)
 			await _database.SetRemoveAsync(keys.PositionIndex(bot), missingIds).WaitAsync(ct);
 
-		return loaded.Where(x => x.Entries.Length > 0)
-			.Select(x => FromEntries(x.Entries))
-			.ToArray();
+		return loaded.Where(x => x.Entries.Length > 0).Select(x => FromEntries(x.Entries)).ToArray();
 	}
 
 	private static HashEntry[] ToEntries(BotPosition p) =>
@@ -109,61 +107,61 @@ public sealed class RedisPositionStore(
 
 	private static BotPosition FromEntries(HashEntry[] entries)
 	{
-		var values = entries.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
-		var status = EnumValue(values, "status", PositionStatus.New);
+		var p = entries.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
+		var status = EnumValue(p, "status", PositionStatus.New);
 
 		return new BotPosition
 		{
-			ShortId = Get(values, "short_id"),
-			BotName = Get(values, "bot_name"),
-			Symbol = Get(values, "symbol"),
-			Side = EnumValue(values, "side", PositionSide.Long),
-			Mode = EnumValue(values, "mode", PositionMode.TpOnly),
-			Quantity = DecimalValue(values, "quantity") ?? 0,
-			RemainingQuantity = DecimalValue(values, "remaining_quantity") ?? 0,
-			EntryPrice = DecimalValue(values, "entry_price"),
-			ParentClientId = Nullable(values, "parent_client_id"),
-			ParentOrderId = Nullable(values, "parent_order_id"),
-			TpClientId = Nullable(values, "tp_client_id"),
-			TpOrderId = Nullable(values, "tp_order_id"),
-			TpPrice = DecimalValue(values, "tp_price"),
-			TpStatus = Nullable(values, "tp_status"),
-			TpExecuted = Bool(values, "tp_executed"),
-			SlClientId = Nullable(values, "sl_client_id"),
-			SlOrderId = Nullable(values, "sl_order_id"),
-			SlPrice = DecimalValue(values, "sl_price"),
-			SlStatus = Nullable(values, "sl_status"),
-			SlExecuted = Bool(values, "sl_executed"),
-			Stop3ClientId = Nullable(values, "stop3_client_id"),
-			Stop3OrderId = Nullable(values, "stop3_order_id"),
-			Stop3Current = DecimalValue(values, "stop3_current"),
-			Stop3Initial = DecimalValue(values, "stop3_initial"),
-			Stop3Previous = DecimalValue(values, "stop3_previous"),
-			Stop3NewPending = DecimalValue(values, "stop3_new_pending"),
-			Stop3Status = Nullable(values, "stop3_status"),
-			Stop3Created = Bool(values, "stop3_created"),
-			Stop3Pending = Bool(values, "stop3_pending"),
-			TrailCount = Int(values, "trail_count"),
-			TrailingInProgress = Bool(values, "trailing_in_progress"),
-			CloseClientId = Nullable(values, "close_client_id"),
-			CloseOrderId = Nullable(values, "close_order_id"),
-			CloseStatus = Nullable(values, "close_status"),
-			ProtectiveActive = Bool(values, "protective_active"),
-			ManualPosition = Bool(values, "manual_position"),
+			ShortId = Get(p, "short_id"),
+			BotName = Get(p, "bot_name"),
+			Symbol = Get(p, "symbol"),
+			Side = EnumValue(p, "side", PositionSide.Long),
+			Mode = EnumValue(p, "mode", PositionMode.TpOnly),
+			Quantity = DecimalValue(p, "quantity") ?? 0,
+			RemainingQuantity = DecimalValue(p, "remaining_quantity") ?? 0,
+			EntryPrice = DecimalValue(p, "entry_price"),
+			ParentClientId = Nullable(p, "parent_client_id"),
+			ParentOrderId = Nullable(p, "parent_order_id"),
+			TpClientId = Nullable(p, "tp_client_id"),
+			TpOrderId = Nullable(p, "tp_order_id"),
+			TpPrice = DecimalValue(p, "tp_price"),
+			TpStatus = Nullable(p, "tp_status"),
+			TpExecuted = Bool(p, "tp_executed"),
+			SlClientId = Nullable(p, "sl_client_id"),
+			SlOrderId = Nullable(p, "sl_order_id"),
+			SlPrice = DecimalValue(p, "sl_price"),
+			SlStatus = Nullable(p, "sl_status"),
+			SlExecuted = Bool(p, "sl_executed"),
+			Stop3ClientId = Nullable(p, "stop3_client_id"),
+			Stop3OrderId = Nullable(p, "stop3_order_id"),
+			Stop3Current = DecimalValue(p, "stop3_current"),
+			Stop3Initial = DecimalValue(p, "stop3_initial"),
+			Stop3Previous = DecimalValue(p, "stop3_previous"),
+			Stop3NewPending = DecimalValue(p, "stop3_new_pending"),
+			Stop3Status = Nullable(p, "stop3_status"),
+			Stop3Created = Bool(p, "stop3_created"),
+			Stop3Pending = Bool(p, "stop3_pending"),
+			TrailCount = Int(p, "trail_count"),
+			TrailingInProgress = Bool(p, "trailing_in_progress"),
+			CloseClientId = Nullable(p, "close_client_id"),
+			CloseOrderId = Nullable(p, "close_order_id"),
+			CloseStatus = Nullable(p, "close_status"),
+			ProtectiveActive = Bool(p, "protective_active"),
+			ManualPosition = Bool(p, "manual_position"),
 			Status = status,
-			Closed = status == PositionStatus.Closed || Date(values, "closed_at").HasValue,
-			Source = Nullable(values, "source"),
-			CreatedAtUtc = Date(values, "created_at") ?? DateTime.UtcNow,
-			UpdatedAtUtc = Date(values, "updated_at"),
-			ParentFilledAtUtc = Date(values, "parent_filled_at"),
-			TpFilledAtUtc = Date(values, "tp_filled_at"),
-			SlTriggeredAtUtc = Date(values, "sl_triggered_at"),
-			Stop3TriggeredAtUtc = Date(values, "stop3_triggered_at"),
-			ClosedAtUtc = Date(values, "closed_at"),
-			SignalCandleHigh = DecimalValue(values, "signal_candle_high"),
-			SignalCandleLow = DecimalValue(values, "signal_candle_low"),
-			SignalCandleCloseTime = Long(values, "signal_candle_close_time"),
-			HighReached = Bool(values, "high_reached")
+			Closed = status == PositionStatus.Closed || Date(p, "closed_at").HasValue,
+			Source = Nullable(p, "source"),
+			CreatedAtUtc = Date(p, "created_at") ?? DateTime.UtcNow,
+			UpdatedAtUtc = Date(p, "updated_at"),
+			ParentFilledAtUtc = Date(p, "parent_filled_at"),
+			TpFilledAtUtc = Date(p, "tp_filled_at"),
+			SlTriggeredAtUtc = Date(p, "sl_triggered_at"),
+			Stop3TriggeredAtUtc = Date(p, "stop3_triggered_at"),
+			ClosedAtUtc = Date(p, "closed_at"),
+			SignalCandleHigh = DecimalValue(p, "signal_candle_high"),
+			SignalCandleLow = DecimalValue(p, "signal_candle_low"),
+			SignalCandleCloseTime = Long(p, "signal_candle_close_time"),
+			HighReached = Bool(p, "high_reached")
 		};
 	}
 

@@ -29,7 +29,6 @@ using TradingSystem.RiskManagement;
 using TradingSystem.Signals;
 using TradingSystem.Strategies.Alligator;
 using TradingSystem.Strategies.Grid;
-using TradingSystem.Strategies.Positions;
 using TradingSystem.Strategies.Protection;
 using TradingSystem.StrategyPlugins.Loading;
 
@@ -64,7 +63,6 @@ builder.Services.AddSingleton<LivePositionLifecycleRecorder>();
 builder.Services.AddHostedService<PositionHistoryProjectionRepairWorker>();
 
 builder.Services.AddSingleton<GridSpacingPolicy>();
-builder.Services.AddSingleton<PositionAdmissionPolicy>();
 builder.Services.AddSingleton<Stop3Policy>();
 builder.Services.AddSingleton<AlligatorEntryPolicy>();
 

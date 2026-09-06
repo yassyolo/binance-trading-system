@@ -5,7 +5,7 @@ namespace TradingSystem.Redis.Events;
 
 public sealed class RedisEventDeduplicationStore(
     IConnectionMultiplexer redis)
-    :IEventDeduplicationStore
+    : IEventDeduplicationStore
 {
     private readonly IDatabase _db = redis.GetDatabase();
     

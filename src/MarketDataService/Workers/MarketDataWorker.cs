@@ -9,7 +9,7 @@ namespace MarketDataService.Workers;
 
 public sealed class MarketDataWorker(
     IOptions<MarketDataOptions> options,
-    KlinePublisher publisher,
+    KlinePublisher klinePublisher,
     ILogger<MarketDataWorker> logger)
     : BackgroundService
 {
@@ -40,18 +40,17 @@ public sealed class MarketDataWorker(
             {
                 using var webSocket = ClientWebSocketFactory.Create(new()
                 {
-                    KeepAliveIntervalSeconds = _options.KeepAliveIntervalSeconds,
-                    ReceiveBufferSizeBytes = _options.ReceiveBufferSizeBytes
+                    KeepAliveIntervalSeconds = _options.KeepAliveIntervalSeconds
                 });
 
                 var streams = string.Join('/', symbols.Select(x => $"{x.ToLowerInvariant()}@kline_{interval}"));
-
                 var baseUrl = _options.BinanceWebSocketBaseUrl.TrimEnd('/', '?');
                 var streamUrl = new Uri($"{baseUrl}?streams={streams}");
 
                 logger.LogInformation("Connecting to Binance kline stream. Interval = {Interval}, Symbols = {Symbols}", interval, string.Join(',', symbols));
 
                 await webSocket.ConnectAsync(streamUrl, ct);
+                
                 failureCount = 0;
 
                 while (webSocket.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -68,7 +67,7 @@ public sealed class MarketDataWorker(
                             kline.TryGetProperty("x", out var isClosed) &&
                             isClosed.ValueKind == JsonValueKind.True)
                         {
-                            await publisher.PublishAsync(kline, ct);
+                            await klinePublisher.PublishAsync(kline, ct);
                         }
                     }
                     catch (JsonException jsonEx)

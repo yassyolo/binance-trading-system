@@ -5,7 +5,7 @@ namespace TradingSystem.Redis.Signals;
 
 public sealed class RedisSignalThrottleStore(
 	IConnectionMultiplexer redis)
-	:IDistributedSignalThrottleStore
+	: IDistributedSignalThrottleStore
 {
 	public Task<bool> TryAcquireAsync(string bot, string symbol, string side, DateTime at, TimeSpan interval, CancellationToken ct)
 	{
@@ -14,11 +14,10 @@ public sealed class RedisSignalThrottleStore(
 		if(interval <= TimeSpan.Zero)
 			return Task.FromResult(true);	
 		
-		var key = $"trading:signal-throttle:{N(bot)}:{N(symbol)}:{N(side)}";
+		var key = $"trading:signal-throttle:{Normalize(bot)}:{Normalize(symbol)}:{Normalize(side)}";
 		
-		return redis.GetDatabase()
-			.StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);
+		return redis.GetDatabase().StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);
 	}
 	
-	static string N(string x) => x.Trim().ToUpperInvariant();
+	static string Normalize(string x) => x.Trim().ToUpperInvariant();
 }

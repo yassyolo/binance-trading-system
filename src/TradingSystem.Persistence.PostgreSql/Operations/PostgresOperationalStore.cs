@@ -8,7 +8,9 @@ namespace TradingSystem.Persistence.PostgreSql.Operations;
 
 public sealed class PostgresOperationalStore(
     ITradingDbConnectionFactory factory)
-    : IServiceHeartbeatStore, IAlertStore, IAuditLog
+    : IServiceHeartbeatStore,
+    IAlertStore,
+    IAuditLog
 {
     public async Task UpsertAsync(ServiceHeartbeat heartbeat, CancellationToken ct)
     {

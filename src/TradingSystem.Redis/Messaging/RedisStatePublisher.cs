@@ -16,7 +16,7 @@ public sealed class RedisStatePublisher(
     {
         ct.ThrowIfCancellationRequested();
         
-        var json = JsonSerializer.Serialize(payload,  JsonDefaults.Messaging);
+        var json = JsonSerializer.Serialize(payload, JsonDefaults.Messaging);
         
         await _database.StringSetAsync(key, json);
         await _subscriber.PublishAsync(RedisChannel.Literal(channel), json);

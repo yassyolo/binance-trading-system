@@ -112,6 +112,7 @@ public sealed class IndicatorProcessingWorker(
 			foreach (var processor in matchingProcessors)
 			{
 				var key = Key(processor.Name, candle.Symbol, candle.Interval);
+				
 				var gate = _processorLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 				await gate.WaitAsync(ct);
 

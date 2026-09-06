@@ -5,8 +5,7 @@ namespace TradingSystem.Redis.Constants;
 
 public sealed class RedisKeyFactory(string prefix)
 {
-    private readonly string _prefix = string.IsNullOrWhiteSpace(prefix)
-        ? string.Empty : prefix.Trim().TrimEnd(':') + ":";
+    private readonly string _prefix = string.IsNullOrWhiteSpace(prefix) ? string.Empty : prefix.Trim().TrimEnd(':') + ":";
 
     public RedisKey Cooldown(string bot, string symbol, PositionSide side)
         => Key($"trading:cooldown:{Normalize(bot)}:{Normalize(symbol)}:{Normalize(side.ToString())}");

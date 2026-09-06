@@ -22,7 +22,8 @@ public sealed class RedisTradingOperationLockProvider(
             throw new ArgumentOutOfRangeException(nameof(ttl));
         
         var key = keys.OperationLock(bot, symbol, side); 
-        var token = Guid.NewGuid().ToString("N");
+       
+        var token = Guid.NewGuid().ToString("Normalize");
         
         return await _db.StringSetAsync(key, token, ttl, When.NotExists) 
             ? new Handle(_db, key, token) 

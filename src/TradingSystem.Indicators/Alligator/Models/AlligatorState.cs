@@ -1,6 +1,5 @@
 ﻿using TradingSystem.Domain.MarketData;
 using TradingSystem.Indicators.Alligator.Configuration;
-using TradingSystem.Indicators.Common;
 
 namespace TradingSystem.Indicators.Alligator.Models;
 
@@ -19,18 +18,18 @@ public sealed class AlligatorState
         _lips = new(options.LipsLength);
     }
 
-    public (decimal jaw, decimal teeth, decimal lips, decimal sma)? Add(MarketCandle c)
+    public (decimal jaw, decimal teeth, decimal lips, decimal sma)? Add(MarketCandle candle)
     {
-        if (c.CloseTimeUtc <= _lastCloseTimeUtc)
+        if (candle.CloseTimeUtc <= _lastCloseTimeUtc)
             return null;
 
-        _lastCloseTimeUtc = c.CloseTimeUtc;
-        _queue.Enqueue(c);
+        _lastCloseTimeUtc = candle.CloseTimeUtc;
+        _queue.Enqueue(candle);
 
         while (_queue.Count > _options.HistoryLimit)
             _queue.Dequeue();
 
-        var h = (c.High + c.Low) / 2;
+        var h = (candle.High + candle.Low) / 2;
         var j = _jaw.Update(h);
         var t = _teeth.Update(h);
         var l = _lips.Update(h);

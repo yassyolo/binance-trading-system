@@ -25,12 +25,9 @@ public sealed class BollingerIndicatorProcessor(IOptions<BollingerOptions> optio
         ArgumentNullException.ThrowIfNull(candles);
 
         var state = new BollingerState(_options);
-        foreach (var candle in candles.Where(x => x.IsClosed)
-                     .OrderBy(x => x.CloseTimeUtc)
-                     .TakeLast(_options.HistoryLimit))
-        {
+       
+        foreach (var candle in candles.Where(x => x.IsClosed).OrderBy(x => x.CloseTimeUtc).TakeLast(_options.HistoryLimit))
             state.Add(candle);
-        }
 
         _states[Key(symbol, interval)] = state;
     }

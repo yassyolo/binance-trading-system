@@ -35,12 +35,10 @@ public sealed class TradingViewSignalPublisher(
 
         var configuredSymbol = bot.Symbol.Trim().ToUpperInvariant();
         var symbol = string.IsNullOrWhiteSpace(request.Symbol) ? configuredSymbol : request.Symbol.Trim().ToUpperInvariant();
-
         if (!symbol.Equals(configuredSymbol, StringComparison.OrdinalIgnoreCase))
             return PublishResult.Rejected(400, $"Symbol '{symbol}' is not allowed for {botName}. Expected '{configuredSymbol}'.");
 
         var signalId = string.IsNullOrWhiteSpace(request.SignalId) ? Guid.NewGuid().ToString() : request.SignalId.Trim();
-
         if (!Guid.TryParse(signalId, out _))
             return PublishResult.Rejected(400, "signal_id must be a valid GUID when supplied.");
 

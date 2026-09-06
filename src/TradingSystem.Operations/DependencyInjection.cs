@@ -13,7 +13,6 @@ public static class DependencyInjection
         services.AddOptions<ServiceHeartbeatOptions>().Bind(c.GetSection(ServiceHeartbeatOptions.SectionName)).Configure(opts => opts.ServiceName = serviceName).ValidateOnStart();
         services.AddSingleton<IValidateOptions<ServiceHeartbeatOptions>, ServiceHeartbeatOptionsValidator>();
 
-
         services.AddHostedService<ServiceHeartbeatWorker>();
         
         return services;

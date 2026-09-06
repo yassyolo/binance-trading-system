@@ -1,4 +1,4 @@
-﻿using TradingSystem.Indicators.Common;
+﻿using TradingSystem.Indicators.Bollinger;
 using Xunit;
 
 namespace TradingSystem.Indicators.Tests;

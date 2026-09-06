@@ -31,9 +31,7 @@ public sealed class Bot8015SignalGenerator(
         var longMatch = lips > teeth && teeth > jaw && x.Close > sma200;
         var shortMatch = lips < teeth && teeth < jaw && x.Close < sma200;
        
-        var side = longMatch ? "LONG" 
-            : shortMatch ? "SHORT"
-            : null;
+        var side = longMatch ? "LONG" : shortMatch ? "SHORT" : null;
 
         if (side is null 
             || (side == "LONG" && !_options.EnableLong) 

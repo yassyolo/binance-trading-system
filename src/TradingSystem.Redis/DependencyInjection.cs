@@ -42,8 +42,7 @@ public static class DependencyInjection
 
             var connection = ConnectionMultiplexer.Connect(configurationOptions);
 
-            connection.ConnectionFailed += (_, args) =>
-                logger.LogWarning(args.Exception, "Redis connection failed. Endpoint = {Endpoint}, FailureType = {FailureType}", args.EndPoint, args.FailureType);
+            connection.ConnectionFailed += (_, args) => logger.LogWarning(args.Exception, "Redis connection failed. Endpoint = {Endpoint}, FailureType = {FailureType}", args.EndPoint, args.FailureType);
 
             connection.ConnectionRestored += (_, args) => logger.LogInformation("Redis connection restored. Endpoint = {Endpoint}, FailureType = {FailureType}", args.EndPoint, args.FailureType);
 

@@ -24,39 +24,42 @@ public sealed class AlligatorIndicatorProcessor(
 	public int RequiredHistory => Math.Max(_options.HistoryLimit, _options.SmaLength);
 	
 	public void Initialize(string symbol, string interval, IReadOnlyList<MarketCandle> candles) 
-	{ 
-		var s = new AlligatorState(_options); 
+	{
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        ArgumentException.ThrowIfNullOrWhiteSpace(interval);
+        ArgumentNullException.ThrowIfNull(candles);
+
+        var state = new AlligatorState(_options); 
 		
-		foreach (var c in candles.Where(x => x.IsClosed).OrderBy(x => x.CloseTimeUtc).TakeLast(_options.HistoryLimit)) 
-			s.Add(c); 
+		foreach (var candle in candles.Where(x => x.IsClosed).OrderBy(x => x.CloseTimeUtc).TakeLast(_options.HistoryLimit)) 
+			state.Add(candle); 
 		
-		_states[Key(symbol, interval)] = s; 
+		_states[Key(symbol, interval)] = state; 
 	}
 	
-	public IndicatorSnapshotMessage? Process(MarketCandle c, DateTimeOffset now) 
+	public IndicatorSnapshotMessage? Process(MarketCandle candle, DateTimeOffset now) 
 	{ 
-		if (!c.IsClosed || !_states.TryGetValue(Key(c.Symbol, c.Interval), out var s)) 
+		if (!candle.IsClosed || !_states.TryGetValue(Key(candle.Symbol, candle.Interval), out var state)) 
 			return null; 
 		
-		var v = s.Add(c); 
-		
-		if (v is null) 
+		var values = state.Add(candle); 	
+		if (values is null) 
 			return null; 
 		
 		return new() 
 		{ 
 			Type = Name, 
-			Symbol = c.Symbol, 
-			Timeframe = c.Interval,
-			CandleOpenTime = new DateTimeOffset(c.OpenTimeUtc).ToUnixTimeMilliseconds(), 
-			CandleCloseTime = new DateTimeOffset(c.CloseTimeUtc).ToUnixTimeMilliseconds(), 
+			Symbol = candle.Symbol, 
+			Timeframe = candle.Interval,
+			CandleOpenTime = new DateTimeOffset(candle.OpenTimeUtc).ToUnixTimeMilliseconds(), 
+			CandleCloseTime = new DateTimeOffset(candle.CloseTimeUtc).ToUnixTimeMilliseconds(), 
 			PublishedAt = now.ToUnixTimeMilliseconds(),
 			Indicators = new Dictionary<string, IndicatorValueMessage> 
 			{ 
-				{ "alligator_jaw", new() { Value = v.Value.jaw } }, 
-				{ "alligator_teeth", new() { Value = v.Value.teeth } }, 
-				{ "alligator_lips", new() { Value = v.Value.lips } },
-				{ "sma200", new() { Value = v.Value.sma } } 
+				{ "alligator_jaw", new() { Value = values.Value.jaw } }, 
+				{ "alligator_teeth", new() { Value = values.Value.teeth } }, 
+				{ "alligator_lips", new() { Value = values.Value.lips } },
+				{ "sma200", new() { Value = values.Value.sma } } 
 			} 
 		}; 
 	}

@@ -1,4 +1,4 @@
-﻿namespace TradingSystem.Indicators.Common;
+﻿namespace TradingSystem.Indicators.Alligator.Models;
 
 public sealed class SmoothedMovingAverage
 {

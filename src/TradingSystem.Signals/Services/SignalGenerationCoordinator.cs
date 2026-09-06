@@ -31,10 +31,8 @@ public sealed class SignalGenerationCoordinator(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(s => new { Symbol = s, Generator = g }))
             .GroupBy(i => i.Symbol, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Select(i => i.Generator).Distinct().ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(g => g.Key, g => g.Select(i => i.Generator).Distinct().ToArray(),
+            StringComparer.OrdinalIgnoreCase);
 
     private readonly SignalGenerationOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, DateTime> _processedSignalIds = new(StringComparer.OrdinalIgnoreCase);
@@ -52,13 +50,13 @@ public sealed class SignalGenerationCoordinator(
         {
             ct.ThrowIfCancellationRequested();
 
-            if (!_options.Bots.TryGetValue(generator.BotName, out var botOptions) ||
-                !botOptions.Enabled ||
-                botOptions.Mode == SignalGenerationMode.TradingViewOnly)
+            if (!_options.Bots.TryGetValue(generator.BotName, out var botOptions) 
+                || !botOptions.Enabled
+                || botOptions.Mode == SignalGenerationMode.TradingViewOnly)
                 continue;
 
-            if (!botOptions.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase) ||
-                !botOptions.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
+            if (!botOptions.Symbol.Equals(snapshot.Symbol, StringComparison.OrdinalIgnoreCase) 
+                || !botOptions.Interval.Equals(snapshot.Interval, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var signal = await generator.GenerateAsync(snapshot, ct);
@@ -79,13 +77,12 @@ public sealed class SignalGenerationCoordinator(
             {
                 var minimumInterval = TimeSpan.FromSeconds(botOptions.MinimumSecondsBetweenGeneratedSignals);
                 var acquired = await throttle.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Action, signal.GeneratedAtUtc, minimumInterval, ct);
-
                 if (!acquired)
                     continue;
 
                 await RecordSignalWithRetryAsync(signal, ct);
 
-                if (botOptions.Mode is SignalGenerationMode.InternalLive or SignalGenerationMode.Compare)
+                if (botOptions.Mode is SignalGenerationMode.InternalLive)
                 {
                     await publisher.PublishAsync(signal, ct);
                 }

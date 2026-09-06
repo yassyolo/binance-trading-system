@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using StrategyService.Signals.Models;
 using TradingSystem.Contracts.Indicators;
 using TradingSystem.Contracts.Klines;
 using TradingSystem.Contracts.Messaging;
@@ -21,16 +22,6 @@ public sealed class InternalSignalMarketSubscriber(
     ILogger<InternalSignalMarketSubscriber> logger)
     : BackgroundService
 {
-    private sealed record MarketKey(string Symbol, string Interval);
-
-    private sealed class JoinedState
-    {
-        public ClosedKlineMessage? Candle { get; set; }
-        public long CandleCloseTime { get; set; }
-        public Dictionary<string, decimal> Indicators { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public SemaphoreSlim Gate { get; } = new(1, 1);
-    }
-
     private static readonly string[] AlligatorIndicatorKeys =
     [
         "alligator_jaw",
@@ -66,21 +57,26 @@ public sealed class InternalSignalMarketSubscriber(
         foreach (var market in _markets)
         {
             var channel = RedisChannel.Literal(RedisChannels.Kline(market.Interval, market.Symbol));
+           
             await subscriber.SubscribeAsync(channel, async (_, value) =>
             {
-                if (!value.HasValue || ct.IsCancellationRequested) return;
+                if (!value.HasValue || ct.IsCancellationRequested)
+                    return;
                
                 await ProcessCandleSafelyAsync(value.ToString(), ct);
             });
+            
             subscriptions.Add(channel);
         }
 
         foreach (var indicatorName in new[] { "alligator_ma", "bb" })
         {
             var channel = RedisChannel.Literal(RedisChannels.Indicator(indicatorName));
+           
             await subscriber.SubscribeAsync(channel, async (_, value) =>
             {
-                if (!value.HasValue || ct.IsCancellationRequested) return;
+                if (!value.HasValue || ct.IsCancellationRequested) 
+                    return;
                 
                 await ProcessIndicatorSafelyAsync(value.ToString(), ct);
             });
@@ -95,8 +91,7 @@ public sealed class InternalSignalMarketSubscriber(
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
+        {}
         finally
         {
             foreach (var channel in subscriptions)
@@ -129,6 +124,7 @@ public sealed class InternalSignalMarketSubscriber(
                 return;
 
             var state = _states.GetOrAdd(key, _ => new JoinedState());
+            
             await state.Gate.WaitAsync(ct);
             
             try
@@ -140,6 +136,7 @@ public sealed class InternalSignalMarketSubscriber(
                 }
 
                 state.Candle = candle;
+               
                 await TryDispatchAsync(key, state, ct);
             }
             finally
@@ -162,13 +159,17 @@ public sealed class InternalSignalMarketSubscriber(
         try
         {
             var snapshot = JsonSerializer.Deserialize<IndicatorSnapshotMessage>(raw, JsonDefaults.Messaging);
-            if (snapshot is null) return;
+            if (snapshot is null) 
+                return;
 
             var key = new MarketKey(NormalizeSymbol(snapshot.Symbol), NormalizeInterval(snapshot.Timeframe));
-            if (!_markets.Contains(key)) return;
+            if (!_markets.Contains(key))
+                return;
 
             var state = _states.GetOrAdd(key, _ => new JoinedState());
+           
             await state.Gate.WaitAsync(ct);
+          
             try
             {
                 if (state.CandleCloseTime != 0 && state.CandleCloseTime != snapshot.CandleCloseTime)
@@ -189,8 +190,14 @@ public sealed class InternalSignalMarketSubscriber(
                 state.Gate.Release();
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { logger.LogError(ex, "Internal signal indicator processing failed."); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
+        { 
+            throw;
+        }
+        catch (Exception ex)
+        { 
+            logger.LogError(ex, "Internal signal indicator processing failed."); 
+        }
     }
 
     private async Task TryDispatchAsync(MarketKey key, JoinedState state, CancellationToken ct)
@@ -234,19 +241,9 @@ public sealed class InternalSignalMarketSubscriber(
         }
     }
 
-    private static bool TryParseCandle(
-        ClosedKlineMessage candle,
-        out decimal open,
-        out decimal high,
-        out decimal low,
-        out decimal close,
-        out decimal volume)
+    private static bool TryParseCandle(ClosedKlineMessage candle, out decimal open, out decimal high, out decimal low, out decimal close, out decimal volume)
     {
-        open = 0;
-        high = 0;
-        low = 0;
-        close = 0;
-        volume = 0;
+        open = high = low = close = volume = 0;
 
         if (!decimal.TryParse(candle.Open, NumberStyles.Any, CultureInfo.InvariantCulture, out open) || open <= 0) 
             return false;
