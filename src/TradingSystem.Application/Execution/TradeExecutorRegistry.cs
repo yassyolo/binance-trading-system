@@ -21,10 +21,10 @@ public sealed class TradeExecutorRegistry : ITradeExecutor
         _executors = map;
     }
 
-    public Task<TradeExecutionResult> OpenAsync(string botName, string symbol,  PositionSide side,  string? source,  CancellationToken ct)
+    public Task<TradeExecutionResult> OpenAsync(string botName, string symbol, PositionSide side, string? source, CancellationToken ct)
          => GetRequired(botName).OpenAsync(symbol, side, source, ct);
 
-    public Task<TradeExecutionResult> CloseAsync(string botName, string shortId,  string reason,  CancellationToken ct)
+    public Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
          => GetRequired(botName).CloseAsync(shortId, reason, ct);
 
     private IBotTradeExecutor GetRequired(string botName)

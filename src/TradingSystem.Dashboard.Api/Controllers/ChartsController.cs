@@ -15,25 +15,11 @@ public sealed class ChartsController(
     [HttpGet("{symbol}/{interval}")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        string symbol,
-        string interval,
-        DateTime fromUtc,
-        DateTime toUtc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(string symbol, string interval, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
-        RequestValidation.ValidateChart(
-            symbol,
-            interval,
-            fromUtc,
-            toUtc);
+        RequestValidation.ValidateChart(symbol, interval, fromUtc, toUtc);
 
-        var result = await store.GetPriceChartAsync(
-            symbol,
-            interval,
-            fromUtc,
-            toUtc,
-            cancellationToken);
+        var result = await store.GetPriceChartAsync(symbol, interval, fromUtc, toUtc, ct);
 
         return Ok(result);
     }

@@ -16,16 +16,11 @@ public sealed class BacktestsController(
     [HttpPost]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("write")]
-    public async Task<IActionResult> CreateAsync(
-        BacktestRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateAsync(BacktestRequest request, CancellationToken ct)
     {
         RequestValidation.Validate(request);
 
-        var result = await store.EnqueueBacktestAsync(
-            request,
-            DashboardUserName,
-            cancellationToken);
+        var result = await store.EnqueueBacktestAsync(request, DashboardUserName, ct);
 
         return Accepted(value: result);
     }

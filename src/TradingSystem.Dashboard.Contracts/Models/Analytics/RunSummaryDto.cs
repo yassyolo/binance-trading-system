@@ -14,4 +14,3 @@ public sealed record RunSummaryDto(
     decimal? WinRatePercent, 
     decimal? MaxDrawdownPercent, 
     decimal? Score);
-

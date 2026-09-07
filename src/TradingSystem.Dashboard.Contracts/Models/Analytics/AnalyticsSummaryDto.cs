@@ -16,4 +16,3 @@ public sealed record AnalyticsSummaryDto(
     IReadOnlyDictionary<string, int> BlockReasons, 
     decimal LongPnl,
     decimal ShortPnl);
-

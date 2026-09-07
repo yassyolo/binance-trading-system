@@ -7,7 +7,6 @@ using TradingSystem.Domain.Enums;
 using TradingSystem.Infrastructure.Serialization;
 using TradingSystem.Redis.Configuration;
 using TradingSystem.Redis.Constants;
-using Xunit;
 
 namespace TradingSystem.Redis.Tests;
 

@@ -1,7 +1,6 @@
 ﻿using TradingSystem.EventStore.Models;
 using TradingSystem.HistoricalDatabase.Configuration;
 using TradingSystem.Prometheus.Configuration;
-using Xunit;
 
 namespace TradingSystem.Observability.Tests;
 
@@ -10,8 +9,7 @@ public sealed class HistoricalAndPrometheusTests
     [Fact]
     public void HistoricalDatabaseOptions_DefaultOptions_Succeed()
     {
-        var result = new HistoricalDatabaseOptionsValidator()
-            .Validate(null, new HistoricalDatabaseOptions());
+        var result = new HistoricalDatabaseOptionsValidator().Validate(null, new HistoricalDatabaseOptions());
 
         Assert.True(result.Succeeded);
     }
@@ -21,9 +19,7 @@ public sealed class HistoricalAndPrometheusTests
     [InlineData(-1)]
     public void HistoricalDatabaseOptions_NonPositiveCommandTimeout_Fails(int value)
     {
-        var result = new HistoricalDatabaseOptionsValidator().Validate(
-            null,
-            new HistoricalDatabaseOptions { CommandTimeoutSeconds = value });
+        var result = new HistoricalDatabaseOptionsValidator().Validate(null, new HistoricalDatabaseOptions { CommandTimeoutSeconds = value });
 
         Assert.False(result.Succeeded);
     }
@@ -31,9 +27,7 @@ public sealed class HistoricalAndPrometheusTests
     [Fact]
     public void HistoricalDatabaseOptions_RetentionBelowThirtyDays_Fails()
     {
-        var result = new HistoricalDatabaseOptionsValidator().Validate(
-            null,
-            new HistoricalDatabaseOptions { RetentionDays = 29 });
+        var result = new HistoricalDatabaseOptionsValidator().Validate(null, new HistoricalDatabaseOptions { RetentionDays = 29 });
 
         Assert.False(result.Succeeded);
     }
@@ -41,9 +35,7 @@ public sealed class HistoricalAndPrometheusTests
     [Fact]
     public void HistoricalDatabaseOptions_PortfolioSnapshotBelowFiveSeconds_Fails()
     {
-        var result = new HistoricalDatabaseOptionsValidator().Validate(
-            null,
-            new HistoricalDatabaseOptions { PortfolioSnapshotIntervalSeconds = 4 });
+        var result = new HistoricalDatabaseOptionsValidator().Validate(null, new HistoricalDatabaseOptions { PortfolioSnapshotIntervalSeconds = 4 });
 
         Assert.False(result.Succeeded);
     }
@@ -61,9 +53,7 @@ public sealed class HistoricalAndPrometheusTests
     [InlineData(65536)]
     public void PrometheusOptions_InvalidPort_Fails(int port)
     {
-        var result = new PrometheusOptionsValidator().Validate(
-            null,
-            new PrometheusOptions { Port = port });
+        var result = new PrometheusOptionsValidator().Validate(null, new PrometheusOptions { Port = port });
 
         Assert.False(result.Succeeded);
     }
@@ -73,9 +63,7 @@ public sealed class HistoricalAndPrometheusTests
     [InlineData("metrics")]
     public void PrometheusOptions_InvalidUrl_Fails(string url)
     {
-        var result = new PrometheusOptionsValidator().Validate(
-            null,
-            new PrometheusOptions { Url = url });
+        var result = new PrometheusOptionsValidator().Validate(null, new PrometheusOptions { Url = url });
 
         Assert.False(result.Succeeded);
     }
@@ -83,9 +71,7 @@ public sealed class HistoricalAndPrometheusTests
     [Fact]
     public void PrometheusOptions_OneSecondPortfolioRefresh_IsAllowed()
     {
-        var result = new PrometheusOptionsValidator().Validate(
-            null,
-            new PrometheusOptions { PortfolioRefreshSeconds = 1 });
+        var result = new PrometheusOptionsValidator().Validate(null, new PrometheusOptions { PortfolioRefreshSeconds = 1 });
 
         Assert.True(result.Succeeded);
     }

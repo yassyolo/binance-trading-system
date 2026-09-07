@@ -19,8 +19,6 @@ public sealed class DevelopmentAuthController(
         if (!environment.IsDevelopment())
             return NotFound();
 
-        return Ok(
-            tokenService.CreateAdministratorToken(
-                "local-development-user"));
+        return Ok(tokenService.CreateAdministratorToken("local-development-user"));
     }
 }

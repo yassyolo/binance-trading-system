@@ -229,7 +229,17 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 	public async Task CancelAsync(Guid replayId, string actor, CancellationToken ct)
 	{
 		await using var connection = await connections.OpenAsync(ct);
-		await connection.ExecuteAsync(new CommandDefinition("update trading_replay.jobs set cancellation_requested = true, cancelled_by = @actor, status = case when status = 'Pending' then 'Cancelled' else status end, completed_at_utc = case when status = 'Pending' then now() else completed_at_utc end where replay_id = @replayId and status in ('Pending', 'Processing', 'Paused')", new { replayId, actor }, cancellationToken: ct));
+		
+		await connection.ExecuteAsync(
+			new CommandDefinition("update trading_replay.jobs " +
+			"set cancellation_requested = true, " +
+			"cancelled_by = @actor, " +
+			"status = case when status = 'Pending' then 'Cancelled' else status end," +
+			" completed_at_utc = case when status = 'Pending' then now() else completed_at_utc end " +
+			"where replay_id = @replayId " +
+			"and status in ('Pending', 'Processing', 'Paused')", 
+			new { replayId, actor }, 
+			cancellationToken: ct));
 	}
 
 	public async Task MarkCancelledAsync(Guid replayId, CancellationToken ct)

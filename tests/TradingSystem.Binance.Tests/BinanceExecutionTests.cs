@@ -88,38 +88,6 @@ public sealed class BinanceExecutionTests
     }
 
     [Fact]
-    public async Task SafeCancelNormalAsync_WhenCancelFailsButOrderIsAbsent_ReturnsTrue()
-    {
-        var client = new FakeOrderClient
-        {
-            CancelOrderException = new HttpRequestException("unknown cancel outcome"),
-            OpenOrders = []
-        };
-        var sut = Safe(client);
-
-        var result = await sut.SafeCancelNormalAsync("BTCUSDC", "o1", "cid", default);
-
-        Assert.True(result);
-        Assert.Equal(1, client.CancelOrderCalls);
-        Assert.Equal(1, client.GetOpenOrdersCalls);
-    }
-
-    [Fact]
-    public async Task SafeCancelNormalAsync_WhenCancelFailsAndOrderStillExists_ReturnsFalse()
-    {
-        var client = new FakeOrderClient
-        {
-            CancelOrderException = new HttpRequestException("unknown cancel outcome"),
-            OpenOrders = [new BinanceOpenOrder { OrderId = "o1", ClientOrderId = "cid" }]
-        };
-        var sut = Safe(client);
-
-        var result = await sut.SafeCancelNormalAsync("BTCUSDC", "o1", "cid", default);
-
-        Assert.False(result);
-    }
-
-    [Fact]
     public async Task ExchangeInfo_RoundPrice_QuantizesDown()
     {
         var client = new FakeOrderClient

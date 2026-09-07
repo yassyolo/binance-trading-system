@@ -11,4 +11,3 @@ public sealed record AlertDto(
     bool Acknowledged, 
     DateTime? AcknowledgedAtUtc, 
     string? AcknowledgedBy);
-

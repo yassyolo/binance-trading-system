@@ -7,8 +7,7 @@ using TradingSystem.Dashboard.Api.Authentication.Models;
 
 namespace TradingSystem.Dashboard.Api.Authentication;
 
-public sealed class DashboardTokenService(
-    DashboardTokenOptions options)
+public sealed class DashboardTokenService(DashboardTokenOptions options)
 {
     private static readonly string[] AdministratorRoles =
     [
@@ -17,35 +16,21 @@ public sealed class DashboardTokenService(
         "Administrator"
     ];
 
-    public DashboardLoginResponse CreateAdministratorToken(
-        string userName)
+    public DashboardLoginResponse CreateAdministratorToken(string userName)
     {
         var now = DateTime.UtcNow;
-        var expiresAtUtc =
-            now.AddHours(options.LifetimeHours);
+        var expiresAtUtc = now.AddHours(options.LifetimeHours);
 
         var claims = new List<Claim>
         {
-            new(
-                JwtRegisteredClaimNames.Sub,
-                userName),
-            new(
-                "name",
-                userName),
-            new(
-                JwtRegisteredClaimNames.Jti,
-                Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Sub, userName),
+            new("name", userName),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        claims.AddRange(
-            AdministratorRoles.Select(
-                role =>
-                    new Claim(
-                        "role",
-                        role)));
+        claims.AddRange(AdministratorRoles.Select(role => new Claim("role", role)));
 
-        var credentials =
-            new SigningCredentials(
+        var credentials = new SigningCredentials(
                 new SymmetricSecurityKey(
                     Encoding.UTF8.GetBytes(
                         options.SigningKey)),

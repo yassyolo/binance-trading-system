@@ -15,23 +15,9 @@ public sealed class AuditController(
     [HttpGet]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        string? actor,
-        string? action,
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        int skip,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct)
     {
-        var result = await store.GetAuditEventsAsync(
-            actor,
-            action,
-            fromUtc,
-            toUtc,
-            RequestValidation.Skip(skip),
-            RequestValidation.PageSize(take),
-            cancellationToken);
+        var result = await store.GetAuditEventsAsync(actor, action, fromUtc, toUtc, RequestValidation.Skip(skip), RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }

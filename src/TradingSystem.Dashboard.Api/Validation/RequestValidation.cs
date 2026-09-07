@@ -552,26 +552,12 @@ public static class RequestValidation
         }
     }
 
-    private static void Period(
-        Dictionary<string, List<string>> errors,
-        DateTime from,
-        DateTime to)
+    private static void Period(Dictionary<string, List<string>> errors, DateTime from, DateTime to)
     {
         if (from >= to)
-        {
-            Add(
-                errors,
-                nameof(to),
-                "ToUtc must be later than FromUtc.");
-        }
+            Add(errors, nameof(to), "ToUtc must be later than FromUtc.");
 
-        if (to - from >
-            TimeSpan.FromDays(3660))
-        {
-            Add(
-                errors,
-                nameof(to),
-                "Requested period is too large.");
-        }
+        if (to - from > TimeSpan.FromDays(3660))
+            Add(errors, nameof(to), "Requested period is too large.");
     }
 }

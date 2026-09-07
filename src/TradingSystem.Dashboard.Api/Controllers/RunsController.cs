@@ -15,18 +15,9 @@ public sealed class RunsController(
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        string? botName,
-        int skip,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(string? botName, int skip, int take, CancellationToken ct)
     {
-        var result = await store.GetRunsAsync(
-            new(
-                RequestValidation.Skip(skip),
-                RequestValidation.PageSize(take),
-                botName),
-            cancellationToken);
+        var result = await store.GetRunsAsync(new(RequestValidation.Skip(skip), RequestValidation.PageSize(take), botName), ct);
 
         return Ok(result);
     }

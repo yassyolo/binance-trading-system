@@ -41,11 +41,8 @@ public static class DashboardPasswordVerifier
 
         try
         {
-            var salt =
-                Convert.FromBase64String(parts[2]);
-
-            var expected =
-                Convert.FromBase64String(parts[3]);
+            var salt = Convert.FromBase64String(parts[2]);
+            var expected = Convert.FromBase64String(parts[3]);
 
             if (salt.Length < 16 ||
                 expected.Length < 32)
@@ -61,9 +58,7 @@ public static class DashboardPasswordVerifier
                     HashAlgorithmName.SHA256,
                     expected.Length);
 
-            return CryptographicOperations.FixedTimeEquals(
-                actual,
-                expected);
+            return CryptographicOperations.FixedTimeEquals(actual, expected);
         }
         catch (FormatException)
         {
@@ -71,20 +66,11 @@ public static class DashboardPasswordVerifier
         }
     }
 
-    public static bool FixedTimeEquals(
-        string left,
-        string right)
+    public static bool FixedTimeEquals(string left, string right)
     {
-        var leftHash =
-            SHA256.HashData(
-                Encoding.UTF8.GetBytes(left));
+        var leftHash = SHA256.HashData(Encoding.UTF8.GetBytes(left));
+        var rightHash = SHA256.HashData(Encoding.UTF8.GetBytes(right));
 
-        var rightHash =
-            SHA256.HashData(
-                Encoding.UTF8.GetBytes(right));
-
-        return CryptographicOperations.FixedTimeEquals(
-            leftHash,
-            rightHash);
+        return CryptographicOperations.FixedTimeEquals(leftHash, rightHash);
     }
 }

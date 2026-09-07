@@ -76,9 +76,9 @@ public sealed class SafeBinanceOrderService(
                 {
                     throw;
                 }
-                catch (Exception recoveryException)
+                catch (Exception recoveryEx)
                 {
-                    lastLookupException = recoveryException;
+                    lastLookupException = recoveryEx;
                 }
             }
 
@@ -116,28 +116,6 @@ public sealed class SafeBinanceOrderService(
         }
     }
 
-    public async Task<bool> SafeCancelNormalAsync(string symbol, string? orderId, string? clientOrderId, CancellationToken ct)
-    {
-        if (!string.IsNullOrWhiteSpace(orderId))
-        {
-            try
-            {
-                await ordersClient.CancelOrderAsync(symbol, orderId, ct);
-                return true;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Normal cancel failed. OrderId = {OrderId}", orderId);
-            }
-        }
-
-        return await VerifyNormalOrderAbsentAsync(symbol, orderId, clientOrderId, ct);
-    }
-
     public async Task<bool> SafeCancelAlgoAsync(string symbol, string? algoOrderId, string? clientAlgoId, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(algoOrderId))
@@ -158,17 +136,6 @@ public sealed class SafeBinanceOrderService(
         }
 
         return await VerifyAlgoOrderAbsentAsync(symbol, algoOrderId, clientAlgoId, ct);
-    }
-
-    public async Task<bool> VerifyNormalOrderAbsentAsync(string symbol, string? orderId, string? clientOrderId, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(orderId) && string.IsNullOrWhiteSpace(clientOrderId))
-            return false;
-
-        var openOrders = await ordersClient.GetOpenOrdersAsync(symbol, ct);
-        return !openOrders.Any(o =>
-            (!string.IsNullOrWhiteSpace(orderId) && o.OrderId == orderId) ||
-            (!string.IsNullOrWhiteSpace(clientOrderId) && o.ClientOrderId == clientOrderId));
     }
 
     public async Task<bool> VerifyAlgoOrderAbsentAsync(string symbol, string? algoOrderId, string? clientAlgoId, CancellationToken ct)
@@ -194,16 +161,16 @@ public sealed class SafeBinanceOrderService(
         try
         {
             refreshed = !string.IsNullOrWhiteSpace(order.OrderId)
-                ? await ordersClient.GetOrderAsync(symbol, order.OrderId, ct)
-                : await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+               ? await ordersClient.GetOrderAsync(symbol, order.OrderId, ct)
+               : await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Could not re-query FILLED Binance order before trade-fill recovery.");
+            logger.LogWarning(ex, "Could not re-query FILLED Binance order before trade-fill recovery.");
             refreshed = order;
         }
 
@@ -224,12 +191,7 @@ public sealed class SafeBinanceOrderService(
 
             var averagePrice = quoteQuantity / executedQuantity;
 
-            logger.LogInformation("Recovered authoritative Binance fill economics from user trades. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}, AveragePrice = {AveragePrice}, ExecutedQuantity = {ExecutedQuantity}",
-                symbol,
-                order.OrderId,
-                clientOrderId,
-                averagePrice,
-                executedQuantity);
+            logger.LogInformation("Recovered authoritative Binance fill economics from user trades. Symbol = {Symbol}, OrderId = {OrderId}, ClientOrderId = {ClientOrderId}, AveragePrice = {AveragePrice}, ExecutedQuantity = {ExecutedQuantity}", symbol, order.OrderId, clientOrderId, averagePrice, executedQuantity);
 
             return refreshed with
             {
@@ -242,9 +204,10 @@ public sealed class SafeBinanceOrderService(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Could not recover Binance fill economics from user trades.");
+            logger.LogWarning(ex, "Could not recover Binance fill economics from user trades.");
+           
             return null;
         }
     }
@@ -287,8 +250,9 @@ public sealed class SafeBinanceOrderService(
         => order.Status?.Equals("FILLED", StringComparison.OrdinalIgnoreCase) == true;
 
     private static bool HasUsableFillEconomics(BinanceOrderResult order)
-        => order.AveragePrice is > 0 ||
-           order.ExecutedQuantity is > 0 && order.CumulativeQuoteQuantity is > 0;
+        => order.AveragePrice is > 0 
+        || order.ExecutedQuantity is > 0 
+        && order.CumulativeQuoteQuantity is > 0;
 
     private static void ThrowIfTerminal(BinanceOrderResult order)
     {

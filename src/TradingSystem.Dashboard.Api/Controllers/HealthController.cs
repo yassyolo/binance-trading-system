@@ -14,11 +14,9 @@ public sealed class HealthController(
     [HttpGet("components")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetComponentsAsync(
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetComponentsAsync(CancellationToken ct)
     {
-        var result = await store.GetHealthAsync(
-            cancellationToken);
+        var result = await store.GetHealthAsync(ct);
 
         return Ok(result);
     }

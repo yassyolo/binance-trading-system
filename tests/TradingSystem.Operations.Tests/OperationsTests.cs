@@ -30,8 +30,7 @@ public sealed class OperationsMissingTests
     [Fact]
     public void ServiceHeartbeatOptions_DefaultOptions_Succeed()
     {
-        var result = new ServiceHeartbeatOptionsValidator()
-            .Validate(null, new ServiceHeartbeatOptions());
+        var result = new ServiceHeartbeatOptionsValidator().Validate(null, new ServiceHeartbeatOptions());
 
         Assert.True(result.Succeeded);
     }

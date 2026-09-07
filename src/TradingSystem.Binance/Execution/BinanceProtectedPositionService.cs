@@ -14,7 +14,7 @@ namespace TradingSystem.Binance.Execution;
 public sealed class BinanceProtectedPositionService(
     IBinanceFuturesOrderClient ordersClient,
     SafeBinanceOrderService safeOrders,
-    BinanceExchangeInfoService exchange,
+    BinanceExchangeInfoService exchangeInfo,
     IClock clock,
     ILogger<BinanceProtectedPositionService> logger)
 {
@@ -28,57 +28,32 @@ public sealed class BinanceProtectedPositionService(
         CancellationToken ct)
     {
         var id = BinanceClientOrderId.NewShortId();
-        var pId = BinanceClientOrderId.Create(bot, "P", id);
+        var parentId = BinanceClientOrderId.Create(bot, "P", id);
         var tpId = BinanceClientOrderId.Create(bot, "TP", id);
         var slId = BinanceClientOrderId.Create(bot, "SL", id);
 
-        var parent = await safeOrders.SafePlaceMarketOrderAsync(
-            symbol,
-            BinanceOrderSide.Entry(side),
-            BinanceOrderSide.Position(side),
-            quantity,
-            pId,
-            ct);
+        var parent = await safeOrders.SafePlaceMarketOrderAsync(symbol, BinanceOrderSide.Entry(side), BinanceOrderSide.Position(side), quantity, parentId, ct);
 
-        var filled = await safeOrders.WaitForFillAsync(symbol, parent, pId, ct);
+        var filled = await safeOrders.WaitForFillAsync(symbol, parent, parentId, ct);
 
         var entry = Price(filled);
         if (entry <= 0)
             throw new InvalidOperationException("Entry order has no fill price.");
 
-        var tpRaw = side == PositionSide.Long
-            ? entry * (1 + tpPercent / 100m)
-            : entry * (1 - tpPercent / 100m);
+        var tpRaw = side == PositionSide.Long ? entry * (1 + tpPercent / 100m) : entry * (1 - tpPercent / 100m);
+        var slRaw = side == PositionSide.Long ? entry - stopDistance : entry + stopDistance;
 
-        var slRaw = side == PositionSide.Long
-            ? entry - stopDistance
-            : entry + stopDistance;
-
-        var tp = await exchange.RoundPriceAsync(symbol, tpRaw, ct);
-        var sl = await exchange.RoundPriceAsync(symbol, slRaw, ct);
-        var tpQty = await exchange.RoundQuantityAsync(symbol, quantity / 2m, ct);
+        var tp = await exchangeInfo.RoundPriceAsync(symbol, tpRaw, ct);
+        var sl = await exchangeInfo.RoundPriceAsync(symbol, slRaw, ct);
+        var tpQty = await exchangeInfo.RoundQuantityAsync(symbol, quantity / 2m, ct);
         if (tpQty <= 0)
             throw new InvalidOperationException("Partial TP quantity is below Binance minimum.");
 
-        var tpOrder = await ordersClient.PlaceLimitOrderAsync(
-            symbol,
-            BinanceOrderSide.Close(side),
-            BinanceOrderSide.Position(side),
-            tpQty,
-            tp,
-            tpId,
-            ct);
+        var tpOrder = await ordersClient.PlaceLimitOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), tpQty, tp, tpId, ct);
 
         try
         {
-            var slOrder = await ordersClient.PlaceStopMarketAlgoOrderAsync(
-                symbol,
-                BinanceOrderSide.Close(side),
-                BinanceOrderSide.Position(side),
-                quantity,
-                sl,
-                slId,
-                ct);
+            var slOrder = await ordersClient.PlaceStopMarketAlgoOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), quantity, sl, slId, ct);
 
             var now = clock.UtcNow;
 
@@ -92,7 +67,7 @@ public sealed class BinanceProtectedPositionService(
                 Quantity = quantity,
                 RemainingQuantity = quantity,
                 EntryPrice = entry,
-                ParentClientId = pId,
+                ParentClientId = parentId,
                 ParentOrderId = filled.OrderId,
                 ParentFilledAtUtc = now,
                 TpClientId = tpId,

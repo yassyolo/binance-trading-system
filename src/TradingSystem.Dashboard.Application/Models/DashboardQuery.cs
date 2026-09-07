@@ -8,7 +8,3 @@ public sealed record DashboardQuery(
     DateTime? FromUtc = null, 
     DateTime? ToUtc = null,
     string? Status = null);
-
-
-
-

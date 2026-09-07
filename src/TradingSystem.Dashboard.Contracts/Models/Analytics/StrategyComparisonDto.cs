@@ -9,4 +9,3 @@ public sealed record StrategyComparisonDto(
     decimal DrawdownDifference, 
     decimal WinRateDifference, 
     decimal ScoreDifference);
-

@@ -9,7 +9,6 @@ using TradingSystem.Signals.Contracts;
 using TradingSystem.Signals.Models;
 using TradingSystem.Signals.Models.Enums;
 using TradingSystem.Signals.Services;
-using Xunit;
 
 namespace TradingSystem.Signals.Tests;
 

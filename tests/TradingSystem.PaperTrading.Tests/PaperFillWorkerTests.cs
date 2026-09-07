@@ -9,26 +9,11 @@ namespace TradingSystem.PaperTrading.Tests;
 public sealed class PaperFillWorkerTests
 {
     [Theory]
-    [InlineData(
-        PositionSide.Long,
-        101,
-        "PAPER_TAKE_PROFIT")]
-    [InlineData(
-        PositionSide.Long,
-        98,
-        "PAPER_STOP_LOSS")]
-    [InlineData(
-        PositionSide.Short,
-        99,
-        "PAPER_TAKE_PROFIT")]
-    [InlineData(
-        PositionSide.Short,
-        102,
-        "PAPER_STOP_LOSS")]
-    public void ResolveCloseReason_ClosesAtConfiguredBoundary(
-        PositionSide side,
-        decimal price,
-        string expected)
+    [InlineData(PositionSide.Long, 101, "PAPER_TAKE_PROFIT")]
+    [InlineData(PositionSide.Long, 98, "PAPER_STOP_LOSS")]
+    [InlineData(PositionSide.Short, 99, "PAPER_TAKE_PROFIT")]
+    [InlineData(PositionSide.Short, 102, "PAPER_STOP_LOSS")]
+    public void ResolveCloseReason_ClosesAtConfiguredBoundary(PositionSide side, decimal price, string expected)
     {
         var position = Position(side);
 
@@ -72,9 +57,7 @@ public sealed class PaperFillWorkerTests
             position,
             101m);
 
-        Assert.Equal(
-            "PAPER_TAKE_PROFIT",
-            result);
+        Assert.Equal("PAPER_TAKE_PROFIT", result);
     }
 
     [Fact]
@@ -86,9 +69,7 @@ public sealed class PaperFillWorkerTests
             position,
             98m);
 
-        Assert.Equal(
-            "PAPER_STOP_LOSS",
-            result);
+        Assert.Equal("PAPER_STOP_LOSS", result);
     }
 
     [Fact]
@@ -100,9 +81,7 @@ public sealed class PaperFillWorkerTests
             position,
             99m);
 
-        Assert.Equal(
-            "PAPER_TAKE_PROFIT",
-            result);
+        Assert.Equal("PAPER_TAKE_PROFIT", result);
     }
 
     [Fact]
@@ -114,9 +93,7 @@ public sealed class PaperFillWorkerTests
             position,
             102m);
 
-        Assert.Equal(
-            "PAPER_STOP_LOSS",
-            result);
+        Assert.Equal("PAPER_STOP_LOSS", result);
     }
 
     private static PaperTradingPosition Position(
@@ -133,14 +110,8 @@ public sealed class PaperFillWorkerTests
             Side = side,
             Quantity = 1m,
             EntryPrice = 100m,
-            TakeProfitPrice =
-                side == PositionSide.Long
-                    ? 101m
-                    : 99m,
-            StopLossPrice =
-                side == PositionSide.Long
-                    ? 98m
-                    : 102m,
+            TakeProfitPrice = side == PositionSide.Long ? 101m : 99m,
+            StopLossPrice = side == PositionSide.Long ? 98m : 102m,
             EntryFee = 0m,
             ExitPrice = null,
             ExitFee = null,

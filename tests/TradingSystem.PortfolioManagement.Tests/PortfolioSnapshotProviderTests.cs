@@ -156,8 +156,7 @@ public sealed class PortfolioSnapshotProviderTests
             priceProvider: prices,
             retryCount: 2);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => sut.GetSnapshotAsync(default));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => sut.GetSnapshotAsync(default));
 
         Assert.Contains("Risk evaluation must fail closed", error.Message);
         Assert.Equal(3, prices.Calls);

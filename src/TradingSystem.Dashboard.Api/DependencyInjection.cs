@@ -23,25 +23,16 @@ public static class DependencyInjection
 {
     public const string ReactCorsPolicy = "React";
 
-    public static IServiceCollection AddDashboardApi(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        IWebHostEnvironment environment)
+    public static IServiceCollection AddDashboardApi(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         services.AddControllers();
 
         AddProblemDetails(services);
         AddSwagger(services);
         AddPersistence(services, configuration);
-        AddAuthentication(
-            services,
-            configuration,
-            environment);
+        AddAuthentication(services, configuration, environment);
         AddAuthorization(services);
-        AddCors(
-            services,
-            configuration,
-            environment);
+        AddCors(services, configuration, environment);
         AddRateLimiting(services);
         AddForwardedHeaders(services);
         AddPaperTradingOptions(services, configuration);
@@ -51,26 +42,21 @@ public static class DependencyInjection
         return services;
     }
 
-    private static void AddProblemDetails(
-        IServiceCollection services)
+    private static void AddProblemDetails(IServiceCollection services)
     {
         services.AddProblemDetails(options =>
         {
             options.CustomizeProblemDetails = context =>
             {
-                context.ProblemDetails.Extensions["traceId"] =
-                    context.HttpContext.TraceIdentifier;
-
-                context.ProblemDetails.Extensions["timestampUtc"] =
-                    DateTime.UtcNow;
+                context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+                context.ProblemDetails.Extensions["timestampUtc"] = DateTime.UtcNow;
             };
         });
 
         services.AddExceptionHandler<GlobalExceptionHandler>();
     }
 
-    private static void AddSwagger(
-        IServiceCollection services)
+    private static void AddSwagger(IServiceCollection services)
     {
         services.AddEndpointsApiExplorer();
 
@@ -82,8 +68,7 @@ public static class DependencyInjection
                 {
                     Title = "Trading System Dashboard API",
                     Version = "v1",
-                    Description =
-                        "Operational and analytics API. Trading commands require Operator authorization and idempotency keys."
+                    Description = "Operational and analytics API. Trading commands require Operator authorization and idempotency keys."
                 });
 
             options.AddSecurityDefinition(
@@ -127,46 +112,23 @@ public static class DependencyInjection
         services.AddSingleton<IAlertCommandStore>(provider => provider.GetRequiredService<PostgresDashboardStore>());
     }
 
-    private static void AddAuthentication(
-        IServiceCollection services,
-        IConfiguration configuration,
-        IWebHostEnvironment environment)
+    private static void AddAuthentication(IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         var signingKey =
             configuration["Authentication:SigningKey"];
 
-        if (string.IsNullOrWhiteSpace(signingKey) ||
-            signingKey.Length < 32 ||
-            (!environment.IsDevelopment() &&
-             signingKey.StartsWith(
-                 "DEVELOPMENT-ONLY",
-                 StringComparison.Ordinal)))
-        {
-            throw new InvalidOperationException(
-                "Authentication:SigningKey must be a secure secret with at least 32 characters.");
-        }
+        if (string.IsNullOrWhiteSpace(signingKey) 
+            || signingKey.Length < 32 
+            || (!environment.IsDevelopment() && signingKey.StartsWith("DEVELOPMENT-ONLY", StringComparison.Ordinal)))
+            throw new InvalidOperationException("Authentication:SigningKey must be a secure secret with at least 32 characters.");
 
-        var issuer =
-            configuration["Authentication:Issuer"]
-            ?? "TradingDashboard";
+        var issuer = configuration["Authentication:Issuer"] ?? "TradingDashboard";
+        var audience = configuration["Authentication:Audience"] ?? "TradingDashboard";
+        var adminUserName = configuration["Authentication:AdminUsername"];
+        var adminPasswordHash = configuration["Authentication:AdminPasswordHash"];
 
-        var audience =
-            configuration["Authentication:Audience"]
-            ?? "TradingDashboard";
-
-        var adminUserName =
-     configuration["Authentication:AdminUsername"];
-
-        var adminPasswordHash =
-            configuration["Authentication:AdminPasswordHash"];
-
-        if (!environment.IsDevelopment() &&
-            (string.IsNullOrWhiteSpace(adminUserName) ||
-             adminUserName.Length > 100))
-        {
-            throw new InvalidOperationException(
-                "Authentication:AdminUsername must be configured and be at most 100 characters outside Development.");
-        }
+        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(adminUserName) || adminUserName.Length > 100))
+            throw new InvalidOperationException("Authentication:AdminUsername must be configured and be at most 100 characters outside Development.");
 
         if (!environment.IsDevelopment() &&
             (string.IsNullOrWhiteSpace(adminPasswordHash) ||
@@ -307,35 +269,29 @@ public static class DependencyInjection
                 }));
     }
 
-    private static void AddRateLimiting(
-        IServiceCollection services)
+    private static void AddRateLimiting(IServiceCollection services)
     {
-        services.AddRateLimiter(options =>
+        services.AddRateLimiter(opts =>
         {
-            options.RejectionStatusCode =
-                StatusCodes.Status429TooManyRequests;
+            opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.OnRejected = async (context, ct) =>
+            opts.OnRejected = async (context, ct) =>
             {
-                context.HttpContext.Response.Headers["Retry-After"] =
-                    "60";
+                context.HttpContext.Response.Headers["Retry-After"] = "60";
 
                 await Results.Problem(
-                        statusCode:
-                            StatusCodes.Status429TooManyRequests,
+                        statusCode: StatusCodes.Status429TooManyRequests,
                         title: "Rate limit exceeded",
-                        type:
-                            "https://trading-system/errors/rate-limit",
+                        type: "https://trading-system/errors/rate-limit",
                         extensions:
                             new Dictionary<string, object?>
                             {
-                                ["traceId"] =
-                                    context.HttpContext.TraceIdentifier
+                                ["traceId"] = context.HttpContext.TraceIdentifier
                             })
                     .ExecuteAsync(context.HttpContext);
             };
 
-            options.AddPolicy(
+            opts.AddPolicy(
                 "auth",
                 context =>
                     RateLimitPartition.GetFixedWindowLimiter(
@@ -348,7 +304,7 @@ public static class DependencyInjection
                             QueueLimit = 0
                         }));
 
-            options.AddPolicy(
+            opts.AddPolicy(
                 "read",
                 context =>
                     RateLimitPartition.GetFixedWindowLimiter(
@@ -360,7 +316,7 @@ public static class DependencyInjection
                             QueueLimit = 0
                         }));
 
-            options.AddPolicy(
+            opts.AddPolicy(
                 "write",
                 context =>
                     RateLimitPartition.GetFixedWindowLimiter(
@@ -372,7 +328,7 @@ public static class DependencyInjection
                             QueueLimit = 0
                         }));
 
-            options.AddPolicy(
+            opts.AddPolicy(
                 "dangerous",
                 context =>
                     RateLimitPartition.GetFixedWindowLimiter(
@@ -386,38 +342,22 @@ public static class DependencyInjection
         });
     }
 
-    private static string GetRateLimitKey(
-        HttpContext context) =>
-        context.User.Identity?.Name
-        ?? context.Connection.RemoteIpAddress?.ToString()
-        ?? "anonymous";
+    private static string GetRateLimitKey(HttpContext context)
+        => context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
 
-    private static void AddForwardedHeaders(
-        IServiceCollection services)
+    private static void AddForwardedHeaders(IServiceCollection services)
     {
         services.Configure<ForwardedHeadersOptions>(
-            options =>
+            opts =>
             {
-                options.ForwardedHeaders =
-                    ForwardedHeaders.XForwardedFor |
-                    ForwardedHeaders.XForwardedProto;
-
-                options.ForwardLimit = 2;
+                opts.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                opts.ForwardLimit = 2;
             });
     }
 
-    private static void AddPaperTradingOptions(
-        IServiceCollection services,
-        IConfiguration configuration)
+    private static void AddPaperTradingOptions(IServiceCollection services, IConfiguration configuration)
     {
-        services
-            .AddOptions<PaperTradingOptions>()
-            .Bind(configuration.GetSection(
-                PaperTradingOptions.SectionName))
-            .ValidateOnStart();
-
-        services.AddSingleton<
-            IValidateOptions<PaperTradingOptions>,
-            PaperTradingOptionsValidator>();
+        services.AddOptions<PaperTradingOptions>().Bind(configuration.GetSection(PaperTradingOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<PaperTradingOptions>, PaperTradingOptionsValidator>();
     }
 }

@@ -17,6 +17,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_NonPositiveInitialEquity_Fails()
     {
         var options = new PortfolioOptions { InitialEquity = 0 };
+       
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -24,6 +25,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_NegativeCacheMilliseconds_Fails()
     {
         var options = new PortfolioOptions { SnapshotCacheMilliseconds = -1 };
+       
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -33,6 +35,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_InvalidDefaultLeverage_Fails(int value)
     {
         var options = new PortfolioOptions { DefaultLeverage = value };
+        
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -42,6 +45,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_InvalidRetryCount_Fails(int value)
     {
         var options = new PortfolioOptions { LoadRetryCount = value };
+       
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -51,6 +55,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_InvalidRetryDelay_Fails(int value)
     {
         var options = new PortfolioOptions { LoadRetryDelayMilliseconds = value };
+       
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -58,6 +63,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_EmptyBotName_Fails()
     {
         var options = new PortfolioOptions { Bots = ["BOT1", ""] };
+        
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 
@@ -65,6 +71,7 @@ public sealed class PortfolioOptionsValidatorTests
     public void Validate_DuplicateBotNames_FailsCaseInsensitive()
     {
         var options = new PortfolioOptions { Bots = ["BOT1", "bot1"] };
+       
         Assert.False(_sut.Validate(null, options).Succeeded);
     }
 }

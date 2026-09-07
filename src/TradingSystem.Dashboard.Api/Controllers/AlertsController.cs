@@ -17,15 +17,9 @@ public sealed class AlertsController(
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        bool acknowledged,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(bool acknowledged, int take, CancellationToken ct)
     {
-        var result = await queryStore.GetAlertsAsync(
-            acknowledged,
-            RequestValidation.PageSize(take),
-            cancellationToken);
+        var result = await queryStore.GetAlertsAsync(acknowledged, RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }
@@ -33,24 +27,14 @@ public sealed class AlertsController(
     [HttpPost("{id:long}/acknowledge")]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("write")]
-    public async Task<IActionResult> AcknowledgeAsync(
-        long id,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> AcknowledgeAsync(long id, CancellationToken ct)
     {
         if (id <= 0)
         {
-            throw new ApiValidationException(
-                new Dictionary<string, string[]>
-                {
-                    ["id"] =
-                        ["Alert id must be positive."]
-                });
+            throw new ApiValidationException(new Dictionary<string, string[]> { ["id"] = ["Alert id must be positive."] });
         }
 
-        await commandStore.AcknowledgeAsync(
-            id,
-            DashboardUserName,
-            cancellationToken);
+        await commandStore.AcknowledgeAsync(id, DashboardUserName, ct);
 
         return NoContent();
     }

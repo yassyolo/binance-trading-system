@@ -34,16 +34,9 @@ public sealed class OptimizationsController(
     [HttpGet("{runId:guid}/trials")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetTrialsAsync(
-        Guid runId,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetTrialsAsync(Guid runId, int take, CancellationToken ct)
     {
-        var result =
-            await queryStore.GetOptimizationTrialsAsync(
-                runId,
-                RequestValidation.PageSize(take),
-                cancellationToken);
+        var result = await queryStore.GetOptimizationTrialsAsync(runId, RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }

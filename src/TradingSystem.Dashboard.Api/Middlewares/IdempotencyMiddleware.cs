@@ -161,11 +161,10 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         key is { Length: >= 16 and <= 128 } &&
         key.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.');
 
-    private static async Task<string> ReadBodyAsync(
-        HttpRequest request,
-        CancellationToken ct)
+    private static async Task<string> ReadBodyAsync(HttpRequest request, CancellationToken ct)
     {
         using var reader = new StreamReader(request.Body, Encoding.UTF8, false, 4096, true);
+        
         return await reader.ReadToEndAsync(ct);
     }
 

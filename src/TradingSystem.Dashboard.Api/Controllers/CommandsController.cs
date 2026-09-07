@@ -15,18 +15,12 @@ public sealed class CommandsController(
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        string? botName,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(string? botName, int take, CancellationToken ct)
     {
         if (botName is not null)
             RequestValidation.ValidateBotName(botName);
 
-        var result = await store.GetAsync(
-            botName,
-            RequestValidation.PageSize(take),
-            cancellationToken);
+        var result = await store.GetAsync(botName, RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }

@@ -110,14 +110,9 @@ public sealed class ReplaysController(
     [HttpPost("{replayId:guid}/cancel")]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("write")]
-    public async Task<IActionResult> CancelAsync(
-        Guid replayId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> CancelAsync(Guid replayId,CancellationToken ct)
     {
-        await store.CancelAsync(
-            replayId,
-            DashboardUserName,
-            cancellationToken);
+        await store.CancelAsync(replayId, DashboardUserName, ct);
 
         return Accepted();
     }

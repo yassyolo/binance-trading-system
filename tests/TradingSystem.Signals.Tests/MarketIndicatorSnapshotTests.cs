@@ -1,5 +1,4 @@
 ﻿using TradingSystem.Signals.Models;
-using Xunit;
 
 namespace TradingSystem.Signals.Tests;
 
@@ -18,6 +17,7 @@ public sealed class MarketIndicatorSnapshotTests
     public void TryGet_WhenIndicatorMissing_ReturnsFalse()
     {
         var snapshot = Snapshot(new Dictionary<string, decimal>());
+        
         Assert.False(snapshot.TryGet("missing", out _));
     }
 

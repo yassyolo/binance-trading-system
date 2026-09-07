@@ -5,12 +5,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 
-builder.Services.AddDashboardApi(
-    builder.Configuration,
-    builder.Environment);
+builder.Services.AddDashboardApi(builder.Configuration, builder.Environment);
 
-builder.WebHost.ConfigureKestrel(options =>
-    options.Limits.MaxRequestBodySize = 1_048_576);
+builder.WebHost.ConfigureKestrel(opts => opts.Limits.MaxRequestBodySize = 1_048_576);
 
 var app = builder.Build();
 
@@ -31,11 +28,8 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseWhen(
-        context => !context.Request.Path.StartsWithSegments("/swagger"),
-        branch =>
-        {
-            branch.UseMiddleware<SecurityHeadersMiddleware>();
-        });
+        ctx => !ctx.Request.Path.StartsWithSegments("/swagger"),
+        b => { b.UseMiddleware<SecurityHeadersMiddleware>(); });
 }
 else
 {
@@ -49,9 +43,7 @@ app.UseCors(DependencyInjection.ReactCorsPolicy);
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-
-    app.UseSwaggerUI(options =>
-        options.DisplayRequestDuration());
+    app.UseSwaggerUI(opts => opts.DisplayRequestDuration());
 }
 
 app.UseAuthentication();
@@ -61,21 +53,17 @@ app.UseAuthorization();
 app.UseMiddleware<IdempotencyMiddleware>();
 app.UseMiddleware<AuditMiddleware>();
 
-if (!app.Environment.IsDevelopment() &&
-    builder.Configuration.GetValue("Swagger:Enabled", false))
+if (!app.Environment.IsDevelopment() && builder.Configuration.GetValue("Swagger:Enabled", false))
 {
     app.UseWhen(
-        context => context.Request.Path.StartsWithSegments("/swagger"),
-        branch =>
+        ctx => ctx.Request.Path.StartsWithSegments("/swagger"),
+        b =>
         {
-            branch.Use(async (context, next) =>
+            b.Use(async (context, next) =>
             {
-                if (context.User.Identity?.IsAuthenticated != true ||
-                    !context.User.IsInRole("Administrator"))
+                if (context.User.Identity?.IsAuthenticated != true || !context.User.IsInRole("Administrator"))
                 {
-                    context.Response.StatusCode =
-                        StatusCodes.Status404NotFound;
-
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 }
 

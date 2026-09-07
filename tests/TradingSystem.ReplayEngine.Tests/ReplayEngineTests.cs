@@ -3,7 +3,6 @@ using TradingSystem.EventStore.Models;
 using TradingSystem.ReplayEngine.Accumulator;
 using TradingSystem.ReplayEngine.Clock;
 using TradingSystem.ReplayEngine.Contracts;
-using TradingSystem.ReplayEngine.Engine;
 using TradingSystem.ReplayEngine.Evaluator;
 using TradingSystem.ReplayEngine.Models;
 using TradingSystem.ReplayEngine.Models.Enums;
@@ -21,9 +20,7 @@ public sealed class ReplayEngineTests
     {
         var result = new ReplayAccumulator().ToSummary(Guid.NewGuid());
 
-        Assert.Equal(
-            "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
-            result.DeterministicHash);
+        Assert.Equal("E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855", result.DeterministicHash);
     }
 
     [Fact]
@@ -58,7 +55,7 @@ public sealed class ReplayEngineTests
             Event(1, TradingEventTypes.SignalReceived, "{}")
         ]);
         var store = new FakeStore();
-        var sut = new ReplayEngine.Engine.ReplayEngine(source, store, []);
+        var sut = new Engine.ReplayEngine(source, store, []);
 
         var result = await sut.RunAsync(Job(new CreateReplayRequest("Replay", ReplayMode.Timeline)), null, default);
 
@@ -73,7 +70,7 @@ public sealed class ReplayEngineTests
         var source = new FakeSource([Event(1, TradingEventTypes.SignalReceived, "{}")]);
         var store = new FakeStore();
         var job = Job(new CreateReplayRequest("Replay", ReplayMode.Timeline)) with { LastGlobalPosition = 1 };
-        var sut = new ReplayEngine.Engine.ReplayEngine(source, store, []);
+        var sut = new Engine.ReplayEngine(source, store, []);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => sut.RunAsync(job, null, default));
     }
@@ -82,13 +79,12 @@ public sealed class ReplayEngineTests
     public async Task RunAsync_WhenCancellationRequested_MarksCancelled()
     {
         var store = new FakeStore { CancellationRequested = true };
-        var sut = new ReplayEngine.Engine.ReplayEngine(
+        var sut = new Engine.ReplayEngine(
             new FakeSource([Event(1, TradingEventTypes.SignalReceived, "{}")]),
             store,
             []);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => sut.RunAsync(Job(new CreateReplayRequest("Replay", ReplayMode.Timeline)), null, default));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => sut.RunAsync(Job(new CreateReplayRequest("Replay", ReplayMode.Timeline)), null, default));
 
         Assert.True(store.MarkCancelledCalled);
     }
@@ -107,7 +103,7 @@ public sealed class ReplayEngineTests
             ReplayMode.StrategyComparison,
             CandidateStrategyPluginId: "candidate",
             CandidateStrategyVersion: "1.0.0");
-        var sut = new ReplayEngine.Engine.ReplayEngine(source, store, [evaluator]);
+        var sut = new Engine.ReplayEngine(source, store, [evaluator]);
 
         var result = await sut.RunAsync(Job(request), null, default);
 
@@ -129,7 +125,7 @@ public sealed class ReplayEngineTests
             CandidateStrategyPluginId: "candidate",
             CandidateStrategyVersion: "1.0.0");
 
-        var result = await new ReplayEngine.Engine.ReplayEngine(source, new FakeStore(), [evaluator])
+        var result = await new Engine.ReplayEngine(source, new FakeStore(), [evaluator])
             .RunAsync(Job(request), null, default);
 
         Assert.Equal(0, result.CandidateMatches);
@@ -145,7 +141,7 @@ public sealed class ReplayEngineTests
             CandidateStrategyPluginId: "missing",
             CandidateStrategyVersion: "1.0.0");
 
-        var sut = new ReplayEngine.Engine.ReplayEngine(new FakeSource([]), new FakeStore(), []);
+        var sut = new Engine.ReplayEngine(new FakeSource([]), new FakeStore(), []);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => sut.RunAsync(Job(request), null, default));
     }
@@ -167,7 +163,7 @@ public sealed class ReplayEngineTests
             StopOnError: false);
         var store = new FakeStore();
 
-        var result = await new ReplayEngine.Engine.ReplayEngine(source, store, [evaluator])
+        var result = await new Engine.ReplayEngine(source, store, [evaluator])
             .RunAsync(Job(request), null, default);
 
         Assert.Equal(1, result.FailedEvents);
