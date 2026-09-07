@@ -91,7 +91,7 @@ public sealed class PaperTradeExecutor(
         
         await TryRecordPositionOpenedAsync(position, ct);
         
-        await TryRecordDomainPositionEventAsync(
+        await TryRecordPositionEventAsync(
             position,
             TradingEventTypes.PositionOpened,
             new
@@ -172,7 +172,7 @@ public sealed class PaperTradeExecutor(
             closedAtUtc,
             ct);
 
-        await TryRecordDomainPositionEventAsync(
+        await TryRecordPositionEventAsync(
             p, 
             TradingEventTypes.PositionClosed,
             new
@@ -195,7 +195,7 @@ public sealed class PaperTradeExecutor(
     }
 
 
-    private async Task TryRecordDomainPositionEventAsync(PaperTradingPosition p, string eventType, object payload, DateTime occurredAtUtc, CancellationToken ct)
+    private async Task TryRecordPositionEventAsync(PaperTradingPosition p, string eventType, object payload, DateTime occurredAtUtc, CancellationToken ct)
     {
         try
         {

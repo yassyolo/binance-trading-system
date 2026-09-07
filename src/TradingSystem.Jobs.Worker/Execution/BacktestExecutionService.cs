@@ -12,6 +12,7 @@ using TradingSystem.Backtesting.Bots.Bot8016.Models;
 using TradingSystem.Backtesting.Bots.Configuration;
 using TradingSystem.Backtesting.Bots.Models;
 using TradingSystem.Dashboard.Contracts.Models.Backtesting;
+using TradingSystem.Domain.MarketData;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.Jobs.Worker.Exceptions;
 using TradingSystem.Optimization.Mapping;
@@ -22,7 +23,7 @@ public sealed class BacktestExecutionService(
     IServiceProvider services,
     IHistoricalMarketDataStore historicalMarketData,
     IHistoricalSignalStore historicalSignalStore,
-    IPerformanceAnalyticsStore analytics)
+    IPerformanceAnalyticsStore performanceAnalyticsStore)
 {
     private static readonly JsonSerializerOptions OptionJsonOptions = new()
     {
@@ -168,7 +169,7 @@ public sealed class BacktestExecutionService(
 
         var mapped = BacktestPerformanceMapper.Map(result, version, interval);
 
-        await analytics.SaveCompletedBacktestAsync(mapped.Run, mapped.Snapshot, mapped.Trades, ct);
+        await performanceAnalyticsStore.SaveCompletedBacktestAsync(mapped.Run, mapped.Snapshot, mapped.Trades, ct);
 
         return mapped.Run.RunId;
     }
@@ -194,16 +195,15 @@ public sealed class BacktestExecutionService(
                ?? throw new InvalidOperationException($"Could not deserialize options of type {typeof(T).Name}.");
     }
 
-    private static DateTime NormalizeUtc(DateTime value) =>
-        value.Kind switch
+    private static DateTime NormalizeUtc(DateTime value)
+        => value.Kind switch
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
 
-    private static IReadOnlyList<HistoricalAlligatorSnapshot> BuildIndicators(
-        IReadOnlyList<TradingSystem.Domain.MarketData.MarketCandle> candles)
+    private static IReadOnlyList<HistoricalAlligatorSnapshot> BuildIndicators(IReadOnlyList<MarketCandle> candles)
     {
         var rows = new List<HistoricalAlligatorSnapshot>(candles.Count);
 

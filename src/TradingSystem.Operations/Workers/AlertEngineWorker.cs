@@ -30,6 +30,7 @@ public sealed class AlertEngineWorker(
                     try
                     {
                         var alerts = await candidate.LoadAsync(ct);
+                       
                         foreach (var alert in alerts)
                             await alertStore.UpsertActiveAsync(alert, ct);
                        
@@ -39,9 +40,9 @@ public sealed class AlertEngineWorker(
                     {
                         throw;
                     }
-                    catch (Exception exception)
+                    catch (Exception ex)
                     {
-                        logger.LogError(exception, "Alert candidate {Source} failed", candidate.SourcePrefix);
+                        logger.LogError(ex, "Alert candidate {Source} failed", candidate.SourcePrefix);
                     }
                 }
             } while (await timer.WaitForNextTickAsync(ct));

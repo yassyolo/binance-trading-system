@@ -5,14 +5,14 @@ using TradingSystem.Reconciliation.Models;
 namespace StrategyService.Reliability;
 
 public sealed class BinanceExchangeStateProvider(
-    IBinanceFuturesOrderClient client) 
+    IBinanceFuturesOrderClient ordersClient) 
     : IExchangeStateProvider
 {
     public async Task<ExchangeStateSnapshot> GetAsync(string symbol, CancellationToken ct)
     {
-        var positionsTask = client.GetPositionRiskAsync(symbol, ct);
-        var normalOpenOrdersTask = client.GetOpenOrdersAsync(symbol, ct);
-        var algoOrdersTask = client.GetOpenAlgoOrdersAsync(symbol, ct);
+        var positionsTask = ordersClient.GetPositionRiskAsync(symbol, ct);
+        var normalOpenOrdersTask = ordersClient.GetOpenOrdersAsync(symbol, ct);
+        var algoOrdersTask = ordersClient.GetOpenAlgoOrdersAsync(symbol, ct);
 
         await Task.WhenAll(positionsTask, normalOpenOrdersTask, algoOrdersTask);
 

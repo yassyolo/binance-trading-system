@@ -34,9 +34,9 @@ public sealed class ReplayJobWorker(
 			{
 				break;
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
-				logger.LogError(exception, "Replay worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
+				logger.LogError(ex, "Replay worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
 			}
 
 			try
@@ -71,9 +71,9 @@ public sealed class ReplayJobWorker(
 					logger.LogInformation("Replay {ReplayId} was cancelled.", job.ReplayId);
 				}
 			}
-			catch (Exception persistenceException)
+			catch (Exception persistenceEx)
 			{
-				logger.LogError(persistenceException, "Could not persist cancellation for replay {ReplayId}.", job.ReplayId);
+				logger.LogError(persistenceEx, "Could not persist cancellation for replay {ReplayId}.", job.ReplayId);
 			}
 		}
 		catch (Exception ex)

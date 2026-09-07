@@ -11,7 +11,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1")]
 public sealed class EventsController(
-    ITradingTimelineReader timeline,
+    ITradingEventStoreReader timeline,
     ITradingEventStore eventStore)
     : DashboardControllerBase
 {

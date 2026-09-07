@@ -19,9 +19,9 @@ public sealed class BinanceHistoricalCandleRangeSource(
 
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var normalizedInterval = interval.Trim().ToLowerInvariant();
+       
         var from = EnsureUtc(fromUtc ?? DateTime.UtcNow.AddMonths(-3));
         var to = EnsureUtc(toUtc ?? DateTime.UtcNow);
-
         if (to <= from)
             throw new ArgumentException("The historical range end must be after its start.");
 

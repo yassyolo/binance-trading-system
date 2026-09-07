@@ -1,6 +1,8 @@
+using TradingSystem.Backtesting.Bots.Common;
+
 namespace TradingSystem.Backtesting.Bots.Configuration;
 
-public sealed record Bot8012BacktestOptions
+public sealed record Bot8012BacktestOptions : ITpOnlyGridBacktestOptions
 {
     public string BotName { get; init; } = "BOT8012";
     

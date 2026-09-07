@@ -62,23 +62,24 @@ public static class BacktestPerformanceMapper
         return (run, snapshot, trades);
     }
 
-    public static PerformanceMetricSet ToMetrics(BotBacktestMetrics m) => new()
-    {
-        Signals = m.Signals, 
-        OpenedPositions = m.OpenedPositions, 
-        BlockedSignals = m.BlockedSignals, 
-        ClosedPositions = m.ClosedPositions, 
-        WinningPositions = m.WinningPositions, 
-        LosingPositions = m.LosingPositions, 
-        InitialBalance = m.InitialBalance, 
-        FinalBalance = m.FinalBalance, 
-        NetProfit = m.NetProfit, 
-        ReturnPercent = m.ReturnPercent, 
-        WinRatePercent = m.WinRatePercent, 
-        ProfitFactor = m.ProfitFactor, 
-        MaximumDrawdownAmount = m.MaximumDrawdownAmount, 
-        MaximumDrawdownPercent = m.MaximumDrawdownPercent, 
-        TotalFees = m.TotalFees, 
-        Expectancy = m.Expectancy
-    };
+    public static PerformanceMetricSet ToMetrics(BotBacktestMetrics m) 
+        => new()
+        {
+            Signals = m.Signals,
+            OpenedPositions = m.OpenedPositions,
+            BlockedSignals = m.BlockedSignals,
+            ClosedPositions = m.ClosedPositions,
+            WinningPositions = m.WinningPositions,
+            LosingPositions = m.LosingPositions,
+            InitialBalance = m.InitialBalance,
+            FinalBalance = m.FinalBalance,
+            NetProfit = m.NetProfit,
+            ReturnPercent = m.ReturnPercent,
+            WinRatePercent = m.WinRatePercent,
+            ProfitFactor = m.ProfitFactor,
+            MaximumDrawdownAmount = m.MaximumDrawdownAmount,
+            MaximumDrawdownPercent = m.MaximumDrawdownPercent,
+            TotalFees = m.TotalFees,
+            Expectancy = m.Expectancy
+        };
 }

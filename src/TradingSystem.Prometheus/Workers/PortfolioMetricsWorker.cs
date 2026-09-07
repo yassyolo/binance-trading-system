@@ -37,7 +37,7 @@ public sealed class PortfolioMetricsWorker(
                 metrics.PortfolioDrawdownPercent.Set((double)snapshot.DailyDrawdownPercent);
                 metrics.GrossNotional.Set((double)snapshot.GrossNotional);
 
-                var currentLabels = snapshot.Positions .GroupBy(x => new { x.BotName, x.Symbol, Side = x.Side.ToString() })
+                var currentLabels = snapshot.Positions.GroupBy(x => new { x.BotName, x.Symbol, Side = x.Side.ToString() })
                     .ToDictionary(x => (x.Key.BotName, x.Key.Symbol, x.Key.Side), x => x.Count());
 
                 foreach (var stale in _knownPositionLabels.Except(currentLabels.Keys).ToArray())

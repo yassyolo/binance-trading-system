@@ -19,6 +19,7 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
             await next(context);
     }
 
-    private static bool IsSafe(string? value)  => 
-        !string.IsNullOrWhiteSpace(value)  &&  value.Length <= 128  &&  value.All(c  =>  char.IsLetterOrDigit(c)  ||  c is '-' or '_' or '.');
+    private static bool IsSafe(string? value) 
+        => !string.IsNullOrWhiteSpace(value) 
+        && value.Length <= 128 && value.All(c =>  char.IsLetterOrDigit(c) |  c is '-' or '_' or '.');
 }

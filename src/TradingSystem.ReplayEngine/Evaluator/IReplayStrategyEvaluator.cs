@@ -1,5 +1,4 @@
-﻿using TradingSystem.EventStore;
-using TradingSystem.EventStore.Models;
+﻿using TradingSystem.EventStore.Models;
 using TradingSystem.ReplayEngine.Models;
 
 namespace TradingSystem.ReplayEngine.Evaluator;

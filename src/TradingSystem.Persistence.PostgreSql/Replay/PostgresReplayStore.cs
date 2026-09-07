@@ -135,9 +135,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 			new { replayId },
 			cancellationToken: ct));
 		
-		return json is null 
-			? null 
-			: JsonSerializer.Deserialize<ReplayAccumulator>(json, EventJson.Options);
+		return json is null  ? null  : JsonSerializer.Deserialize<ReplayAccumulator>(json, EventJson.Options);
 	}
 
 	public async Task SaveCheckpointAsync(Guid replayId, long globalPosition, ReplayAccumulator accumulator, int progressPercent, string progressStage, CancellationToken ct)
@@ -172,12 +170,17 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 		
 		await using var connection = await connections.OpenAsync(ct);
 		
-		await connection.ExecuteAsync(new CommandDefinition("""
-            insert into trading_replay.steps
-                (replay_id, global_position, source_event_id, event_type, virtual_time_utc, succeeded, result, error)
-            values(@ReplayId, @GlobalPosition, @SourceEventId, @EventType, @VirtualTimeUtc, @Succeeded, cast(@ResultJson as jsonb), @Error)
-            on conflict(replay_id, global_position) do nothing;
-            """,
+		await connection.ExecuteAsync(new CommandDefinition("insert into trading_replay.steps" +
+			"(replay_id, " +
+			"global_position, " +
+			"source_event_id, " +
+			"event_type, " +
+			"virtual_time_utc, " +
+			"succeeded, " +
+			"result, " +
+			"error)" +
+			"values(@ReplayId, @GlobalPosition, @SourceEventId, @EventType, @VirtualTimeUtc, @Succeeded, cast(@ResultJson as jsonb), @Error)" +
+			"on conflict(replay_id, global_position) do nothing;",
 			steps, 
 			cancellationToken: ct));
 	}
@@ -259,11 +262,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 			cancellationToken: ct));
 	}
 
-	public async Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(
-		CreateReplayRequest request,
-		long afterGlobalPosition,
-		int take,
-		CancellationToken ct)
+	public async Task<IReadOnlyList<StoredTradingEvent>> ReadForwardAsync(CreateReplayRequest request, long afterGlobalPosition, int take, CancellationToken ct)
 	{
 		const string sql = """
         select
@@ -334,12 +333,7 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
 
 		await using var connection = await connections.OpenAsync(ct);
 
-		var rows = await connection.QueryAsync<EventRow>(
-			new CommandDefinition(
-				sql,
-				parameters,
-				commandTimeout: connections.CommandTimeoutSeconds,
-				cancellationToken: ct));
+		var rows = await connection.QueryAsync<EventRow>(new CommandDefinition(sql, parameters, commandTimeout: connections.CommandTimeoutSeconds, cancellationToken: ct));
 
 		return rows.Select(x => x.ToStored()).ToArray();
 	}

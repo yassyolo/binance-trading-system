@@ -308,11 +308,7 @@ public sealed class BotCommandWorker(
         }
     }
 
-    private sealed class PermanentBotCommandException(
-        string message,
-        Exception? innerException = null)
-        : Exception(message, innerException);
+    private sealed class PermanentBotCommandException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    private sealed class UnsupportedBotCommandException(string message)
-        : Exception(message);
+    private sealed class UnsupportedBotCommandException(string message) : Exception(message);
 }

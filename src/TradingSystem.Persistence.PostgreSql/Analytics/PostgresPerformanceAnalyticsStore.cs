@@ -230,11 +230,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
 	}
 
 
-	public async Task SaveCompletedBacktestAsync(
-		PerformanceRun run,
-		PerformanceSnapshot snapshot,
-		IReadOnlyCollection<PerformanceTrade> trades,
-		CancellationToken ct = default)
+	public async Task SaveCompletedBacktestAsync(PerformanceRun run, PerformanceSnapshot snapshot, IReadOnlyCollection<PerformanceTrade> trades, CancellationToken ct = default)
 	{
 		if (run.RunId != snapshot.RunId)
 			throw new ArgumentException("Run and snapshot RunId must match.", nameof(snapshot));
@@ -284,38 +280,53 @@ public sealed class PostgresPerformanceAnalyticsStore(
 				transaction,
 				cancellationToken: ct));
 
-			const string snapshotSql = """
-                INSERT INTO trading.performance_snapshots
-                (run_id,bot_name, symbol, period_from_utc, period_to_utc, signals,
-                 opened_positions, blocked_signals, closed_positions, winning_positions,
-                 losing_positions, initial_balance, final_balance, net_profit,
-                 return_percent, win_rate_percent, profit_factor, maximum_drawdown_amount,
-                 maximum_drawdown_percent, total_fees, expectancy, score)
-                VALUES
-                (@RunId, @BotName, @Symbol, @PeriodFromUtc, @PeriodToUtc, @Signals, @OpenedPositions, @BlockedSignals, @ClosedPositions, @WinningPositions, @LosingPositions, @InitialBalance, @FinalBalance, @NetProfit, @ReturnPercent, @WinRatePercent, @ProfitFactor, @MaximumDrawdownAmount, @MaximumDrawdownPercent, @TotalFees, @Expectancy, @Score)
-                ON CONFLICT (run_id) DO UPDATE SET
-                    bot_name = EXCLUDED.bot_name,
-                    symbol = EXCLUDED.symbol,
-                    period_from_utc = EXCLUDED.period_from_utc,
-                    period_to_utc = EXCLUDED.period_to_utc,
-                    signals = EXCLUDED.signals,
-                    opened_positions = EXCLUDED.opened_positions,
-                    blocked_signals = EXCLUDED.blocked_signals,
-                    closed_positions = EXCLUDED.closed_positions,
-                    winning_positions = EXCLUDED.winning_positions,
-                    losing_positions = EXCLUDED.losing_positions,
-                    initial_balance = EXCLUDED.initial_balance,
-                    final_balance = EXCLUDED.final_balance,
-                    net_profit = EXCLUDED.net_profit,
-                    return_percent = EXCLUDED.return_percent,
-                    win_rate_percent = EXCLUDED.win_rate_percent,
-                    profit_factor = EXCLUDED.profit_factor,
-                    maximum_drawdown_amount = EXCLUDED.maximum_drawdown_amount,
-                    maximum_drawdown_percent = EXCLUDED.maximum_drawdown_percent,
-                    total_fees = EXCLUDED.total_fees,
-                    expectancy = EXCLUDED.expectancy,
-                    score = EXCLUDED.score;
-                """;
+			const string snapshotSql = "INSERT INTO trading.performance_snapshots" +
+				"(run_id," +
+				"bot_name, " +
+				"symbol, " +
+				"period_from_utc, " +
+				"period_to_utc, " +
+				"signals," +
+				"opened_positions, " +
+				"blocked_signals, " +
+				"closed_positions, " +
+				"winning_positions," +
+				"losing_positions," +
+				" initial_balance, " +
+				"final_balance, " +
+				"net_profit," +
+				"return_percent, " +
+				"win_rate_percent, " +
+				"profit_factor, " +
+				"maximum_drawdown_amount," +
+				"maximum_drawdown_percent, " +
+				"total_fees," +
+				" expectancy," +
+				" score)" +
+				"VALUES" +
+				"(@RunId, @BotName, @Symbol, @PeriodFromUtc, @PeriodToUtc, @Signals, @OpenedPositions, @BlockedSignals, @ClosedPositions, @WinningPositions, @LosingPositions, @InitialBalance, @FinalBalance, @NetProfit, @ReturnPercent, @WinRatePercent, @ProfitFactor, @MaximumDrawdownAmount, @MaximumDrawdownPercent, @TotalFees, @Expectancy, @Score)" +
+				"ON CONFLICT (run_id) DO UPDATE SET" +
+				   "bot_name = EXCLUDED.bot_name," +
+				   "symbol = EXCLUDED.symbol," +
+				   "period_from_utc = EXCLUDED.period_from_utc," +
+				   "period_to_utc = EXCLUDED.period_to_utc," +
+				   "signals = EXCLUDED.signals," +
+				   "opened_positions = EXCLUDED.opened_positions," +
+				   "blocked_signals = EXCLUDED.blocked_signals," +
+				   "closed_positions = EXCLUDED.closed_positions," +
+				   "winning_positions = EXCLUDED.winning_positions," +
+				   "losing_positions = EXCLUDED.losing_positions," +
+				   " initial_balance = EXCLUDED.initial_balance," +
+				   "final_balance = EXCLUDED.final_balance," +
+				   "net_profit = EXCLUDED.net_profit," +
+				   "return_percent = EXCLUDED.return_percent," +
+				   "win_rate_percent = EXCLUDED.win_rate_percent," +
+				   "profit_factor = EXCLUDED.profit_factor," +
+				   "maximum_drawdown_amount = EXCLUDED.maximum_drawdown_amount," +
+				   "maximum_drawdown_percent = EXCLUDED.maximum_drawdown_percent," +
+				   "total_fees = EXCLUDED.total_fees," +
+				   "expectancy = EXCLUDED.expectancy," +
+				   "score = EXCLUDED.score;";
 
 			var m = snapshot.Metrics;
 			await connection.ExecuteAsync(new CommandDefinition(
@@ -356,14 +367,22 @@ public sealed class PostgresPerformanceAnalyticsStore(
 
 			if (trades.Count > 0)
 			{
-				const string tradeSql = """
-                    INSERT INTO trading.performance_trades
-                    (run_id, position_id, side, entry_time_utc, entry_price,
-                     exit_time_utc, exit_price, quantity, gross_pnl, fees,
-                     net_pnl, exit_reason, partial_take_profit_reached)
-                    VALUES
-                    (@RunId, @PositionId, @Side, @EntryTimeUtc, @EntryPrice, @ExitTimeUtc, @ExitPrice, @Quantity, @GrossPnl, @Fees, @NetPnl, @ExitReason, @PartialTakeProfitReached);
-                    """;
+				const string tradeSql = "INSERT INTO trading.performance_trades" +
+					"(run_id," +
+					" position_id, " +
+					"side, " +
+					"entry_time_utc, " +
+					"entry_price," +
+					"exit_time_utc, " +
+					"exit_price," +
+					" quantity," +
+					" gross_pnl, " +
+					"fees," +
+					"net_pnl, " +
+					"exit_reason," +
+					" partial_take_profit_reached)" +
+					" VALUES" +
+					"(@RunId, @PositionId, @Side, @EntryTimeUtc, @EntryPrice, @ExitTimeUtc, @ExitPrice, @Quantity, @GrossPnl, @Fees, @NetPnl, @ExitReason, @PartialTakeProfitReached);";
 
 				var rows = trades.Select(x => new
 				{

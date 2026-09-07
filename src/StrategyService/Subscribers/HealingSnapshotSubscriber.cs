@@ -9,7 +9,7 @@ namespace StrategyService.Subscribers;
 
 public sealed class HealingSnapshotSubscriber(
     IConnectionMultiplexer redis,
-    HealingServiceRegistry registry,
+    HealingServiceRegistry healingRegistry,
     ILogger<HealingSnapshotSubscriber> logger) 
     : BackgroundService
 {
@@ -82,7 +82,7 @@ public sealed class HealingSnapshotSubscriber(
                 return;
             }
 
-            foreach (var service in registry.ForSymbol(snapshot.Symbol))
+            foreach (var service in healingRegistry.ForSymbol(snapshot.Symbol))
             {
                 ct.ThrowIfCancellationRequested();
                 

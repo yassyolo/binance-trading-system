@@ -1,6 +1,6 @@
 ﻿namespace TradingSystem.EventStore.Models;
 
-public sealed record TradingTimelineItem(
+public sealed record TradingEventStoreReadItem(
     long GlobalPosition,
     Guid EventId,
     DateTime OccurredAtUtc,

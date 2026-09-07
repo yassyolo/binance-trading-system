@@ -15,9 +15,11 @@ public sealed class OperationalAlertCandidateSource(
     public async Task<IReadOnlyCollection<AlertCandidate>> LoadAsync(CancellationToken ct)
     {
         await using var connection = await factory.OpenAsync(ct);
+       
         var result = new List<AlertCandidate>();
 
-        var stale = await connection.QueryAsync<(string Component, string InstanceId, DateTime LastSeenUtc)>(new CommandDefinition(
+        var stale = await connection.QueryAsync<(string Component, string InstanceId, DateTime LastSeenUtc)>(
+            new CommandDefinition(
             """
                 with latest as (
                     select 
@@ -73,7 +75,8 @@ public sealed class OperationalAlertCandidateSource(
             x.BotName,
             x.PositionId)));
 
-        var jobs = await connection.QueryAsync<(Guid JobId, string Type, string? Error)>(new CommandDefinition(
+        var jobs = await connection.QueryAsync<(Guid JobId, string Type, string? Error)>
+            (new CommandDefinition(
             """
                 select 
                     job_id JobId, 

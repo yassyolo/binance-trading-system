@@ -149,43 +149,39 @@ public sealed class PositionReconciliationService(
         }
     }
 
-    private void DetectLocalPositionAndProtectiveOrderFindings(
-        IReadOnlyCollection<BotPosition> localPositions,
-        ExchangeStateSnapshot remote,
-        ICollection<ReconciliationFinding> findings)
+    private void DetectLocalPositionAndProtectiveOrderFindings(IReadOnlyCollection<BotPosition> localPositions, ExchangeStateSnapshot remote, ICollection<ReconciliationFinding> findings)
     {
         var ordersByClientId = remote.Orders.Where(o => !string.IsNullOrWhiteSpace(o.ClientOrderId))
             .GroupBy(o => o.ClientOrderId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var p in localPositions)
+        foreach (var position in localPositions)
         {
-            var hasRelatedOrder = EnumerateClientOrderIds(p).Any(ordersByClientId.ContainsKey);
+            var hasRelatedOrder = EnumerateClientOrderIds(position).Any(ordersByClientId.ContainsKey);
 
-            var hasRemoteSidePosition = remote.Positions.Any(p =>
-                p.Symbol.Equals(p.Symbol, StringComparison.OrdinalIgnoreCase) 
+            var hasRemoteSidePosition = remote.Positions.Any(p => p.Symbol.Equals(p.Symbol, StringComparison.OrdinalIgnoreCase) 
                 && p.Side.Equals(p.Side.ToString(), StringComparison.OrdinalIgnoreCase) 
                 && Math.Abs(p.Quantity) > _options.QuantityTolerance);
 
             if (!hasRemoteSidePosition && !hasRelatedOrder)
             {
                 findings.Add(ReconciliationFinding.New(
-                    p,
+                    position,
                     ReconciliationFindingType.StaleLocalPosition,
                     ReconciliationSeverity.Warning,
-                    "Local position has no exchangeStateProvider p or related open orders.",
+                    "Local position has no exchangeStateProvider position or related open orders.",
                     HealingActionType.DeleteStaleLocalPosition,
                     _options.AutoHealStaleLocalPositions));
               
                 continue;
             }
 
-            if (!p.TpExecuted
-                && !string.IsNullOrWhiteSpace(p.TpClientId) 
-                && !ordersByClientId.ContainsKey(p.TpClientId))
+            if (!position.TpExecuted
+                && !string.IsNullOrWhiteSpace(position.TpClientId) 
+                && !ordersByClientId.ContainsKey(position.TpClientId))
             {
                 findings.Add(ReconciliationFinding.New(
-                    p,
+                    position,
                     ReconciliationFindingType.MissingTakeProfit,
                     ReconciliationSeverity.Critical,
                     "Expected take-profit order is missing.",
@@ -193,13 +189,13 @@ public sealed class PositionReconciliationService(
                     _options.AutoHealProtectiveOrders));
             }
 
-            if (p.ProtectiveActive 
-                && !p.SlExecuted 
-                && !string.IsNullOrWhiteSpace(p.SlClientId)
-                && !ordersByClientId.ContainsKey(p.SlClientId))
+            if (position.ProtectiveActive 
+                && !position.SlExecuted 
+                && !string.IsNullOrWhiteSpace(position.SlClientId)
+                && !ordersByClientId.ContainsKey(position.SlClientId))
             {
                 findings.Add(ReconciliationFinding.New(
-                    p,
+                    position,
                     ReconciliationFindingType.MissingStopLoss,
                     ReconciliationSeverity.Critical,
                     "Expected stop-loss order is missing.",
@@ -217,8 +213,7 @@ public sealed class PositionReconciliationService(
     {
         var knownClientOrderIds = localPositions.SelectMany(EnumerateClientOrderIds).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var order in remoteOrders.Where(o => o.ClientOrderId.StartsWith("BOT", StringComparison.OrdinalIgnoreCase) 
-                                                    && !knownClientOrderIds.Contains(o.ClientOrderId)))
+        foreach (var order in remoteOrders.Where(o => o.ClientOrderId.StartsWith("BOT", StringComparison.OrdinalIgnoreCase) && !knownClientOrderIds.Contains(o.ClientOrderId)))
         {
             findings.Add(new ReconciliationFinding(
                 Guid.NewGuid(),

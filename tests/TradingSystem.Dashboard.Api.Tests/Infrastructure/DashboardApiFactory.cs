@@ -26,7 +26,7 @@ public sealed class DashboardApiFactory
     public Mock<IBotCommandStore> BotCommands { get; } = new();
     public Mock<IDashboardJobStore> Jobs { get; } = new();
     public Mock<IAlertCommandStore> AlertCommands { get; } = new();
-    public Mock<ITradingTimelineReader> Timeline { get; } = new();
+    public Mock<ITradingEventStoreReader> Timeline { get; } = new();
     public Mock<ITradingEventStore> EventStore { get; } = new();
     public Mock<IReplayJobStore> Replays { get; } = new();
     public Mock<IPaperTradingStore> PaperTrading { get; } = new();
@@ -224,7 +224,7 @@ public sealed class DashboardApiFactory
             services.RemoveAll<IBotCommandStore>();
             services.RemoveAll<IDashboardJobStore>();
             services.RemoveAll<IAlertCommandStore>();
-            services.RemoveAll<ITradingTimelineReader>();
+            services.RemoveAll<ITradingEventStoreReader>();
             services.RemoveAll<ITradingEventStore>();
             services.RemoveAll<IReplayJobStore>();
             services.RemoveAll<IPaperTradingStore>();

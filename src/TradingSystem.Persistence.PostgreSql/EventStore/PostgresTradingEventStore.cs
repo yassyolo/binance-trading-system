@@ -247,12 +247,7 @@ public sealed class PostgresTradingEventStore(
         return rows.Select(x => x.ToStored()).ToArray();
     }
 
-    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(
-        string aggregateType, 
-        string aggregateId, 
-        long afterVersion, 
-        int take, 
-        CancellationToken ct)
+    public async Task<IReadOnlyList<StoredTradingEvent>> ReadStreamAsync(string aggregateType, string aggregateId, long afterVersion, int take, CancellationToken ct)
     {
         const string sql = """
             SELECT 

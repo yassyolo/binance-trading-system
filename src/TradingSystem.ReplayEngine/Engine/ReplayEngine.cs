@@ -90,6 +90,7 @@ public sealed class ReplayEngine(
                 catch (Exception ex)
                 {
                     state.FailedEvents++;
+                   
                     steps.Add(new ReplayStepResult(
                         job.ReplayId,
                         item.GlobalPosition,
@@ -158,9 +159,9 @@ public sealed class ReplayEngine(
         if (request.FromUtc.HasValue && request.ToUtc.HasValue && request.ToUtc <= request.FromUtc)
             throw new ArgumentException("ToUtc must be after FromUtc.", nameof(request));
        
-        if (request.Mode == ReplayMode.StrategyComparison &&
-            (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId) ||
-             string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
+        if (request.Mode == ReplayMode.StrategyComparison
+            && (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId)
+            || string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
             throw new ArgumentException("Candidate strategy plugin id and version are required for strategy comparison.", nameof(request));
        
         return request;

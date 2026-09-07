@@ -11,7 +11,7 @@ namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class OptimizationJobWorker(
 	IDashboardJobQueue queue,
-	OptimizationExecutionService executor,
+	OptimizationExecutionService optimizationExecutor,
 	IOptions<JobWorkerOptions> options,
 	ILogger<OptimizationJobWorker> logger)
 	: BackgroundService
@@ -38,9 +38,9 @@ public sealed class OptimizationJobWorker(
 			{
 				break;
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
-				logger.LogError(exception, "Optimization worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
+				logger.LogError(ex, "Optimization worker polling cycle failed. Worker = {WorkerId}. The worker will retry.", workerId);
 			}
 
 			try
@@ -63,7 +63,7 @@ public sealed class OptimizationJobWorker(
 			var request = JsonSerializer.Deserialize<OptimizationRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
 				?? throw new ArgumentException("Invalid optimization request.");
 
-			var runId = await executor.ExecuteAsync(request, settings.Interval, ct);
+			var runId = await optimizationExecutor.ExecuteAsync(request, settings.Interval, ct);
 			
 			await queue.CompleteAsync(job.JobId, runId, ct);
 		}
@@ -87,9 +87,9 @@ public sealed class OptimizationJobWorker(
 			{
 				throw;
 			}
-			catch (Exception persistenceException)
+			catch (Exception persistenceEx)
 			{
-				logger.LogError(persistenceException, "Could not persist failure for optimization job {JobId}. It will be reclaimed after the processing timeout.", job.JobId);
+				logger.LogError(persistenceEx, "Could not persist failure for optimization job {JobId}. It will be reclaimed after the processing timeout.", job.JobId);
 			}
 		}
 	}

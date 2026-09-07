@@ -13,7 +13,7 @@ namespace StrategyService.Services;
 public sealed class LivePositionLifecycleRecorder(
     IPositionStore positionStore,
     IBotRuntimeConfigurationProvider configProvider,
-    ITradingPipelineRecorder history,
+    ITradingPipelineRecorder tradingPipelineRecorder,
     ITradingEventStore eventStore,
     ITradingEnvironmentProvider fallbackEnvironment,
     ILogger<LivePositionLifecycleRecorder> logger)
@@ -56,44 +56,44 @@ public sealed class LivePositionLifecycleRecorder(
 
     public async Task RecordClosedAsync(string botName, string shortId, string? reason, CancellationToken ct)
     {
-        var p = await positionStore.GetAsync(botName, shortId, ct);
-        if (p is null || !p.Closed)
+        var position = await positionStore.GetAsync(botName, shortId, ct);
+        if (position is null || !position.Closed)
             return;
 
         var environment = await ResolveEnvironmentAsync(botName, ct);
         if (!IsLive(environment))
             return;
 
-        await PersistProjectionBestEffortAsync(p, environment, null, UnknownStrategyVersion, reason, ct);
+        await PersistProjectionBestEffortAsync(position, environment, null, UnknownStrategyVersion, reason, ct);
 
         await TryHistoryEventAsync(new PositionEventHistoryRecord(
-            p.ShortId,
-            p.BotName,
+            position.ShortId,
+            position.BotName,
             "LIVE_POSITION_CLOSED",
-            p.Status.ToString(),
-            (p.ClosedAtUtc ?? p.UpdatedAtUtc) ?? DateTime.UtcNow,
+            position.Status.ToString(),
+            (position.ClosedAtUtc ?? position.UpdatedAtUtc) ?? DateTime.UtcNow,
             null,
-            p.Quantity,
+            position.Quantity,
             new Dictionary<string, object?>
             {
                 ["env"] = environment,
-                ["reason"] = reason ?? p.CloseStatus,
-                ["remainingQuantity"] = p.RemainingQuantity
+                ["reason"] = reason ?? position.CloseStatus,
+                ["remainingQuantity"] = position.RemainingQuantity
             }), ct);
 
         await AppendLifecycleBestEffortAsync(
-            p,
+            position,
             TradingEventTypes.PositionClosed,
             environment,
             null,
-            (p.ClosedAtUtc ?? p.UpdatedAtUtc) ?? DateTime.UtcNow,
+            (position.ClosedAtUtc ?? position.UpdatedAtUtc) ?? DateTime.UtcNow,
             new
             {
-                p.Status,
-                p.CloseStatus,
-                p.RemainingQuantity,
-                p.CloseOrderId,
-                Reason = reason ?? p.CloseStatus
+                position.Status,
+                position.CloseStatus,
+                position.RemainingQuantity,
+                position.CloseOrderId,
+                Reason = reason ?? position.CloseStatus
             },
             ct);
     }
@@ -153,7 +153,7 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            await history.UpsertPositionAsync(new PositionHistoryRecord(
+            await tradingPipelineRecorder.UpsertPositionAsync(new PositionHistoryRecord(
                 PositionId: p.ShortId,
                 SignalId: signalId,
                 BotName: p.BotName,
@@ -186,9 +186,9 @@ public sealed class LivePositionLifecycleRecorder(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception,"Live p projection persistence failed. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
+            logger.LogError(ex,"Live position projection persistence failed. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
         }
     }
 
@@ -196,7 +196,7 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            await history.RecordPositionEventAsync(record, ct);
+            await tradingPipelineRecorder.RecordPositionEventAsync(record, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -204,7 +204,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Live p history event persistence failed. Bot = {Bot}, Position = {Position}", record.BotName, record.PositionId);
+            logger.LogError(ex, "Live position tradingPipelineRecorder event persistence failed. Bot = {Bot}, Position = {Position}", record.BotName, record.PositionId);
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Live p EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
+            logger.LogError(ex, "Live position EventStore append failed. Type = {Type}, Bot = {Bot}, Position = {Position}", eventType, p.BotName, p.ShortId);
         }
     }
 

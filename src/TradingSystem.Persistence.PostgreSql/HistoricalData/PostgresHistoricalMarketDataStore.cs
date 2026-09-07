@@ -36,13 +36,9 @@ public sealed class PostgresHistoricalMarketDataStore(
             new CommandDefinition(
                 sql, 
                 new 
-                { 
-                    symbol = symbol.ToUpperInvariant(), 
-                    interval = interval.ToLowerInvariant(), 
-                    from, 
-                    to 
-                },
-                cancellationToken: ct))).AsList(); 
+                { symbol = symbol.ToUpperInvariant(), interval = interval.ToLowerInvariant(), from, to },
+                cancellationToken: ct)))
+                .AsList(); 
     }
     
     public async Task UpsertCandlesAsync(IReadOnlyCollection<MarketCandle> candles, CancellationToken ct) 
@@ -128,11 +124,13 @@ public sealed class PostgresHistoricalMarketDataStore(
                 "where symbol = @symbol" +
                 " and interval = @interval", 
             new { symbol, interval }, 
-            cancellationToken: ct)); }
+            cancellationToken: ct));
+    }
     
     public async Task<IReadOnlyList<HistoricalBotSignal>> LoadAsync(string bot, string symbol, DateTime from, DateTime to, CancellationToken ct) 
     { 
-        const string sql = "select signal_time_utc TimeUtc, " +
+        const string sql = "select " +
+            "signal_time_utc TimeUtc, " +
             "case when lower(side) = 'long' " +
                "then 0 else 1 end Side, " +
             "source Source, " +
@@ -146,11 +144,6 @@ public sealed class PostgresHistoricalMarketDataStore(
         
         await using var command = await factory.OpenAsync(ct); 
         
-        return (await command.QueryAsync<HistoricalBotSignal>(
-            new CommandDefinition(
-                sql, 
-                new { bot, symbol, from, to },
-                cancellationToken: ct)))
-                .AsList(); 
+        return (await command.QueryAsync<HistoricalBotSignal>(new CommandDefinition(sql, new { bot, symbol, from, to }, cancellationToken: ct))).AsList(); 
     }
 }

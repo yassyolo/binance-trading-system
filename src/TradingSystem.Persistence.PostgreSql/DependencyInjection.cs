@@ -117,7 +117,7 @@ public static class DependencyInjection
     private static void RegisterEventStore(IServiceCollection services)
     {
         services.AddSingleton<ITradingEventStore, PostgresTradingEventStore>();
-        services.AddSingleton<ITradingTimelineReader, TradingTimelineReader>();
+        services.AddSingleton<ITradingEventStoreReader, TradingEventStoreReader>();
     }
 
     private static void RegisterReplayEngine(IServiceCollection services)

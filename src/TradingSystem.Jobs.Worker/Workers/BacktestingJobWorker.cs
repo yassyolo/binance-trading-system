@@ -11,7 +11,7 @@ namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class BacktestingJobWorker(
     IDashboardJobQueue queue,
-    BacktestExecutionService executor,
+    BacktestExecutionService backtestExecutor,
     IOptions<JobWorkerOptions> options,
     ILogger<BacktestingJobWorker> logger)
     : BackgroundService
@@ -63,7 +63,7 @@ public sealed class BacktestingJobWorker(
             var request = JsonSerializer.Deserialize<BacktestRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new ArgumentException("Invalid backtest request.");
 
-            var runId = await executor.ExecuteAsync(request, settings.Interval, ct);
+            var runId = await backtestExecutor.ExecuteAsync(request, settings.Interval, ct);
             
             await queue.CompleteAsync(job.JobId, runId, ct);
         }

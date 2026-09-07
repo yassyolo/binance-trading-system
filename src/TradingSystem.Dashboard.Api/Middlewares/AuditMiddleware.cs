@@ -79,6 +79,7 @@ public sealed class AuditMiddleware(RequestDelegate next)
         {
             var node = JsonNode.Parse(body);
             RedactNode(node);
+           
             return node?.ToJsonString();
         }
         catch (JsonException)
@@ -93,15 +94,19 @@ public sealed class AuditMiddleware(RequestDelegate next)
         {
             foreach (var property in obj.ToArray())
             {
-                if (SensitiveNames.Contains(property.Key)) obj[property.Key] = "[REDACTED]";
-                else RedactNode(property.Value);
+                if (SensitiveNames.Contains(property.Key)) 
+                    obj[property.Key] = "[REDACTED]";
+                else 
+                    RedactNode(property.Value);
             }
         }
         else if (node is JsonArray array)
         {
-            foreach (var item in array) RedactNode(item);
+            foreach (var item in array) 
+                RedactNode(item);
         }
     }
 
-    private static string Truncate(string value,  int maximum)  =>  value.Length <= maximum ? value : value[..maximum];
+    private static string Truncate(string value,  int maximum)  
+        =>  value.Length <= maximum ? value : value[..maximum];
 }

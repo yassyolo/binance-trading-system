@@ -25,6 +25,7 @@ public sealed class ServiceHeartbeatWorker(
             return;
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(2, _options.IntervalSeconds)));
+        
         try
         {
             do

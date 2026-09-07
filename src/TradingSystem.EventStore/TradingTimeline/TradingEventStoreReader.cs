@@ -3,13 +3,13 @@ using TradingSystem.EventStore.Models;
 
 namespace TradingSystem.EventStore.TradingTimeline;
 
-public sealed class TradingTimelineReader(
-    ITradingEventStore store) 
-    : ITradingTimelineReader
+public sealed class TradingEventStoreReader(
+    ITradingEventStore tradingEventStore) 
+    : ITradingEventStoreReader
 {
-    public async Task<IReadOnlyList<TradingTimelineItem>> ReadAsync(EventStoreQuery query, CancellationToken ct)
-         => (await store.ReadAsync(query, ct))
-                .Select(x => new TradingTimelineItem(
+    public async Task<IReadOnlyList<TradingEventStoreReadItem>> ReadAsync(EventStoreQuery query, CancellationToken ct)
+         => (await tradingEventStore.ReadAsync(query, ct))
+                .Select(x => new TradingEventStoreReadItem(
                     x.GlobalPosition, 
                     x.Event.EventId, 
                     x.Event.OccurredAtUtc, 

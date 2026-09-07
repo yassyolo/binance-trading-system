@@ -30,11 +30,7 @@ public sealed class HistoricalDataIngestionWorker(
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToArray();
 
-		logger.LogInformation("Historical ingestion effective configuration. Symbols = {Symbols}; Intervals = {Intervals}; LookbackDays = {LookbackDays}; OverlapCandles = {OverlapCandles}",
-			string.Join(',', symbols),
-			string.Join(',', intervals),
-			settings.InitialLookbackDays,
-			settings.OverlapCandles);
+		logger.LogInformation("Historical ingestion effective configuration. Symbols = {Symbols}; Intervals = {Intervals}; LookbackDays = {LookbackDays}; OverlapCandles = {OverlapCandles}", string.Join(',', symbols), string.Join(',', intervals), settings.InitialLookbackDays, settings.OverlapCandles);
 
 		var pollDelay = TimeSpan.FromMinutes(Math.Max(1, settings.PollMinutes));
 
@@ -74,6 +70,7 @@ public sealed class HistoricalDataIngestionWorker(
 	{
 		var duration = ParseInterval(interval);
 		var nowUtc = DateTime.UtcNow;
+		
 		var latest = await historicalMarketDataStore.GetLatestOpenTimeAsync(symbol, interval, ct);
 		var overlap = TimeSpan.FromTicks(checked(duration.Ticks * Math.Max(1, settings.OverlapCandles)));
 
@@ -82,9 +79,7 @@ public sealed class HistoricalDataIngestionWorker(
 
 		var downloaded = await historicalCandleRangeSource.LoadAsync(symbol, interval, from, to, ct);
 		
-		var closed = downloaded.Where(x => x.OpenTimeUtc + duration <= nowUtc)
-			.OrderBy(x => x.OpenTimeUtc)
-			.ToArray();
+		var closed = downloaded.Where(x => x.OpenTimeUtc + duration <= nowUtc).OrderBy(x => x.OpenTimeUtc).ToArray();
 
 		await historicalMarketDataStore.UpsertCandlesAsync(closed, ct);
 
@@ -133,9 +128,9 @@ public sealed class HistoricalDataIngestionWorker(
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-		if (value.Length < 2 ||
-			!int.TryParse(value[..^1], out var amount) ||
-			amount <= 0)
+		if (value.Length < 2 
+			|| !int.TryParse(value[..^1], out var amount) 
+			|| amount <= 0)
 			throw new ArgumentException($"Invalid interval '{value}'.", nameof(value));
 
 		return value[^1] switch

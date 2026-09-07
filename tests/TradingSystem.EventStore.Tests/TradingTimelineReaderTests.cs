@@ -14,7 +14,7 @@ public sealed class TradingTimelineReaderTests
         var envelope = new EventEnvelope(Guid.NewGuid(), TradingEventTypes.SignalReceived, 1,
             "Signal", "signal-1", 1, DateTime.UtcNow, DateTime.UtcNow, "BOT8012", "BTCUSDC",
             null, "signal-1", "correlation-1", null, "TradingView", "{}", "{}");
-        var reader = new TradingTimelineReader(new FakeStore([new StoredTradingEvent(42, envelope)]));
+        var reader = new TradingEventStoreReader(new FakeStore([new StoredTradingEvent(42, envelope)]));
 
         var result = await reader.ReadAsync(new EventStoreQuery(SignalId: "signal-1"), default);
 
@@ -27,7 +27,7 @@ public sealed class TradingTimelineReaderTests
     public async Task ReadAsync_WhenStoreReturnsEmpty_ReturnsEmpty()
     {
         var store = new CapturingStore([]);
-        var sut = new TradingTimelineReader(store);
+        var sut = new TradingEventStoreReader(store);
 
         var result = await sut.ReadAsync(
             new EventStoreQuery(BotName: "BOT8012"),
@@ -40,7 +40,7 @@ public sealed class TradingTimelineReaderTests
     public async Task ReadAsync_PassesOriginalQueryToStore()
     {
         var store = new CapturingStore([]);
-        var sut = new TradingTimelineReader(store);
+        var sut = new TradingEventStoreReader(store);
 
         var query = new EventStoreQuery(
             BotName: "BOT8012",
