@@ -1,10 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-
-import {
-  getPositions,
-  getSignals,
-  getTrades,
-} from '@/features/history/history.api'
+import { getPositions, getSignals, getTrades,} from '@/features/history/history.api'
 import type { HistoryQuery } from '@/types/trading-history'
 
 export function useSignals(query: HistoryQuery) {

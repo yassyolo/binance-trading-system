@@ -1,5 +1,4 @@
 import { Circle } from 'lucide-react'
-
 import { cn } from '@/lib/cn'
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
@@ -20,12 +19,7 @@ const toneClasses: Record<StatusTone, string> = {
 
 export function StatusBadge({ label, tone = 'neutral', showDot = true }: StatusBadgeProps) {
   return (
-    <span
-      className={cn(
-        'inline-flex h-7 items-center gap-2 rounded-full border px-2.5 text-xs font-medium',
-        toneClasses[tone],
-      )}
-    >
+    <span className={cn('inline-flex h-7 items-center gap-2 rounded-full border px-2.5 text-xs font-medium', toneClasses[tone],)} >
       {showDot && <Circle className="fill-current" size={7} />}
       {label}
     </span>

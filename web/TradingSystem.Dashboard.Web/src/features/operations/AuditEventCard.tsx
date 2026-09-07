@@ -1,39 +1,20 @@
 import { useState } from 'react'
-import {
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  GitCompare,
-} from 'lucide-react'
-
+import { ChevronDown, ChevronUp, Copy, GitCompare } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import {
-  prettyJson,
-  utcDate,
-} from '@/features/operations/operations-formatters'
+import { prettyJson, utcDate } from '@/features/operations/operations-formatters'
 import type { AuditEventDto } from '@/types/operations'
 
-export function AuditEventCard({
-  event,
-}: {
-  event: AuditEventDto
-}) {
-  const [expanded, setExpanded] =
-    useState(false)
-
-  const oldValue =
-    prettyJson(event.oldValueJson)
-
-  const newValue =
-    prettyJson(event.newValueJson)
+export function AuditEventCard({ event,}: { event: AuditEventDto}) {
+  const [expanded, setExpanded] = useState(false)
+  const oldValue = prettyJson(event.oldValueJson)
+  const newValue = prettyJson(event.newValueJson)
 
   async function copyCorrelation() {
-    if (!event.correlationId) return
+    if (!event.correlationId) 
+      return
 
-    await navigator.clipboard.writeText(
-      event.correlationId,
-    )
+    await navigator.clipboard.writeText(event.correlationId,)
   }
 
   return (
@@ -42,26 +23,11 @@ export function AuditEventCard({
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge
-                label={event.action}
-                tone="info"
-                showDot={false}
-              />
-
-              <StatusBadge
-                label={event.entityType}
-                tone="neutral"
-                showDot={false}
-              />
+              <StatusBadge label={event.action} tone="info" showDot={false} />
+              <StatusBadge label={event.entityType} tone="neutral" showDot={false} />
             </div>
-
-            <h3 className="mt-4 text-sm font-semibold">
-              {event.actor}
-            </h3>
-
-            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-              {utcDate(event.occurredAtUtc)} UTC
-            </p>
+            <h3 className="mt-4 text-sm font-semibold"> {event.actor} </h3>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]"> {utcDate(event.occurredAtUtc)} UTC </p>
           </div>
 
           {(oldValue || newValue) && (
@@ -146,14 +112,7 @@ export function AuditEventCard({
   )
 }
 
-function Info({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string
-  value: string | null
-  mono?: boolean
+function Info({ label, value, mono = false,}: { label: string, value: string | null, mono?: boolean
 }) {
   return (
     <div className="min-w-0">
@@ -161,12 +120,7 @@ function Info({
         {label}
       </p>
 
-      <p
-        className={`mt-1 truncate text-[var(--color-text-secondary)] ${
-          mono ? 'font-mono' : ''
-        }`}
-        title={value ?? undefined}
-      >
+      <p className={`mt-1 truncate text-[var(--color-text-secondary)] ${mono ? 'font-mono' : ''}`} title={value ?? undefined}>
         {value || '—'}
       </p>
     </div>

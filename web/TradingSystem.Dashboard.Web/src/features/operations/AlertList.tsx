@@ -1,11 +1,5 @@
 import { useState } from 'react'
-import {
-  BellRing,
-  Check,
-  Clock3,
-  RefreshCcw,
-} from 'lucide-react'
-
+import { BellRing, Check, Clock3, RefreshCcw } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ConfirmActionDialog } from '@/components/ui/ConfirmActionDialog'
@@ -13,28 +7,18 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import {
-  relativeTime,
-  severityTone,
-  utcDate,
-} from '@/features/operations/operations-formatters'
-import {
-  useAcknowledgeAlert,
-  useAlerts,
-} from '@/features/operations/operations.queries'
+import { relativeTime, severityTone, utcDate} from '@/features/operations/operations-formatters'
+import { useAcknowledgeAlert, useAlerts } from '@/features/operations/operations.queries'
 import type { AlertDto } from '@/types/operations'
 
 interface AlertListProps {
   acknowledged: boolean
 }
 
-export function AlertList({
-  acknowledged,
-}: AlertListProps) {
+export function AlertList({acknowledged,}: AlertListProps) {
   const query = useAlerts(acknowledged, 100)
   const acknowledge = useAcknowledgeAlert()
-  const [selected, setSelected] =
-    useState<AlertDto | null>(null)
+  const [selected, setSelected] = useState<AlertDto | null>(null)
 
   if (query.isPending) {
     return (

@@ -1,14 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  CirclePlay,
-  Octagon,
-  Pause,
-  Play,
-  ShieldAlert,
-  Square,
-} from 'lucide-react'
-
+import { CirclePlay, Octagon, Pause, Play, ShieldAlert, Square } from 'lucide-react'
 import { ApiError } from '@/api/api-error'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -82,7 +74,8 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
   }
 
   function execute() {
-    if (!pending || !reason.trim()) return
+    if (!pending || !reason.trim()) 
+      return
 
     mutation.mutate(
       {
@@ -121,8 +114,7 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
 
         <div className="mt-6 flex flex-wrap gap-2">
           {actions.map((action) => (
-            <Button
-              key={action.label}
+            <Button key={action.label}
               variant={action.dangerous ? 'danger' : 'secondary'}
               leftIcon={action.icon}
               onClick={() => {
@@ -158,45 +150,24 @@ export function BotCommandPanel({ botName }: BotCommandPanelProps) {
               Reason
             </span>
 
-            <input
-              autoFocus
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder="Required command reason"
-              className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 text-sm outline-none focus:border-[#454954]"
-            />
+            <input autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required command reason" className="h-10 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 text-sm outline-none focus:border-[#454954]" />
           </label>
 
-          {(pending?.command === botCommandValues.Stop ||
-            pending?.command === botCommandValues.EmergencyStop) && (
+          {(pending?.command === botCommandValues.Stop || pending?.command === botCommandValues.EmergencyStop) && (
             <div className="mt-4 flex flex-wrap gap-5 text-xs text-[var(--color-text-secondary)]">
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={cancelOpenOrders}
-                  onChange={(event) => setCancelOpenOrders(event.target.checked)}
-                  className="accent-white"
-                />
+                <input type="checkbox" checked={cancelOpenOrders} onChange={(event) => setCancelOpenOrders(event.target.checked)} className="accent-white"/>
                 Cancel open orders
               </label>
 
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={closeOpenPositions}
-                  onChange={(event) => setCloseOpenPositions(event.target.checked)}
-                  className="accent-white"
-                />
+                <input type="checkbox" checked={closeOpenPositions} onChange={(event) => setCloseOpenPositions(event.target.checked)} className="accent-white" />
                 Close open positions
               </label>
             </div>
           )}
 
-          {error && (
-            <p className="mt-4 text-xs leading-5 text-[var(--color-danger)]">
-              {error.message}
-            </p>
-          )}
+          {error && (<p className="mt-4 text-xs leading-5 text-[var(--color-danger)]"> {error.message} </p>)}
         </div>
       </ConfirmActionDialog>
     </>

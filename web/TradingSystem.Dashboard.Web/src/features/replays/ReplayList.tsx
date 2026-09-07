@@ -1,28 +1,17 @@
 import { RefreshCcw } from 'lucide-react'
-
 import { Button } from '@/components/ui/Button'
-import {
-  DataTable,
-  type DataTableColumn,
-} from '@/components/ui/DataTable'
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-
-import {
-  integer,
-  replayModeLabel,
-  replayStatusLabel,
-  replayStatusTone,
-  utcDate,
-} from '@/features/replays/replay-formatters'
+import { integer, replayModeLabel, replayStatusLabel, replayStatusTone, utcDate } from '@/features/replays/replay-formatters'
 import { useReplays } from '@/features/replays/replays.queries'
 import type { ReplaySummaryDto } from '@/types/replays'
 
 interface ReplayListProps {
-  botName?: string
+botName?: string
   skip: number
   take: number
   selectedReplayId: string | null
@@ -31,52 +20,28 @@ interface ReplayListProps {
   onNext: () => void
 }
 
-export function ReplayList({
-  botName: _botName,
-  skip,
-  take,
-  selectedReplayId,
-  onSelect,
-  onPrevious,
-  onNext,
-}: ReplayListProps) {
-  // Current backend list endpoint is status/skip/take based.
-  // `botName` is retained only for compatibility with the existing page.
+export function ReplayList({botName: _botName, skip, take, selectedReplayId, onSelect, onPrevious, onNext,}: ReplayListProps) {
   const query = useReplays(undefined, skip, take)
 
   if (query.isPending) {
     return (
       <div className="space-y-2">
-        {Array.from({ length: 6 }, (_, index) => (
-          <LoadingSkeleton
-            key={index}
-            className="h-14 w-full"
-          />
-        ))}
+        {Array.from({ length: 6 }, (_, index) => ( <LoadingSkeleton key={index} className="h-14 w-full"/> ))}
       </div>
     )
   }
 
   if (query.isError) {
     return (
-      <ErrorState
-        title="Replays unavailable"
-        description={query.error.message}
-        action={
-          <Button onClick={() => void query.refetch()}>
-            Retry
-          </Button>
-        }
+      <ErrorState title="Replays unavailable" description={query.error.message}
+        action={ <Button onClick={() => void query.refetch()}> Retry </Button> }
       />
     )
   }
 
   if (!query.data.length) {
     return (
-      <EmptyState
-        title="No replays"
-        description="Replay jobs will appear here after they are queued."
-      />
+      <EmptyState title="No replays" description="Replay jobs will appear here after they are queued." />
     )
   }
 
@@ -85,25 +50,11 @@ export function ReplayList({
       key: 'replay',
       header: 'Replay',
       render: (replay) => (
-        <button
-          type="button"
-          onClick={() => onSelect(replay.replayId)}
-          className="max-w-[230px] text-left"
-        >
-          <p
-            className={`truncate text-sm font-medium ${
-              selectedReplayId === replay.replayId
-                ? 'text-[var(--color-info)]'
-                : 'text-[var(--color-text-primary)]'
-            }`}
-            title={replay.name}
-          >
+        <button type="button" onClick={() => onSelect(replay.replayId)} className="max-w-[230px] text-left">
+          <p className={`truncate text-sm font-medium ${selectedReplayId === replay.replayId ? 'text-[var(--color-info)]' : 'text-[var(--color-text-primary)]'}`} title={replay.name}>
             {replay.name}
           </p>
-          <p
-            className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]"
-            title={replay.replayId}
-          >
+          <p className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]" title={replay.replayId}>
             {replay.replayId}
           </p>
         </button>
@@ -124,21 +75,12 @@ export function ReplayList({
     {
       key: 'mode',
       header: 'Mode',
-      render: (replay) => (
-        <span className="text-xs">
-          {replayModeLabel(replay.mode)}
-        </span>
-      ),
+      render: (replay) => (<span className="text-xs"> {replayModeLabel(replay.mode)} </span>),
     },
     {
       key: 'status',
       header: 'Status',
-      render: (replay) => (
-        <StatusBadge
-          label={replayStatusLabel(replay.status)}
-          tone={replayStatusTone(replay.status)}
-        />
-      ),
+      render: (replay) => ( <StatusBadge label={replayStatusLabel(replay.status)} tone={replayStatusTone(replay.status)}/>),
     },
     {
       key: 'progress',
@@ -163,11 +105,7 @@ export function ReplayList({
     {
       key: 'failed',
       header: 'Failed',
-      render: (replay) => (
-        <span className="font-mono text-xs">
-          {integer(replay.failedEvents)}
-        </span>
-      ),
+      render: (replay) => (<span className="font-mono text-xs"> {integer(replay.failedEvents)} </span>),
     },
     {
       key: 'stage',

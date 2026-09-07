@@ -1,29 +1,9 @@
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-
-import {
-  authenticationExpiredEvent,
-  clearAccessToken,
-  getAccessToken,
-  setAccessToken,
-} from '@/api/auth-token'
-import {
-  getCurrentDashboardUser,
-  loginDashboard,
-} from '@/features/auth/auth.api'
-import type {
-  DashboardLoginRequest,
-  DashboardUser,
-} from '@/features/auth/auth.types'
+import { authenticationExpiredEvent, clearAccessToken, getAccessToken, setAccessToken } from '@/api/auth-token'
+import { getCurrentDashboardUser, loginDashboard } from '@/features/auth/auth.api'
+import type { DashboardLoginRequest,DashboardUser } from '@/features/auth/auth.types'
 
 type AuthenticationStatus =
   | 'loading'
@@ -33,16 +13,11 @@ type AuthenticationStatus =
 interface AuthenticationContextValue {
   status: AuthenticationStatus
   user: DashboardUser | null
-  login: (
-    request: DashboardLoginRequest,
-  ) => Promise<void>
+  login: (request: DashboardLoginRequest) => Promise<void>
   logout: () => void
 }
 
-const AuthenticationContext =
-  createContext<AuthenticationContextValue | null>(
-    null,
-  )
+const AuthenticationContext = createContext<AuthenticationContextValue | null>(null)
 
 export function AuthenticationProvider({
   children,
@@ -145,24 +120,14 @@ export function AuthenticationProvider({
     ],
   )
 
-  return (
-    <AuthenticationContext.Provider
-      value={value}
-    >
-      {children}
-    </AuthenticationContext.Provider>
-  )
+  return <AuthenticationContext.Provider value={value}> {children} </AuthenticationContext.Provider>
 }
 
 export function useAuthentication() {
-  const context =
-    useContext(AuthenticationContext)
+  const context = useContext(AuthenticationContext)
 
-  if (!context) {
-    throw new Error(
-      'useAuthentication must be used inside AuthenticationProvider.',
-    )
-  }
+  if (!context)
+    throw new Error('useAuthentication must be used inside AuthenticationProvider.',)
 
   return context
 }

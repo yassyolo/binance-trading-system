@@ -225,9 +225,7 @@ export function OptimizationTrials({
               }
             />
           }
-          onClick={() =>
-            void query.refetch()
-          }
+          onClick={() => void query.refetch()}
         >
           Refresh
         </Button>
@@ -235,13 +233,7 @@ export function OptimizationTrials({
 
       <div className="overflow-x-auto">
         <div className="min-w-[1250px]">
-          <DataTable
-            columns={columns}
-            rows={query.data}
-            rowKey={(trial) =>
-              trial.trialId
-            }
-          />
+          <DataTable columns={columns} rows={query.data} rowKey={(trial) => trial.trialId}/>
         </div>
       </div>
     </div>

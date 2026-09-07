@@ -1,17 +1,13 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { CandlestickChart as CandlesIcon, RefreshCcw, Search } from 'lucide-react'
-
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 import { CandlestickChart } from '@/features/analytics/CandlestickChart'
-import {
-  localInputValue,
-  toUtc,
-} from '@/features/analytics/analytics-formatters'
+import { localInputValue, toUtc } from '@/features/analytics/analytics-formatters'
 import { usePriceChart } from '@/features/analytics/analytics.queries'
 import type { PriceChartFilter } from '@/types/analytics'
 
@@ -32,12 +28,8 @@ export function PriceChartPanel() {
   const [filter, setFilter] = useState<PriceChartFilter>(initialFilter)
   const [symbol, setSymbol] = useState(filter.symbol)
   const [interval, setInterval] = useState(filter.interval)
-  const [fromDate, setFromDate] = useState(
-    localInputValue(new Date(filter.fromUtc)),
-  )
-  const [toDate, setToDate] = useState(
-    localInputValue(new Date(filter.toUtc)),
-  )
+  const [fromDate, setFromDate] = useState(localInputValue(new Date(filter.fromUtc)))
+  const [toDate, setToDate] = useState(localInputValue(new Date(filter.toUtc)))
 
   const query = usePriceChart(filter)
 
@@ -69,71 +61,31 @@ export function PriceChartPanel() {
           </p>
         </div>
 
-        <Button
-          size="sm"
-          leftIcon={
-            <RefreshCcw
-              size={14}
-              className={query.isFetching ? 'animate-spin' : ''}
-            />
-          }
-          onClick={() => void query.refetch()}
-          disabled={query.isFetching}
-        >
+        <Button size="sm" leftIcon={<RefreshCcw size={14} className={query.isFetching ? 'animate-spin' : ''} />} onClick={() => void query.refetch()} disabled={query.isFetching}>
           Refresh
         </Button>
       </div>
 
       <div className="mt-6 flex items-end gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4">
         <Field label="Symbol">
-          <input
-            className={inputClass}
-            value={symbol}
-            onChange={(event) => setSymbol(event.target.value)}
-          />
+          <input className={inputClass} value={symbol} onChange={(event) => setSymbol(event.target.value)} />
         </Field>
 
         <Field label="Interval">
-          <select
-            className={inputClass}
-            value={interval}
-            onChange={(event) => setInterval(event.target.value)}
-          >
-            {['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'].map(
-              (value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ),
-            )}
+          <select className={inputClass} value={interval} onChange={(event) => setInterval(event.target.value)}>
+            {['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'].map((value) => ( <option key={value} value={value}> {value} </option>))}
           </select>
         </Field>
 
         <Field label="From">
-          <input
-            className={inputClass}
-            type="datetime-local"
-            value={fromDate}
-            onChange={(event) => setFromDate(event.target.value)}
-          />
+          <input className={inputClass} type="datetime-local" value={fromDate} onChange={(event) => setFromDate(event.target.value)}/>
         </Field>
 
         <Field label="To">
-          <input
-            className={inputClass}
-            type="datetime-local"
-            value={toDate}
-            onChange={(event) => setToDate(event.target.value)}
-          />
+          <input className={inputClass} type="datetime-local" value={toDate} onChange={(event) => setToDate(event.target.value)}/>
         </Field>
 
-        <Button
-          className="ml-auto"
-          size="sm"
-          variant="primary"
-          leftIcon={<Search size={14} />}
-          onClick={apply}
-        >
+        <Button className="ml-auto" size="sm" variant="primary" leftIcon={<Search size={14} />} onClick={apply}>
           Load chart
         </Button>
       </div>

@@ -25,8 +25,7 @@ export function PaperTradingPage() {
     <>
       <PageHeader title="Paper Trading" description="Simulated execution backed by the real paper trading persistence model." />
       <main className="space-y-10 p-8">
-        <PageSection
-          title="Paper account"
+        <PageSection title="Paper account"
           description="Account values are calculated from persisted non-archived paper positions."
           actions={
             <Button size="sm" leftIcon={<RefreshCcw size={14} className={summary.isFetching ? 'animate-spin' : ''} />} onClick={() => void summary.refetch()}>

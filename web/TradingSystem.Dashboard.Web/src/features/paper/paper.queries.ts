@@ -1,14 +1,5 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-
-import {
-  getPaperPositions,
-  getPaperTradingAccount,
-  resetPaperTrading,
-} from '@/features/paper/paper.api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getPaperPositions, getPaperTradingAccount, resetPaperTrading } from '@/features/paper/paper.api'
 
 export function usePaperSummary() {
   return useQuery({
@@ -21,8 +12,7 @@ export function usePaperSummary() {
 export function usePaperPositions(botName?: string) {
   return useQuery({
     queryKey: ['dashboard', 'paper', 'positions', 'open', botName ?? 'all'],
-    queryFn: ({ signal }) =>
-      getPaperPositions({ botName, status: 'Open', take: 100 }, signal),
+    queryFn: ({ signal }) => getPaperPositions({ botName, status: 'Open', take: 100 }, signal),
     refetchInterval: 5_000,
   })
 }
@@ -30,8 +20,7 @@ export function usePaperPositions(botName?: string) {
 export function usePaperTrades(botName?: string, take = 100) {
   return useQuery({
     queryKey: ['dashboard', 'paper', 'positions', 'closed', botName ?? 'all', take],
-    queryFn: ({ signal }) =>
-      getPaperPositions({ botName, status: 'Closed', take }, signal),
+    queryFn: ({ signal }) => getPaperPositions({ botName, status: 'Closed', take }, signal),
     refetchInterval: 10_000,
   })
 }

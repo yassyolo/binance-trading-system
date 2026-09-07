@@ -1,6 +1,5 @@
 import { ArrowLeft, RefreshCcw, TriangleAlert } from 'lucide-react'
 import { Link, useParams } from 'react-router'
-
 import { ApiError } from '@/api/api-error'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BotCommandHistory } from '@/features/bots/BotCommandHistory'

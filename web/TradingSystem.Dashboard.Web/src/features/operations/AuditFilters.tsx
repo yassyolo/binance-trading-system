@@ -1,16 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  Filter,
-  RotateCcw,
-  Search,
-} from 'lucide-react'
-
+import { Filter, RotateCcw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import {
-  localInputValue,
-  toUtc,
-} from '@/features/operations/operations-formatters'
+import { localInputValue, toUtc } from '@/features/operations/operations-formatters'
 import type { AuditQuery } from '@/types/operations'
 
 interface AuditFiltersProps {

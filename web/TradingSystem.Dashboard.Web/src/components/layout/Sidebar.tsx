@@ -1,12 +1,5 @@
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  Orbit,
-  ShieldCheck,
-} from 'lucide-react'
-
+import { ChevronLeft, ChevronRight, LogOut, Orbit, ShieldCheck,} from 'lucide-react'
 import { SidebarItem } from '@/components/layout/SidebarItem'
 import { navigationGroups } from '@/components/layout/navigation'
 import { useAuthentication } from '@/features/auth/auth-context'
@@ -16,27 +9,12 @@ interface SidebarProps {
   onToggle: () => void
 }
 
-export function Sidebar({
-  collapsed,
-  onToggle,
-}: SidebarProps) {
-  const authentication =
-    useAuthentication()
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const authentication = useAuthentication()
 
   return (
-    <aside
-      className={['fixed inset-y-0 left-0 z-30 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)] transition-[width] duration-200',
-        collapsed
-          ? 'w-[72px]'
-          : 'w-[248px]',
-      ].join(' ')}
-    >
-      <div className={
-          collapsed
-            ? 'flex h-[72px] items-center justify-center'
-            : 'flex h-[72px] items-center gap-3 px-5'
-        }
-      >
+    <aside className={['fixed inset-y-0 left-0 z-30 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-sidebar)] transition-[width] duration-200', collapsed ? 'w-[72px]' : 'w-[248px]',].join(' ')}>
+      <div className={ collapsed ? 'flex h-[72px] items-center justify-center' : 'flex h-[72px] items-center gap-3 px-5' }>
         <div className="grid size-9 shrink-0 place-items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-strong)]">
           <Orbit size={19} />
         </div>

@@ -13,9 +13,7 @@ export function AppShell() {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(readInitialCollapsedState)
 
-  useEffect(() => {
-    window.localStorage.setItem(sidebarStorageKey, String(collapsed))
-  }, [collapsed])
+  useEffect(() => { window.localStorage.setItem(sidebarStorageKey, String(collapsed))}, [collapsed])
 
   return (
     <div className="min-h-screen bg-[var(--color-app)] text-[var(--color-text-primary)]">

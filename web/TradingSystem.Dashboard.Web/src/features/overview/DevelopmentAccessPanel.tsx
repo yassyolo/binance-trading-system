@@ -37,13 +37,7 @@ export function DevelopmentAccessPanel({ onSaved }: DevelopmentAccessPanelProps)
             This temporary mechanism stores the token in localStorage and will be replaced by the final authentication flow.
           </p>
 
-          <textarea
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            spellCheck={false}
-            placeholder="Paste JWT token"
-            className="mt-5 min-h-28 w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 py-3 font-mono text-xs leading-5 text-[var(--color-text-primary)] outline-none transition focus:border-[#444850]"
-          />
+          <textarea value={token} onChange={(event) => setToken(event.target.value)} spellCheck={false} placeholder="Paste JWT token" className="mt-5 min-h-28 w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 py-3 font-mono text-xs leading-5 text-[var(--color-text-primary)] outline-none transition focus:border-[#444850]"/>
 
           <div className="mt-4 flex gap-2">
             <Button variant="primary" onClick={save}>Save token and retry</Button>

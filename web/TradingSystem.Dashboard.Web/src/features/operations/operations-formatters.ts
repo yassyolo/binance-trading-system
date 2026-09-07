@@ -24,15 +24,12 @@ export function relativeTime(value: string | null) {
   const timestamp = new Date(value).getTime()
   if (Number.isNaN(timestamp)) return value
 
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - timestamp) / 1000),
-  )
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000),)
 
-  if (seconds < 60) return `${seconds}s ago`
+  if (seconds < 60) 
+    return `${seconds}s ago`
   if (seconds < 3600)
     return `${Math.floor(seconds / 60)}m ago`
-
   if (seconds < 86400)
     return `${Math.floor(seconds / 3600)}h ago`
 
@@ -42,23 +39,14 @@ export function relativeTime(value: string | null) {
 export function healthTone(status: string): StatusTone {
   const value = status.toLowerCase()
 
-  if (value === 'healthy') return 'success'
+  if (value === 'healthy') 
+    return 'success'
 
-  if (
-    value.includes('degraded') ||
-    value.includes('warning') ||
-    value.includes('stale')
-  ) {
+  if (value.includes('degraded') || value.includes('warning') || value.includes('stale')) 
     return 'warning'
-  }
 
-  if (
-    value.includes('unhealthy') ||
-    value.includes('critical') ||
-    value.includes('down')
-  ) {
+  if (value.includes('unhealthy') || value.includes('critical') || value.includes('down')) 
     return 'danger'
-  }
 
   return 'neutral'
 }

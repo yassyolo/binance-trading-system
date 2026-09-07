@@ -20,14 +20,10 @@ export function useComponentHealth() {
   })
 }
 
-export function useAlerts(
-  acknowledged: boolean,
-  take = 100,
-) {
+export function useAlerts(acknowledged: boolean, take = 100,) {
   return useQuery({
     queryKey: ['dashboard', 'alerts', acknowledged, take],
-    queryFn: ({ signal }) =>
-      getAlerts(acknowledged, take, signal),
+    queryFn: ({ signal }) => getAlerts(acknowledged, take, signal),
     refetchInterval: acknowledged ? 30_000 : 10_000,
   })
 }

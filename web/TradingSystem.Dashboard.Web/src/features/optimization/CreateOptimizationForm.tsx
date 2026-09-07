@@ -1,28 +1,14 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import {
-  Play,
-  RotateCcw,
-  SlidersHorizontal,
-} from 'lucide-react'
-
+import {Play, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { ApiError } from '@/api/api-error'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ErrorState } from '@/components/ui/ErrorState'
-import {
-  RangeEditor,
-  type RangeRow,
-} from '@/features/optimization/RangeEditor'
-import {
-  combinationsForRange,
-  localInputValue,
-} from '@/features/optimization/optimization-formatters'
+import { RangeEditor, type RangeRow } from '@/features/optimization/RangeEditor'
+import { combinationsForRange, localInputValue } from '@/features/optimization/optimization-formatters'
 import { useCreateOptimization } from '@/features/optimization/optimization.queries'
-import type {
-  JobAcceptedDto,
-  OptimizationRangeDto,
-} from '@/types/optimization'
+import type { JobAcceptedDto, OptimizationRangeDto } from '@/types/optimization'
 
 interface CreateOptimizationFormProps {
   onAccepted: (job: JobAcceptedDto) => void
@@ -51,41 +37,24 @@ function defaultRanges(): RangeRow[] {
   ]
 }
 
-export function CreateOptimizationForm({
-  onAccepted,
-}: CreateOptimizationFormProps) {
+export function CreateOptimizationForm({onAccepted}: CreateOptimizationFormProps) {
   const dates = initialDates()
 
-  const [botName, setBotName] =
-    useState('BOT8012')
-  const [symbol, setSymbol] =
-    useState('BTCUSDC')
-  const [fromDate, setFromDate] =
-    useState(dates.from)
-  const [toDate, setToDate] =
-    useState(dates.to)
-  const [initialBalance, setInitialBalance] =
-    useState('10000')
-  const [signalSource, setSignalSource] =
-    useState('Internal')
-  const [topResults, setTopResults] =
-    useState('10')
-  const [walkForward, setWalkForward] =
-    useState(false)
-  const [trainBars, setTrainBars] =
-    useState('1000')
-  const [testBars, setTestBars] =
-    useState('250')
-  const [stepBars, setStepBars] =
-    useState('250')
-  const [ranges, setRanges] =
-    useState<RangeRow[]>(defaultRanges)
+  const [botName, setBotName] = useState('BOT8012')
+  const [symbol, setSymbol] = useState('BTCUSDC')
+  const [fromDate, setFromDate] = useState(dates.from)
+  const [toDate, setToDate] = useState(dates.to)
+  const [initialBalance, setInitialBalance] = useState('10000')
+  const [signalSource, setSignalSource] = useState('Internal')
+  const [topResults, setTopResults] = useState('10')
+  const [walkForward, setWalkForward] = useState(false)
+  const [trainBars, setTrainBars] = useState('1000')
+  const [testBars, setTestBars] = useState('250')
+  const [stepBars, setStepBars] = useState('250')
+  const [ranges, setRanges] = useState<RangeRow[]>(defaultRanges)
 
   const mutation = useCreateOptimization()
-  const error =
-    mutation.error instanceof ApiError
-      ? mutation.error
-      : null
+  const error = mutation.error instanceof ApiError ? mutation.error : null
 
   const combinationCount = useMemo(() => {
     if (ranges.length === 0) return 0

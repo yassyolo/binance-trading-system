@@ -1,19 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import {
-  Activity,
-  Bot,
-  ChartNoAxesCombined,
-  FlaskConical,
-  Gauge,
-  HeartPulse,
-  History,
-  LayoutDashboard,
-  Radio,
-  ScrollText,
-  SlidersHorizontal,
-  TriangleAlert,
-  WalletCards,
-} from 'lucide-react'
+import { Activity, Bot, ChartNoAxesCombined, FlaskConical, Gauge, HeartPulse, History, LayoutDashboard, Radio, ScrollText, SlidersHorizontal, TriangleAlert, WalletCards } from 'lucide-react'
 
 export interface NavigationItem {
   label: string

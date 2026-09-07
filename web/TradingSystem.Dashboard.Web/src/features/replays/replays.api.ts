@@ -16,47 +16,19 @@ export function createReplay(request: ReplayRequest) {
   })
 }
 
-export function getReplays(
-  botName: string | undefined,
-  skip: number,
-  take: number,
-  signal?: AbortSignal,
-) {
-  const parameters = new URLSearchParams({
-    skip: String(skip),
-    take: String(take),
-  })
+export function getReplays(botName: string | undefined, skip: number, take: number, signal?: AbortSignal) {
+  const parameters = new URLSearchParams({skip: String(skip), take: String(take)})
 
   if (botName?.trim())
     parameters.set('botName', botName.trim())
 
-  return apiRequest<ReplaySummaryDto[]>(`/replays?${parameters}`, {
-    method: 'GET',
-    signal,
-  })
+  return apiRequest<ReplaySummaryDto[]>(`/replays?${parameters}`, { method: 'GET', signal })
 }
 
-export function getReplay(
-  replayId: string,
-  signal?: AbortSignal,
-) {
-  return apiRequest<ReplayDetailsDto>(
-    `/replays/${encodeURIComponent(replayId)}`,
-    {
-      method: 'GET',
-      signal,
-    },
-  )
+export function getReplay(replayId: string, signal?: AbortSignal) {
+  return apiRequest<ReplayDetailsDto>(`/replays/${encodeURIComponent(replayId)}`, { method: 'GET', signal })
 }
 
 export function cancelReplay(replayId: string) {
-  return apiRequest<void>(
-    `/replays/${encodeURIComponent(replayId)}/cancel`,
-    {
-      method: 'POST',
-      headers: {
-        'X-Idempotency-Key': crypto.randomUUID(),
-      },
-    },
-  )
+  return apiRequest<void>(`/replays/${encodeURIComponent(replayId)}/cancel`, { method: 'POST', headers: {'X-Idempotency-Key': crypto.randomUUID(),}})
 }

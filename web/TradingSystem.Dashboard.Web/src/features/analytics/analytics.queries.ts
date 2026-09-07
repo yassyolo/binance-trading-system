@@ -1,14 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-
-import {
-  getAnalytics,
-  getEquity,
-  getPriceChart,
-} from '@/features/analytics/analytics.api'
-import type {
-  AnalyticsFilter,
-  PriceChartFilter,
-} from '@/types/analytics'
+import { getAnalytics, getEquity, getPriceChart } from '@/features/analytics/analytics.api'
+import type { AnalyticsFilter, PriceChartFilter } from '@/types/analytics'
 
 export function useAnalytics(filter: AnalyticsFilter) {
   return useQuery({

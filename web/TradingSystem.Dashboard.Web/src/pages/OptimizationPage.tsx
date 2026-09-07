@@ -1,9 +1,5 @@
-import {
-  useEffect,
-  useState,
-} from 'react'
+import {useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
-
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { PageSection } from '@/components/ui/PageSection'
@@ -12,32 +8,18 @@ import { OptimizationJobPanel } from '@/features/optimization/OptimizationJobPan
 import { OptimizationRuns } from '@/features/optimization/OptimizationRuns'
 import { OptimizationTrials } from '@/features/optimization/OptimizationTrials'
 import { RunComparison } from '@/features/optimization/RunComparison'
-import type {
-  JobAcceptedDto,
-  RunSummaryDto,
-} from '@/types/optimization'
+import type { JobAcceptedDto, RunSummaryDto} from '@/types/optimization'
 
 export function OptimizationPage() {
-  const [acceptedJob, setAcceptedJob] =
-    useState<JobAcceptedDto | null>(null)
-
-  const [botDraft, setBotDraft] =
-    useState('')
-  const [botName, setBotName] =
-    useState<string | undefined>()
+  const [acceptedJob, setAcceptedJob] = useState<JobAcceptedDto | null>(null)
+  const [botDraft, setBotDraft] = useState('')
+  const [botName, setBotName] = useState<string | undefined>()
   const [skip, setSkip] = useState(0)
   const [take] = useState(50)
-
-  const [selectedRunId, setSelectedRunId] =
-    useState<string | null>(null)
-
-  const [loadedRuns, setLoadedRuns] =
-    useState<RunSummaryDto[]>([])
-
-  const [leftRunId, setLeftRunId] =
-    useState('')
-  const [rightRunId, setRightRunId] =
-    useState('')
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [loadedRuns, setLoadedRuns] = useState<RunSummaryDto[]>([])
+  const [leftRunId, setLeftRunId] = useState('')
+  const [rightRunId, setRightRunId] = useState('')
 
   useEffect(() => {
     if (
@@ -67,19 +49,14 @@ export function OptimizationPage() {
       />
 
       <main className="space-y-10 p-8">
-        <PageSection
-          title="Create optimization"
+        <PageSection title="Create optimization"
           description="Grid candidates are queued for bounded background execution and persisted trial-by-trial."
         >
-          <CreateOptimizationForm
-            onAccepted={setAcceptedJob}
-          />
+          <CreateOptimizationForm onAccepted={setAcceptedJob}/>
         </PageSection>
 
         {acceptedJob && (
-          <OptimizationJobPanel
-            job={acceptedJob}
-          />
+          <OptimizationJobPanel job={acceptedJob}/>
         )}
 
         <PageSection

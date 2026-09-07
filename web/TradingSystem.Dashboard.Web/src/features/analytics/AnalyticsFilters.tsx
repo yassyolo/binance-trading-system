@@ -42,7 +42,6 @@ export function AnalyticsFilters({ onApply }: AnalyticsFiltersProps) {
 
   function reset() {
     const resetDates = initialDates()
-
     setBotName('')
     setSymbol('')
     setFromDate(resetDates.from)
@@ -59,56 +58,27 @@ export function AnalyticsFilters({ onApply }: AnalyticsFiltersProps) {
 
       <div className="flex items-end gap-3">
         <Field label="Bot">
-          <input
-            className={inputClass}
-            value={botName}
-            onChange={(event) => setBotName(event.target.value)}
-            placeholder="All bots"
-          />
+          <input className={inputClass} value={botName} onChange={(event) => setBotName(event.target.value)} placeholder="All bots"/>
         </Field>
 
         <Field label="Symbol">
-          <input
-            className={inputClass}
-            value={symbol}
-            onChange={(event) => setSymbol(event.target.value)}
-            placeholder="All symbols"
-          />
+          <input className={inputClass} value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="All symbols"/>
         </Field>
 
         <Field label="From">
-          <input
-            className={inputClass}
-            type="datetime-local"
-            value={fromDate}
-            onChange={(event) => setFromDate(event.target.value)}
-          />
+          <input className={inputClass} type="datetime-local" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
         </Field>
 
         <Field label="To">
-          <input
-            className={inputClass}
-            type="datetime-local"
-            value={toDate}
-            onChange={(event) => setToDate(event.target.value)}
-          />
+          <input className={inputClass} type="datetime-local" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </Field>
 
         <div className="ml-auto flex gap-2">
-          <Button
-            size="sm"
-            leftIcon={<RotateCcw size={14} />}
-            onClick={reset}
-          >
+          <Button size="sm" leftIcon={<RotateCcw size={14} />} onClick={reset}>
             Reset
           </Button>
 
-          <Button
-            size="sm"
-            variant="primary"
-            leftIcon={<Search size={14} />}
-            onClick={apply}
-          >
+          <Button size="sm" variant="primary" leftIcon={<Search size={14} />} onClick={apply}>
             Apply
           </Button>
         </div>
@@ -117,16 +87,9 @@ export function AnalyticsFilters({ onApply }: AnalyticsFiltersProps) {
   )
 }
 
-const inputClass =
-  'h-9 min-w-[160px] rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 text-xs text-[var(--color-text-primary)] outline-none transition placeholder:text-[var(--color-text-muted)] focus:border-[#454954]'
+const inputClass = 'h-9 min-w-[160px] rounded-xl border border-[var(--color-border)] bg-[var(--color-app)] px-3 text-xs text-[var(--color-text-primary)] outline-none transition placeholder:text-[var(--color-text-muted)] focus:border-[#454954]'
 
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: ReactNode
-}) {
+function Field({label, children}: { label: string, children: ReactNode}) {
   return (
     <label>
       <span className="mb-2 block text-[11px] text-[var(--color-text-secondary)]">

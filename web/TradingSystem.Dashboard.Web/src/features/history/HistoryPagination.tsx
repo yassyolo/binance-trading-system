@@ -11,14 +11,7 @@ interface HistoryPaginationProps {
   onNext: () => void
 }
 
-export function HistoryPagination({
-  skip,
-  take,
-  returned,
-  disabled = false,
-  onPrevious,
-  onNext,
-}: HistoryPaginationProps) {
+export function HistoryPagination({skip, take, returned, disabled = false, onPrevious, onNext,}: HistoryPaginationProps) {
   const page = Math.floor(skip / take) + 1
 
   return (
@@ -28,20 +21,11 @@ export function HistoryPagination({
       </p>
 
       <div className="flex gap-2">
-        <Button
-          size="sm"
-          leftIcon={<ChevronLeft size={14} />}
-          onClick={onPrevious}
-          disabled={disabled || skip === 0}
-        >
+        <Button size="sm" leftIcon={<ChevronLeft size={14} />} onClick={onPrevious} disabled={disabled || skip === 0}>
           Previous
         </Button>
 
-        <Button
-          size="sm"
-          onClick={onNext}
-          disabled={disabled || returned < take}
-        >
+        <Button size="sm" onClick={onNext} disabled={disabled || returned < take}>
           Next
           <ChevronRight size={14} />
         </Button>

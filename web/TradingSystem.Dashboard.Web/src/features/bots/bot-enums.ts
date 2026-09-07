@@ -1,8 +1,4 @@
-import type {
-  BotCommandStatus,
-  BotCommandType,
-  TradingEnvironment,
-} from '@/types/bots'
+import type { BotCommandStatus, BotCommandType, TradingEnvironment } from '@/types/bots'
 import type { StatusTone } from '@/components/ui/StatusBadge'
 
 export const tradingEnvironmentValues = {
@@ -48,7 +44,9 @@ export function environmentLabel(value: TradingEnvironment) {
 }
 
 export function environmentValue(value: TradingEnvironment) {
-  if (typeof value === 'number') return value
+  if (typeof value === 'number') 
+    return value
+  
   return value.toLowerCase() === 'production' ? 1 : 0
 }
 
@@ -69,9 +67,14 @@ export function commandStatusLabel(value: BotCommandStatus) {
 export function commandStatusTone(value: BotCommandStatus): StatusTone {
   const label = commandStatusLabel(value).toLowerCase()
 
-  if (label === 'completed') return 'success'
-  if (label === 'pending' || label === 'processing') return 'info'
-  if (label === 'failed') return 'danger'
-  if (label === 'rejected') return 'warning'
+  if (label === 'completed') 
+    return 'success'
+  if (label === 'pending' || label === 'processing')
+     return 'info'
+  if (label === 'failed') 
+    return 'danger'
+  if (label === 'rejected') 
+    return 'warning'
+  
   return 'neutral'
 }
