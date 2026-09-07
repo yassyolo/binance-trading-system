@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Options;
 
 namespace StrategyService.Bots.Bot8012.Configuration;
-public sealed class Bot8012OptionsValidator : IValidateOptions<Bot8012Options>
+
+public sealed class Bot8012OptionsValidator : IValidateOptions <Bot8012Options>
 { 
     public ValidateOptionsResult Validate(string? name, Bot8012Options x)
     {
-        var e = new List<string>();
+        var e = new List <string>();
         
         if(string.IsNullOrWhiteSpace(x.BotName))
             e.Add("BotName is required.");
@@ -13,22 +14,22 @@ public sealed class Bot8012OptionsValidator : IValidateOptions<Bot8012Options>
         if(string.IsNullOrWhiteSpace(x.Symbol))
             e.Add("Symbol is required.");
         
-        if(x.Quantity<=0)
+        if(x.Quantity <= 0)
             e.Add("Quantity must be positive.");
         
-        if(x.Leverage is<1 or>125)
+        if(x.Leverage is < 1 or > 125)
             e.Add("Leverage must be between 1 and 125.");
         
-        if(x.ProfitDistance<=0)
+        if(x.ProfitDistance <= 0)
             e.Add("ProfitDistance must be positive.");
         
-        if(x.PriceDistance<=0)
+        if(x.PriceDistance <= 0)
             e.Add("PriceDistance must be positive.");
         
-        if(x.OrderSideLimit<=0)
+        if(x.OrderSideLimit <= 0)
             e.Add("OrderSideLimit must be positive.");
         
-        if(x.CooldownSeconds<0)
+        if(x.CooldownSeconds <0)
             e.Add("CooldownSeconds cannot be negative.");
         
         return e.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(e);

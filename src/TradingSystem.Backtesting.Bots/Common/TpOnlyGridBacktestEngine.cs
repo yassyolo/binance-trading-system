@@ -9,14 +9,11 @@ namespace TradingSystem.Backtesting.Bots.Common;
 
 public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy)
 {
-    public BotBacktestResult<TOptions> Run<TOptions>(
-        IReadOnlyList<MarketCandle> sourceCandles,
-        IReadOnlyList<HistoricalBotSignal> sourceSignals,
-        TOptions options,
-        CancellationToken ct = default)
+    public BotBacktestResult<TOptions> Run<TOptions>(IReadOnlyList<MarketCandle> sourceCandles, IReadOnlyList<HistoricalBotSignal> sourceSignals, TOptions options, CancellationToken ct = default)
         where TOptions : ITpOnlyGridBacktestOptions
     {
         Validate(sourceCandles, options);
+       
         var candles = sourceCandles.OrderBy(x => x.OpenTimeUtc).ToArray();
         var signals = sourceSignals.OrderBy(x => x.TimeUtc).ToArray();
         var active = new List<Position>();
@@ -27,15 +24,15 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
         var lastSignalAt = new Dictionary<TradeSide, DateTime>();
         var balance = options.InitialBalance;
         var peak = balance;
-        var signalIndex = 0;
+        var i = 0;
 
         foreach (var candle in candles)
         {
             ct.ThrowIfCancellationRequested();
 
-            while (signalIndex < signals.Length && signals[signalIndex].TimeUtc <= candle.OpenTimeUtc)
+            while (i < signals.Length && signals[i].TimeUtc <= candle.OpenTimeUtc)
             {
-                var signal = signals[signalIndex++];
+                var signal = signals[i++];
                 var positionSide = ToPositionSide(signal.Side);
 
                 if (signal.Side == TradeSide.Long && !options.EnableLong
@@ -52,14 +49,8 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
                     continue;
                 }
 
-                var references = active
-                    .Select(x => new GridPositionReference(ToPositionSide(x.Side), x.TakeProfit, x.EntryTimeUtc))
-                    .ToArray();
-                var check = gridSpacingPolicy.Evaluate(
-                    positionSide,
-                    candle.Open,
-                    references,
-                    new(options.PriceDistance, options.ProfitDistance, options.OrderSideLimit));
+                var references = active.Select(x => new GridPositionReference(ToPositionSide(x.Side), x.TakeProfit, x.EntryTimeUtc)).ToArray();
+                var check = gridSpacingPolicy.Evaluate(positionSide, candle.Open, references, new(options.PriceDistance, options.ProfitDistance, options.OrderSideLimit));
 
                 if (!check.Allowed)
                 {
@@ -67,9 +58,7 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
                     continue;
                 }
 
-                var entry = BotBacktestMath.RoundToStep(
-                    BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints),
-                    options.TickSize);
+                var entry = BotBacktestMath.RoundToStep(BotBacktestMath.EntrySlippage(candle.Open, signal.Side, options.SlippageBasisPoints), options.TickSize);
                 var margin = entry * options.Quantity / options.Leverage;
                 var usedMargin = active.Sum(x => x.Margin);
                 var entryFee = entry * options.Quantity * options.EntryFeeRate;
@@ -80,13 +69,10 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
                     continue;
                 }
 
-                var takeProfit = BotBacktestMath.RoundToStep(
-                    signal.Side == TradeSide.Long
-                        ? entry + options.ProfitDistance
-                        : entry - options.ProfitDistance,
-                    options.TickSize);
+                var takeProfit = BotBacktestMath.RoundToStep(signal.Side == TradeSide.Long ? entry + options.ProfitDistance : entry - options.ProfitDistance, options.TickSize);
 
                 balance -= entryFee;
+               
                 var position = new Position(
                     Guid.NewGuid().ToString("N")[..8],
                     signal.Side,
@@ -96,9 +82,11 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
                     options.Quantity,
                     margin,
                     entryFee);
+                
                 active.Add(position);
                 executions.Add(new(position.Id, candle.OpenTimeUtc, "ENTRY", position.Side, entry, position.Quantity, 0, entryFee, signal.Source));
                 decisions.Add(new(signal.TimeUtc, signal.Side, "Open", check.Reason, entry, signal.SignalId));
+                
                 lastSignalAt[signal.Side] = signal.TimeUtc;
             }
 
@@ -107,6 +95,7 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
                 var hit = position.Side == TradeSide.Long
                     ? candle.High >= position.TakeProfit
                     : candle.Low <= position.TakeProfit;
+                
                 if (hit)
                     Close(position, position.TakeProfit, candle.CloseTimeUtc, "TAKE_PROFIT");
             }
@@ -121,6 +110,7 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
         if (options.ForceCloseAtEnd)
         {
             var last = candles[^1];
+           
             foreach (var position in active.ToArray())
                 Close(position, BotBacktestMath.ExitSlippage(last.Close, position.Side, options.SlippageBasisPoints), last.CloseTimeUtc, "BACKTEST_END");
         }
@@ -147,8 +137,11 @@ public sealed class TpOnlyGridBacktestEngine(GridSpacingPolicy gridSpacingPolicy
             var gross = BotBacktestMath.UnrealizedPnl(position.Side, position.EntryPrice, price, position.Quantity);
             var exitFee = price * position.Quantity * options.ExitFeeRate;
             balance += gross - exitFee;
+            
             active.Remove(position);
+           
             executions.Add(new(position.Id, time, "EXIT", position.Side, price, position.Quantity, gross, exitFee, reason));
+           
             completed.Add(new BotPositionResult
             {
                 PositionId = position.Id,

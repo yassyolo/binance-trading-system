@@ -98,13 +98,13 @@ public sealed class Bot8015KlineSubscriber(
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
-        catch (JsonException exception)
+        catch (JsonException jsonEx)
         {
-            logger.LogWarning(exception, "BOT8015 received invalid kline JSON. Payload = {Payload}", raw);
+            logger.LogWarning(jsonEx, "BOT8015 received invalid kline JSON. Payload = {Payload}", raw);
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception, "BOT8015 kline message processing failed.");
+            logger.LogError(ex, "BOT8015 kline message processing failed.");
         }
 
         return Task.CompletedTask;

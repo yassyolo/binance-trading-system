@@ -5,7 +5,7 @@ using TradingSystem.Binance.Orders.Models;
 namespace TradingSystem.Binance.Orders;
 
 public sealed class SafeBinanceOrderService(
-    IBinanceFuturesOrderClient orderClient,
+    IBinanceFuturesOrderClient ordersClient,
     ILogger<SafeBinanceOrderService> logger)
 {
     private static readonly TimeSpan FillWaitTimeout = TimeSpan.FromSeconds(20);
@@ -15,7 +15,7 @@ public sealed class SafeBinanceOrderService(
     {
         try
         {
-            return await orderClient.PlaceMarketOrderAsync(symbol, side, positionSide, quantity, clientOrderId, ct);
+            return await ordersClient.PlaceMarketOrderAsync(symbol, side, positionSide, quantity, clientOrderId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -52,8 +52,8 @@ public sealed class SafeBinanceOrderService(
             try
             {
                 submittedOrder = !string.IsNullOrWhiteSpace(submittedOrder.OrderId)
-                    ? await orderClient.GetOrderAsync(symbol, submittedOrder.OrderId, ct)
-                    : await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+                    ? await ordersClient.GetOrderAsync(symbol, submittedOrder.OrderId, ct)
+                    : await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
 
                 lastLookupException = null;
             }
@@ -69,7 +69,7 @@ public sealed class SafeBinanceOrderService(
 
                 try
                 {
-                    submittedOrder = await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+                    submittedOrder = await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
                     lastLookupException = null;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -87,7 +87,7 @@ public sealed class SafeBinanceOrderService(
 
         try
         {
-            var recovered = await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+            var recovered = await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
 
             if (IsFilled(recovered))
             {
@@ -122,7 +122,7 @@ public sealed class SafeBinanceOrderService(
         {
             try
             {
-                await orderClient.CancelOrderAsync(symbol, orderId, ct);
+                await ordersClient.CancelOrderAsync(symbol, orderId, ct);
                 return true;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -144,7 +144,7 @@ public sealed class SafeBinanceOrderService(
         {
             try
             {
-                await orderClient.CancelAlgoOrderAsync(symbol, algoOrderId, ct);
+                await ordersClient.CancelAlgoOrderAsync(symbol, algoOrderId, ct);
                 return true;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -165,7 +165,7 @@ public sealed class SafeBinanceOrderService(
         if (string.IsNullOrWhiteSpace(orderId) && string.IsNullOrWhiteSpace(clientOrderId))
             return false;
 
-        var openOrders = await orderClient.GetOpenOrdersAsync(symbol, ct);
+        var openOrders = await ordersClient.GetOpenOrdersAsync(symbol, ct);
         return !openOrders.Any(o =>
             (!string.IsNullOrWhiteSpace(orderId) && o.OrderId == orderId) ||
             (!string.IsNullOrWhiteSpace(clientOrderId) && o.ClientOrderId == clientOrderId));
@@ -176,7 +176,7 @@ public sealed class SafeBinanceOrderService(
         if (string.IsNullOrWhiteSpace(algoOrderId) && string.IsNullOrWhiteSpace(clientAlgoId))
             return false;
 
-        var openOrders = await orderClient.GetOpenAlgoOrdersAsync(symbol, ct);
+        var openOrders = await ordersClient.GetOpenAlgoOrdersAsync(symbol, ct);
         return !openOrders.Any(o =>
             (!string.IsNullOrWhiteSpace(algoOrderId) && o.AlgoOrderId == algoOrderId) ||
             (!string.IsNullOrWhiteSpace(clientAlgoId) && o.ClientAlgoId == clientAlgoId));
@@ -194,8 +194,8 @@ public sealed class SafeBinanceOrderService(
         try
         {
             refreshed = !string.IsNullOrWhiteSpace(order.OrderId)
-                ? await orderClient.GetOrderAsync(symbol, order.OrderId, ct)
-                : await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+                ? await ordersClient.GetOrderAsync(symbol, order.OrderId, ct)
+                : await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -215,7 +215,7 @@ public sealed class SafeBinanceOrderService(
 
         try
         {
-            var fills = await orderClient.GetTradeFillsForOrderAsync(symbol, order.OrderId, ct);
+            var fills = await ordersClient.GetTradeFillsForOrderAsync(symbol, order.OrderId, ct);
             var executedQuantity = fills.Sum(x => x.Quantity);
             var quoteQuantity = fills.Sum(x => x.QuoteQuantity > 0 ? x.QuoteQuantity : x.Price * x.Quantity);
 
@@ -262,7 +262,7 @@ public sealed class SafeBinanceOrderService(
 
             try
             {
-                var recovered = await orderClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
+                var recovered = await ordersClient.GetOrderByClientOrderIdAsync(symbol, clientOrderId, ct);
 
                 logger.LogInformation("Recovered Binance order after uncertain submit outcome. Symbol = {Symbol}, ClientOrderId = {ClientOrderId}, OrderId = {OrderId}, Status = {Status}", symbol, clientOrderId, recovered.OrderId, recovered.Status);
 

@@ -21,15 +21,14 @@ public abstract class TpOnlyGridHealingService<TOptions>(
 
         var positions = await positionStore.GetAllAsync(BotName, ct);
 
-        var positionsWithMissingTakeProfit = positions.Where(p => !p.Closed 
-            && !string.IsNullOrWhiteSpace(p.TpClientId) 
+        var positionsWithMissingTakeProfit = positions.Where(p => !p.Closed && !string.IsNullOrWhiteSpace(p.TpClientId) 
             && !snapshot.ActiveClientIds.ToHashSet(StringComparer.OrdinalIgnoreCase).Contains(p.TpClientId));
 
-        foreach (var p in positionsWithMissingTakeProfit)
+        foreach (var position in positionsWithMissingTakeProfit)
         {
-            p.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
+            position.MarkClosed("HEALING_TP_MISSING", clock.UtcNow);
             
-            await positionStore.SaveAsync(p, ct);
+            await positionStore.SaveAsync(position, ct);
         }
     }
 }

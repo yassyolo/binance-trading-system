@@ -15,9 +15,7 @@ public sealed class TpOnlyGridGapPolicy<TOptions>(
 {
     public StrategyDecision Evaluate(PositionSide side,  decimal markPrice,  IReadOnlyCollection<ActivePositionView> activePositions,  BotRuntimeConfiguration? runtimeConfiguration = null)
     {
-        var references = activePositions.Where(x => x.TpPrice is > 0)
-            .Select(x => new GridPositionReference(x.Side, x.TpPrice!.Value, x.CreatedAtUtc))
-            .ToArray();
+        var references = activePositions.Where(x => x.TpPrice is > 0).Select(x => new GridPositionReference(x.Side, x.TpPrice!.Value, x.CreatedAtUtc)).ToArray();
 
         var priceDistance = runtimeConfiguration?.PriceDistance ?? options.PriceDistance;
         var profitDistance = runtimeConfiguration?.ProfitDistance ?? options.ProfitDistance;

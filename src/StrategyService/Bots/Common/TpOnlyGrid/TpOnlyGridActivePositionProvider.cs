@@ -8,7 +8,8 @@ namespace StrategyService.Bots.Common.TpOnlyGrid;
 public abstract class TpOnlyGridActivePositionProvider<TOptions>(
     TOptions options, 
     IBinanceFuturesOrderClient ordersClient)
-    : IBotActivePositionProvider where TOptions : class, ITpOnlyGridBotOptions
+    : IBotActivePositionProvider where TOptions : class, 
+    ITpOnlyGridBotOptions
 {
     public string BotName => options.BotName;
     

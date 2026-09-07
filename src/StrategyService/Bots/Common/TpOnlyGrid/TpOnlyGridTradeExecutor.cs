@@ -21,14 +21,14 @@ public abstract class TpOnlyGridTradeExecutor<TOptions>(
 
     public async Task<TradeExecutionResult> OpenAsync(string symbol, PositionSide side, string? source, CancellationToken ct)
     {
-        var runtime  = await configProvider.GetAsync(BotName,  ct);
-        var configuredSymbol = runtime?.Symbol ?? options.Symbol;
+        var config  = await configProvider.GetAsync(BotName,  ct);
+        var configuredSymbol = config?.Symbol ?? options.Symbol;
         
         if (!symbol.Equals(configuredSymbol, StringComparison.OrdinalIgnoreCase))
             return TradeExecutionResult.Failure($"{BotName} does not support symbol '{symbol}'.");
 
-        var quantity = runtime?.Quantity ?? options.Quantity;
-        var profitDistance = runtime?.ProfitDistance ?? options.ProfitDistance;
+        var quantity = config?.Quantity ?? options.Quantity;
+        var profitDistance = config?.ProfitDistance ?? options.ProfitDistance;
         
         try
         {

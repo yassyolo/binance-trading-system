@@ -16,25 +16,13 @@ public sealed class BinanceTpOnlyPositionService(
     IClock clock,
     ILogger<BinanceTpOnlyPositionService> logger)
 {
-    public async Task<BotPosition> OpenAsync(
-        string botName,
-        string symbol,
-        PositionSide side,
-        decimal quantity,
-        decimal profitDistance,
-        CancellationToken ct)
+    public async Task<BotPosition> OpenAsync(string botName, string symbol, PositionSide side, decimal quantity, decimal profitDistance, CancellationToken ct)
     {
         var id = BinanceClientOrderId.NewShortId();
         var parentId = BinanceClientOrderId.Create(botName, "P", id);
         var tpId = BinanceClientOrderId.Create(botName, "TP", id);
 
-        var parentOrder = await safeOrders.SafePlaceMarketOrderAsync(
-            symbol,
-            BinanceOrderSide.Entry(side),
-            BinanceOrderSide.Position(side),
-            quantity,
-            parentId,
-            ct);
+        var parentOrder = await safeOrders.SafePlaceMarketOrderAsync(symbol, BinanceOrderSide.Entry(side), BinanceOrderSide.Position(side), quantity, parentId, ct);
 
         var filled = await safeOrders.WaitForFillAsync(symbol, parentOrder, parentId, ct);
 
@@ -42,20 +30,11 @@ public sealed class BinanceTpOnlyPositionService(
         if (entry <= 0)
             throw new InvalidOperationException($"Filled order '{filled.OrderId}' has no valid price.");
 
-        var filters = await ordersClient.GetSymbolFiltersAsync(symbol, ct);
-        var raw = side == PositionSide.Long
-            ? entry + profitDistance
-            : entry - profitDistance;
+        var filters = await ordersClient.GetSymbolFiltersAsync(symbol, ct);      
+        var raw = side == PositionSide.Long ? entry + profitDistance : entry - profitDistance;
         var tpPrice = Quantize(raw, filters.TickSize);
 
-        var tp = await ordersClient.PlaceLimitOrderAsync(
-            symbol,
-            BinanceOrderSide.Close(side),
-            BinanceOrderSide.Position(side),
-            quantity,
-            tpPrice,
-            tpId,
-            ct);
+        var tp = await ordersClient.PlaceLimitOrderAsync(symbol, BinanceOrderSide.Close(side), BinanceOrderSide.Position(side), quantity, tpPrice, tpId, ct);
 
         var now = clock.UtcNow;
 

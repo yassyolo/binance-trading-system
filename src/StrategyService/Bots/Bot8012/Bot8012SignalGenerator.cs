@@ -51,20 +51,20 @@ public sealed class Bot8012SignalGenerator(
     
     private bool Match(MarketIndicatorSnapshot x, bool longSide)
     {
-        var r = _options.SignalRules;
+        var rules = _options.SignalRules;
         
-        if(r.RequireBollingerBreakout 
+        if(rules.RequireBollingerBreakout 
             && (!x.TryGet(longSide ? IndicatorKeys.BollingerUpper : IndicatorKeys.BollingerLower, out var b) 
             || (longSide ? x.Close <= b : x.Close >= b)))
             return false;
         
-        if(r.RequireSmmaAlignment 
+        if(rules.RequireSmmaAlignment 
             && (!x.TryGet(IndicatorKeys.SmmaFast, out var f) 
             || !x.TryGet(IndicatorKeys.SmmaSlow, out var s) 
             || (longSide ? f <= s : f >= s)))
             return false;
         
-        if(r.RequireAlligatorAlignment 
+        if(rules.RequireAlligatorAlignment 
             && (!x.TryGet(IndicatorKeys.AlligatorLips, out var l) 
             || !x.TryGet(IndicatorKeys.AlligatorTeeth, out var t) 
             || !x.TryGet(IndicatorKeys.AlligatorJaw, out var j) 
