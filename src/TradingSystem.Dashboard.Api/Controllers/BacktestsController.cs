@@ -10,7 +10,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/backtests")]
 public sealed class BacktestsController(
-    IDashboardJobStore store)
+    IDashboardJobStore jobStore)
     : DashboardControllerBase
 {
     [HttpPost]
@@ -20,7 +20,7 @@ public sealed class BacktestsController(
     {
         RequestValidation.Validate(request);
 
-        var result = await store.EnqueueBacktestAsync(request, DashboardUserName, ct);
+        var result = await jobStore.EnqueueBacktestAsync(request, DashboardUserName, ct);
 
         return Accepted(value: result);
     }

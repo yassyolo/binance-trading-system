@@ -8,17 +8,15 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/overview")]
 public sealed class OverviewController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(CancellationToken ct)
     {
-        var result = await store.GetOverviewAsync(
-            cancellationToken);
+        var result = await queryStore.GetOverviewAsync(ct);
 
         return Ok(result);
     }

@@ -17,4 +17,3 @@ public sealed record UpdateBotConfigurationRequest(
     int? OrderSideLimit, 
     int CooldownSeconds, 
     string Reason);
-

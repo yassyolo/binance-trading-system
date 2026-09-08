@@ -9,7 +9,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/charts")]
 public sealed class ChartsController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet("{symbol}/{interval}")]
@@ -19,7 +19,7 @@ public sealed class ChartsController(
     {
         RequestValidation.ValidateChart(symbol, interval, fromUtc, toUtc);
 
-        var result = await store.GetPriceChartAsync(symbol, interval, fromUtc, toUtc, ct);
+        var result = await queryStore.GetPriceChartAsync(symbol, interval, fromUtc, toUtc, ct);
 
         return Ok(result);
     }

@@ -30,31 +30,18 @@ public sealed class DashboardTokenService(DashboardTokenOptions options)
 
         claims.AddRange(AdministratorRoles.Select(role => new Claim("role", role)));
 
-        var credentials = new SigningCredentials(
-                new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(
-                        options.SigningKey)),
-                SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes( options.SigningKey)), SecurityAlgorithms.HmacSha256);
 
-        var token =
-            new JwtSecurityToken(
-                issuer: options.Issuer,
-                audience: options.Audience,
-                claims: claims,
-                notBefore: now,
-                expires: expiresAtUtc,
-                signingCredentials: credentials);
+        var token = new JwtSecurityToken(
+            issuer: options.Issuer,
+            audience: options.Audience,
+            claims: claims,
+            notBefore: now,
+            expires: expiresAtUtc,
+            signingCredentials: credentials);
 
-        var serialized =
-            new JwtSecurityTokenHandler()
-                .WriteToken(token);
+        var serialized = new JwtSecurityTokenHandler().WriteToken(token);
 
-        return new DashboardLoginResponse(
-            serialized,
-            "Bearer",
-            expiresAtUtc,
-            userName,
-            userName,
-            AdministratorRoles);
+        return new DashboardLoginResponse(serialized, "Bearer", expiresAtUtc, userName, userName, AdministratorRoles);
     }
 }

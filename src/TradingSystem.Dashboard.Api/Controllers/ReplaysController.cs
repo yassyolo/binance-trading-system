@@ -11,48 +11,30 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/replays")]
 public sealed class ReplaysController(
-    IReplayJobStore store)
+    IReplayJobStore replayJobStore)
     : DashboardControllerBase
 {
     [HttpPost]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("write")]
-    public async Task<IActionResult> CreateAsync(
-        CreateReplayRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateAsync(CreateReplayRequest request, CancellationToken ct)
     {
         RequestValidation.Validate(request);
 
-        var id = await store.EnqueueAsync(
-            request with
-            {
-                BatchSize = Math.Clamp(
-                    request.BatchSize,
-                    1,
-                    1000)
-            },
+        var id = await replayJobStore.EnqueueAsync(
+            request with { BatchSize = Math.Clamp(request.BatchSize, 1, 1000) },
             DashboardUserName,
-            cancellationToken);
+            ct);
 
-        return Accepted(
-            $"/api/v1/replays/{id}",
-            new { replayId = id });
+        return Accepted($"/api/v1/replays/{id}", new { replayId = id });
     }
 
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> QueryAsync(
-        ReplayJobStatus? status,
-        int skip,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> QueryAsync(ReplayJobStatus? status, int skip, int take, CancellationToken ct)
     {
-        var result = await store.QueryAsync(
-            status,
-            RequestValidation.Skip(skip),
-            RequestValidation.PageSize(take),
-            cancellationToken);
+        var result = await replayJobStore.QueryAsync(status, RequestValidation.Skip(skip), RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }
@@ -60,49 +42,29 @@ public sealed class ReplaysController(
     [HttpGet("{replayId:guid}")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        Guid replayId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(Guid replayId, CancellationToken ct)
     {
-        var job = await store.GetAsync(
-            replayId,
-            cancellationToken);
+        var job = await replayJobStore.GetAsync(replayId, ct);
 
-        return job is null
-            ? NotFound()
-            : Ok(job);
+        return job is null ? NotFound() : Ok(job);
     }
 
     [HttpGet("{replayId:guid}/result")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetResultAsync(
-        Guid replayId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetResultAsync(Guid replayId, CancellationToken ct)
     {
-        var summary = await store.GetSummaryAsync(
-            replayId,
-            cancellationToken);
+        var summary = await replayJobStore.GetSummaryAsync(replayId, ct);
 
-        return summary is null
-            ? NotFound()
-            : Ok(summary);
+        return summary is null ? NotFound() : Ok(summary);
     }
 
     [HttpGet("{replayId:guid}/steps")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetStepsAsync(
-        Guid replayId,
-        long afterGlobalPosition,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetStepsAsync(Guid replayId, long afterGlobalPosition, int take, CancellationToken ct)
     {
-        var result = await store.GetStepsAsync(
-            replayId,
-            Math.Max(0, afterGlobalPosition),
-            Math.Clamp(take, 1, 500),
-            cancellationToken);
+        var result = await replayJobStore.GetStepsAsync(replayId, Math.Max(0, afterGlobalPosition), Math.Clamp(take, 1, 500), ct);
 
         return Ok(result);
     }
@@ -112,7 +74,7 @@ public sealed class ReplaysController(
     [EnableRateLimiting("write")]
     public async Task<IActionResult> CancelAsync(Guid replayId,CancellationToken ct)
     {
-        await store.CancelAsync(replayId, DashboardUserName, ct);
+        await replayJobStore.CancelAsync(replayId, DashboardUserName, ct);
 
         return Accepted();
     }

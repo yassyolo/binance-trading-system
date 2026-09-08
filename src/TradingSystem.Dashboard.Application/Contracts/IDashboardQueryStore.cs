@@ -1,5 +1,4 @@
 ﻿using TradingSystem.Dashboard.Application.Models;
-using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Dashboard.Contracts.Models.Alerts;
 using TradingSystem.Dashboard.Contracts.Models.Analytics;
 using TradingSystem.Dashboard.Contracts.Models.Audit;
@@ -38,5 +37,12 @@ public interface IDashboardQueryStore
     
     Task<IReadOnlyCollection<AlertDto>> GetAlertsAsync(bool acknowledged, int take, CancellationToken ct);
    
-    Task<IReadOnlyCollection<AuditEventDto>> GetAuditEventsAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct);
+    Task<IReadOnlyCollection<AuditEventDto>> GetAuditEventsAsync(
+        string? actor, 
+        string? action, 
+        DateTime? fromUtc,
+        DateTime? toUtc, 
+        int skip,
+        int take, 
+        CancellationToken ct);
 }

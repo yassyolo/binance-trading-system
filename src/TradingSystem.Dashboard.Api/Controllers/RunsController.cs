@@ -9,7 +9,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/runs")]
 public sealed class RunsController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet]
@@ -17,7 +17,7 @@ public sealed class RunsController(
     [EnableRateLimiting("read")]
     public async Task<IActionResult> GetAsync(string? botName, int skip, int take, CancellationToken ct)
     {
-        var result = await store.GetRunsAsync(new(RequestValidation.Skip(skip), RequestValidation.PageSize(take), botName), ct);
+        var result = await queryStore.GetRunsAsync(new(RequestValidation.Skip(skip), RequestValidation.PageSize(take), botName), ct);
 
         return Ok(result);
     }

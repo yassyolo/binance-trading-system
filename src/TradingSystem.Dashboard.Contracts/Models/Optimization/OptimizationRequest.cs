@@ -13,4 +13,3 @@ public sealed record OptimizationRequest(
     int? TrainBars, 
     int? TestBars, 
     int? StepBars);
-

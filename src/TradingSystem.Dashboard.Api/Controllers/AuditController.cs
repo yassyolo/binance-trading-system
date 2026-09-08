@@ -9,7 +9,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/audit")]
 public sealed class AuditController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet]
@@ -17,7 +17,7 @@ public sealed class AuditController(
     [EnableRateLimiting("read")]
     public async Task<IActionResult> GetAsync(string? actor, string? action, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct)
     {
-        var result = await store.GetAuditEventsAsync(actor, action, fromUtc, toUtc, RequestValidation.Skip(skip), RequestValidation.PageSize(take), ct);
+        var result = await queryStore.GetAuditEventsAsync(actor, action, fromUtc, toUtc, RequestValidation.Skip(skip), RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }

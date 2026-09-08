@@ -30,9 +30,7 @@ public sealed class AlertsController(
     public async Task<IActionResult> AcknowledgeAsync(long id, CancellationToken ct)
     {
         if (id <= 0)
-        {
             throw new ApiValidationException(new Dictionary<string, string[]> { ["id"] = ["Alert id must be positive."] });
-        }
 
         await commandStore.AcknowledgeAsync(id, DashboardUserName, ct);
 

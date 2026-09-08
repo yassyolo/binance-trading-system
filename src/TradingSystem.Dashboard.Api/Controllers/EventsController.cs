@@ -11,11 +11,11 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1")]
 public sealed class EventsController(
-    ITradingEventStoreReader timeline,
+    ITradingEventStoreReader eventStoreReader,
     ITradingEventStore eventStore)
     : DashboardControllerBase
 {
-    [HttpGet("timeline")]
+    [HttpGet("eventStoreReader")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
     public async Task<IActionResult> GetTimelineAsync(
@@ -32,9 +32,9 @@ public sealed class EventsController(
         long? afterGlobalPosition,
         int skip,
         int take,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
-        var result = await timeline.ReadAsync(
+        var result = await eventStoreReader.ReadAsync(
             new EventStoreQuery(
                 aggregateType,
                 aggregateId,
@@ -49,7 +49,7 @@ public sealed class EventsController(
                 afterGlobalPosition,
                 RequestValidation.Skip(skip),
                 RequestValidation.PageSize(take)),
-            cancellationToken);
+            ct);
 
         return Ok(result);
     }
@@ -57,19 +57,9 @@ public sealed class EventsController(
     [HttpGet("event-streams/{aggregateType}/{aggregateId}")]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetEventStreamAsync(
-        string aggregateType,
-        string aggregateId,
-        long afterVersion,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetEventStreamAsync(string aggregateType, string aggregateId, long afterVersion, int take, CancellationToken ct)
     {
-        var result = await eventStore.ReadStreamAsync(
-            aggregateType,
-            aggregateId,
-            Math.Max(0, afterVersion),
-            Math.Clamp(take, 1, 500),
-            cancellationToken);
+        var result = await eventStore.ReadStreamAsync(aggregateType, aggregateId, Math.Max(0, afterVersion), Math.Clamp(take, 1, 500), ct);
 
         return Ok(result);
     }

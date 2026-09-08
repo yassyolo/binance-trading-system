@@ -6,4 +6,3 @@ public enum TradingEnvironment
     Production = 1,
     Paper = 2
 }
-

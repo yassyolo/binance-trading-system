@@ -8,7 +8,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/health")]
 public sealed class HealthController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet("components")]
@@ -16,7 +16,7 @@ public sealed class HealthController(
     [EnableRateLimiting("read")]
     public async Task<IActionResult> GetComponentsAsync(CancellationToken ct)
     {
-        var result = await store.GetHealthAsync(ct);
+        var result = await queryStore.GetHealthAsync(ct);
 
         return Ok(result);
     }

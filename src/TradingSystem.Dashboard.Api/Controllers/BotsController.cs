@@ -11,7 +11,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/bots")]
 public sealed class BotsController(
-    IBotConfigurationStore configurationStore,
+    IBotConfigurationStore configStore,
     IBotCommandStore commandStore)
     : DashboardControllerBase
 {
@@ -20,7 +20,7 @@ public sealed class BotsController(
     [EnableRateLimiting("read")]
     public async Task<IActionResult> GetAllAsync(CancellationToken ct)
     {
-        var result = await configurationStore.GetAllAsync(ct);
+        var result = await configStore.GetAllAsync(ct);
 
         return Ok(result);
     }
@@ -32,7 +32,7 @@ public sealed class BotsController(
     {
         RequestValidation.ValidateBotName(botName);
 
-        var result = await configurationStore.GetAsync(botName, ct);
+        var result = await configStore.GetAsync(botName, ct);
 
         return Ok(result);
     }
@@ -47,7 +47,7 @@ public sealed class BotsController(
 
         try
         {
-            var result = await configurationStore.UpdateAsync(botName, request, DashboardUserName, ct);
+            var result = await configStore.UpdateAsync(botName, request, DashboardUserName, ct);
 
             return Ok(result);
         }

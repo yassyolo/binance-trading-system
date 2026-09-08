@@ -17,45 +17,21 @@ public sealed class AuthController(
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
-    public IActionResult Login(
-        DashboardLoginRequest request)
+    public IActionResult Login(DashboardLoginRequest request)
     {
-        var userName =
-            request.UserName?.Trim() ?? string.Empty;
+        var userName = request.UserName?.Trim() ?? string.Empty;
+        var password = request.Password ?? string.Empty;
 
-        var password =
-            request.Password ?? string.Empty;
+        if (userName.Length is < 1 or > 100 || password.Length is < 1 or > 256)
+            return Unauthorized(InvalidCredentials());
 
-        if (userName.Length is < 1 or > 100 ||
-            password.Length is < 1 or > 256)
-        {
-            return Unauthorized(
-                InvalidCredentials());
-        }
+        var validUser =  DashboardPasswordVerifier.FixedTimeEquals(userName, credentials.UserName);
+        var validPassword = DashboardPasswordVerifier.Verify(password, credentials.PasswordHash);
 
-        var validUser =
-            DashboardPasswordVerifier.FixedTimeEquals(
-                userName,
-                credentials.UserName);
+        if (!validUser || !validPassword)
+            return Unauthorized(InvalidCredentials());
 
-        // Always verify the password hash even when the user name is wrong.
-        // This keeps the failure path closer in cost and avoids a simple
-        // user-name timing oracle.
-        var validPassword =
-            DashboardPasswordVerifier.Verify(
-                password,
-                credentials.PasswordHash);
-
-        if (!validUser ||
-            !validPassword)
-        {
-            return Unauthorized(
-                InvalidCredentials());
-        }
-
-        return Ok(
-            tokenService.CreateAdministratorToken(
-                credentials.UserName));
+        return Ok(tokenService.CreateAdministratorToken(credentials.UserName));
     }
 
     [HttpGet("me")]
@@ -63,41 +39,21 @@ public sealed class AuthController(
     [EnableRateLimiting("read")]
     public IActionResult Me()
     {
-        var userName =
-            User.FindFirst("sub")?.Value
-            ?? User.Identity?.Name
-            ?? "dashboard-user";
+        var userName = User.FindFirst("sub")?.Value ?? User.Identity?.Name ?? "dashboard-user";
 
-        var displayName =
-            User.FindFirst("name")?.Value
-            ?? userName;
+        var displayName = User.FindFirst("name")?.Value ?? userName;
 
-        var roles =
-            User.FindAll("role")
-                .Select(x => x.Value)
-                .Distinct(
-                    StringComparer.Ordinal)
-                .OrderBy(x => x)
-                .ToArray();
+        var roles = User.FindAll("role").Select(x => x.Value).Distinct(StringComparer.Ordinal).OrderBy(x => x).ToArray();
 
-        return Ok(
-            new DashboardUserResponse(
-                userName,
-                displayName,
-                roles));
+        return Ok(new DashboardUserResponse(userName, displayName, roles));
     }
 
-    private static ProblemDetails
-        InvalidCredentials() =>
-        new()
+    private static ProblemDetails InvalidCredentials()
+        => new()
         {
-            Status =
-                StatusCodes.Status401Unauthorized,
-            Title =
-                "Authentication failed",
-            Detail =
-                "The supplied dashboard credentials are invalid.",
-            Type =
-                "https://trading-system/errors/authentication"
+            Status = StatusCodes.Status401Unauthorized,
+            Title = "Authentication failed",
+            Detail = "The supplied dashboard credentials are invalid.",
+            Type = "https://trading-system/errors/authentication"
         };
 }

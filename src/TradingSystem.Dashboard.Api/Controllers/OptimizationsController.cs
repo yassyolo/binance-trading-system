@@ -17,16 +17,11 @@ public sealed class OptimizationsController(
     [HttpPost]
     [Authorize(Policy = "Operator")]
     [EnableRateLimiting("write")]
-    public async Task<IActionResult> CreateAsync(
-        OptimizationRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateAsync(OptimizationRequest request, CancellationToken ct)
     {
         RequestValidation.Validate(request);
 
-        var result = await jobStore.EnqueueOptimizationAsync(
-            request,
-            DashboardUserName,
-            cancellationToken);
+        var result = await jobStore.EnqueueOptimizationAsync(request, DashboardUserName, ct);
 
         return Accepted(value: result);
     }

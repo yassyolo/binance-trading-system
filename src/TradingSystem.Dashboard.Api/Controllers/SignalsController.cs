@@ -9,30 +9,15 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/signals")]
 public sealed class SignalsController(
-    IDashboardQueryStore store)
+    IDashboardQueryStore queryStore)
     : DashboardControllerBase
 {
     [HttpGet]
     [Authorize(Policy = "Viewer")]
     [EnableRateLimiting("read")]
-    public async Task<IActionResult> GetAsync(
-        string? botName,
-        string? symbol,
-        DateTime? fromUtc,
-        DateTime? toUtc,
-        int skip,
-        int take,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAsync(string? botName, string? symbol, DateTime? fromUtc, DateTime? toUtc, int skip, int take, CancellationToken ct)
     {
-        var result = await store.GetSignalsAsync(
-            new(
-                RequestValidation.Skip(skip),
-                RequestValidation.PageSize(take),
-                botName,
-                symbol,
-                fromUtc,
-                toUtc),
-            cancellationToken);
+        var result = await queryStore.GetSignalsAsync(new(RequestValidation.Skip(skip), RequestValidation.PageSize(take), botName, symbol, fromUtc, toUtc), ct);
 
         return Ok(result);
     }

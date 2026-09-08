@@ -9,7 +9,7 @@ namespace TradingSystem.Dashboard.Api.Controllers;
 [ApiController]
 [Route("api/v1/commands")]
 public sealed class CommandsController(
-    IBotCommandStore store)
+    IBotCommandStore commandStore)
     : DashboardControllerBase
 {
     [HttpGet]
@@ -20,7 +20,7 @@ public sealed class CommandsController(
         if (botName is not null)
             RequestValidation.ValidateBotName(botName);
 
-        var result = await store.GetAsync(botName, RequestValidation.PageSize(take), ct);
+        var result = await commandStore.GetAsync(botName, RequestValidation.PageSize(take), ct);
 
         return Ok(result);
     }

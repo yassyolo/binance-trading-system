@@ -11,4 +11,3 @@ public enum BotCommandType
     CancelTakeProfit, 
     RecreateTakeProfit 
 }
-

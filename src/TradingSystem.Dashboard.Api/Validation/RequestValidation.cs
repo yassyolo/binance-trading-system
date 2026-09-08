@@ -446,110 +446,50 @@ public static class RequestValidation
                 $"{name} cannot exceed {max} characters.");
     }
 
-    private static void Positive(
-        Dictionary<string, List<string>> errors,
-        string name,
-        decimal value)
+    private static void Positive(Dictionary<string, List<string>> errors, string name, decimal value)
     {
         if (value <= 0)
-            Add(
-                errors,
-                name,
-                $"{name} must be greater than zero.");
+            Add(errors, name, $"{name} must be greater than zero.");
     }
 
-    private static void Positive(
-        Dictionary<string, List<string>> errors,
-        string name,
-        long value)
+    private static void Positive(Dictionary<string, List<string>> errors, string name, long value)
     {
         if (value <= 0)
-            Add(
-                errors,
-                name,
-                $"{name} must be greater than zero.");
+            Add(errors, name, $"{name} must be greater than zero.");
     }
 
-    private static void PositiveWhenPresent(
-        Dictionary<string, List<string>> errors,
-        string name,
-        decimal? value)
+    private static void PositiveWhenPresent(Dictionary<string, List<string>> errors, string name, decimal? value)
     {
-        if (value.HasValue &&
-            value.Value <= 0)
-        {
-            Add(
-                errors,
-                name,
-                $"{name} must be greater than zero.");
-        }
+        if (value.HasValue && value.Value <= 0)
+            Add(errors, name, $"{name} must be greater than zero.");
     }
 
-    private static void Range(
-        Dictionary<string, List<string>> errors,
-        string name,
-        decimal value,
-        decimal min,
-        decimal max)
+    private static void Range(Dictionary<string, List<string>> errors, string name, decimal value, decimal min, decimal max)
     {
-        if (value < min ||
-            value > max)
-        {
-            Add(
-                errors,
-                name,
-                $"{name} must be between {min} and {max}.");
-        }
+        if (value < min || value > max)
+            Add(errors, name, $"{name} must be between {min} and {max}.");
     }
 
-    private static void Range(
-        Dictionary<string, List<string>> errors,
-        string name,
-        int value,
-        int min,
-        int max)
+    private static void Range(Dictionary<string, List<string>> errors, string name, int value, int min, int max)
     {
-        if (value < min ||
-            value > max)
-        {
-            Add(
-                errors,
-                name,
-                $"{name} must be between {min} and {max}.");
-        }
+        if (value < min || value > max)
+            Add(errors, name, $"{name} must be between {min} and {max}.");
     }
 
-    private static void Symbol(
-        Dictionary<string, List<string>> errors,
-        string symbol)
+    private static void Symbol(Dictionary<string, List<string>> errors, string symbol)
     {
-        if (string.IsNullOrWhiteSpace(symbol) ||
-            symbol.Length > 24 ||
-            !symbol.All(char.IsLetterOrDigit))
-        {
-            Add(
-                errors,
-                nameof(symbol),
-                "Symbol must contain 1-24 letters or digits.");
-        }
+        if (string.IsNullOrWhiteSpace(symbol) 
+            || symbol.Length > 24 
+            || !symbol.All(char.IsLetterOrDigit))
+            Add(errors, nameof(symbol), "Symbol must contain 1-24 letters or digits.");
     }
 
-    private static void Bot(
-        Dictionary<string, List<string>> errors,
-        string botName)
+    private static void Bot(Dictionary<string, List<string>> errors, string botName)
     {
-        if (string.IsNullOrWhiteSpace(botName) ||
-            botName.Length > 64 ||
-            !botName.All(
-                character =>
-                    char.IsLetterOrDigit(character) ||
-                    character is '-' or '_'))
-        {
-            Add(
-                errors,
-                nameof(botName),
-                "Bot name contains invalid characters.");
-        }
+        if (string.IsNullOrWhiteSpace(botName)
+            || botName.Length > 64
+            || !botName.All(x => char.IsLetterOrDigit(x) || x is '-' or '_'))
+            Add(errors, nameof(botName), "Bot name contains invalid characters.");
     }
 
     private static void Period(Dictionary<string, List<string>> errors, DateTime from, DateTime to)
