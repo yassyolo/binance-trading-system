@@ -10,76 +10,26 @@ namespace TradingSystem.Dashboard.Api.Validation;
 
 public static class RequestValidation
 {
-    private static readonly HashSet<string> AllowedIntervals = new(
-        ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"],
-        StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> AllowedIntervals = new(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"], StringComparer.OrdinalIgnoreCase);
 
-    public static void Validate(
-        UpdateBotConfigurationRequest request)
+    public static void Validate(UpdateBotConfigurationRequest request)
     {
         var errors = NewErrors();
 
-        Positive(
-            errors,
-            nameof(request.ExpectedVersion),
-            request.ExpectedVersion);
-
-        Required(
-            errors,
-            nameof(request.StrategyType),
-            request.StrategyType,
-            128);
-
+        Positive(errors, nameof(request.ExpectedVersion), request.ExpectedVersion);
+        Required(errors, nameof(request.StrategyType), request.StrategyType, 128);
         Symbol(errors, request.Symbol);
-
-        Required(
-            errors,
-            nameof(request.SignalSource),
-            request.SignalSource,
-            64);
-
-        Positive(
-            errors,
-            nameof(request.Quantity),
-            request.Quantity);
-
-        Range(
-            errors,
-            nameof(request.Leverage),
-            request.Leverage,
-            1,
-            125);
-
-        PositiveWhenPresent(
-            errors,
-            nameof(request.PriceDistance),
-            request.PriceDistance);
-
-        PositiveWhenPresent(
-            errors,
-            nameof(request.ProfitDistance),
-            request.ProfitDistance);
+        Required(errors, nameof(request.SignalSource), request.SignalSource, 64);
+        Positive(errors, nameof(request.Quantity), request.Quantity);
+        Range(errors, nameof(request.Leverage), request.Leverage, 1, 125);
+        PositiveWhenPresent(errors, nameof(request.PriceDistance), request.PriceDistance);
+        PositiveWhenPresent(errors, nameof(request.ProfitDistance), request.ProfitDistance);
 
         if (request.OrderSideLimit is <= 0 or > 100)
-        {
-            Add(
-                errors,
-                nameof(request.OrderSideLimit),
-                "OrderSideLimit must be between 1 and 100.");
-        }
+            Add(errors, nameof(request.OrderSideLimit), "OrderSideLimit must be between 1 and 100.");
 
-        Range(
-            errors,
-            nameof(request.CooldownSeconds),
-            request.CooldownSeconds,
-            0,
-            86_400);
-
-        Required(
-            errors,
-            nameof(request.Reason),
-            request.Reason,
-            500);
+        Range(errors, nameof(request.CooldownSeconds), request.CooldownSeconds, 0, 86_400);
+        Required(errors, nameof(request.Reason), request.Reason, 500);
 
         Throw(errors);
     }
@@ -291,44 +241,25 @@ public static class RequestValidation
                 "Replay name is required and must be at most 150 characters.");
         }
 
-        if (request.FromGlobalPosition.HasValue &&
-            request.ToGlobalPosition.HasValue &&
-            request.FromGlobalPosition >
-            request.ToGlobalPosition)
-        {
-            Add(
-                errors,
-                "range",
-                "FromGlobalPosition must not be greater than ToGlobalPosition.");
-        }
+        if (request.FromGlobalPosition.HasValue 
+            && request.ToGlobalPosition.HasValue 
+            && request.FromGlobalPosition > request.ToGlobalPosition)
+            Add(errors, "range", "FromGlobalPosition must not be greater than ToGlobalPosition.");
 
-        if (request.FromUtc.HasValue &&
-            request.ToUtc.HasValue &&
-            request.FromUtc >= request.ToUtc)
-        {
-            Add(
-                errors,
-                "range",
-                "FromUtc must be earlier than ToUtc.");
-        }
+        if (request.FromUtc.HasValue
+            && request.ToUtc.HasValue
+            && request.FromUtc >= request.ToUtc)
+            Add(errors, "range", "FromUtc must be earlier than ToUtc.");
 
-        if (request.Mode == ReplayMode.StrategyComparison &&
-            (string.IsNullOrWhiteSpace(
-                 request.CandidateStrategyPluginId) ||
-             string.IsNullOrWhiteSpace(
-                 request.CandidateStrategyVersion)))
-        {
-            Add(
-                errors,
-                "candidateStrategy",
-                "Strategy comparison requires candidate plugin id and version.");
-        }
+        if (request.Mode == ReplayMode.StrategyComparison
+            && (string.IsNullOrWhiteSpace(request.CandidateStrategyPluginId) 
+            || string.IsNullOrWhiteSpace(request.CandidateStrategyVersion)))
+            Add(errors, "candidateStrategy", "Strategy comparison requires candidate plugin id and version.");
 
         Throw(errors);
     }
 
-    public static void ValidateBotName(
-        string botName)
+    public static void ValidateBotName(string botName)
     {
         var errors = NewErrors();
 
@@ -337,113 +268,59 @@ public static class RequestValidation
         Throw(errors);
     }
 
-    public static void ValidateChart(
-        string symbol,
-        string interval,
-        DateTime fromUtc,
-        DateTime toUtc)
+    public static void ValidateChart(string symbol, string interval, DateTime fromUtc, DateTime toUtc)
     {
         var errors = NewErrors();
 
         Symbol(errors, symbol);
         Period(errors, fromUtc, toUtc);
 
-        if (string.IsNullOrWhiteSpace(interval) ||
-            !AllowedIntervals.Contains(interval.Trim()))
-        {
-            Add(
-                errors,
-                nameof(interval),
-                "Unsupported candle interval.");
-        }
+        if (string.IsNullOrWhiteSpace(interval) || !AllowedIntervals.Contains(interval.Trim()))
+            Add(errors, nameof(interval), "Unsupported candle interval.");
 
         if (toUtc - fromUtc > TimeSpan.FromDays(366))
-        {
-            Add(
-                errors,
-                nameof(toUtc),
-                "Chart range cannot exceed 366 days.");
-        }
+            Add(errors, nameof(toUtc), "Chart range cannot exceed 366 days.");
 
         Throw(errors);
     }
 
-    public static int PageSize(
-        int value,
-        int defaultValue = 100,
-        int maximum = 500)
+    public static int PageSize(int value, int defaultValue = 100, int maximum = 500)
     {
         if (value == 0)
             return defaultValue;
 
-        if (value < 1 ||
-            value > maximum)
-        {
-            throw new ApiValidationException(
-                new Dictionary<string, string[]>
-                {
-                    ["take"] =
-                        [$"take must be between 1 and {maximum}."]
-                });
-        }
+        if (value < 1 || value > maximum)
+            throw new ApiValidationException(new Dictionary<string, string[]> { ["take"] = [$"take must be between 1 and {maximum}."] });
 
         return value;
     }
 
-    public static int Skip(
-        int value)
+    public static int Skip(int value)
     {
         if (value < 0)
-        {
-            throw new ApiValidationException(
-                new Dictionary<string, string[]>
-                {
-                    ["skip"] =
-                        ["skip cannot be negative."]
-                });
-        }
+            throw new ApiValidationException(new Dictionary<string, string[]> { ["skip"] = ["skip cannot be negative."] });
 
         return value;
     }
 
-    private static Dictionary<string, List<string>>
-        NewErrors() =>
-        new(StringComparer.OrdinalIgnoreCase);
+    private static Dictionary<string, List<string>> NewErrors()
+        => new(StringComparer.OrdinalIgnoreCase);
 
-    private static void Add(
-        Dictionary<string, List<string>> errors,
-        string key,
-        string value) =>
-        (errors.TryGetValue(key, out var list)
-            ? list
-            : errors[key] = [])
-        .Add(value);
+    private static void Add(Dictionary<string, List<string>> errors, string key, string value) 
+        => (errors.TryGetValue(key, out var list) ? list : errors[key] = []).Add(value);
 
-    private static void Throw(
-        Dictionary<string, List<string>> errors)
+    private static void Throw(Dictionary<string, List<string>> errors)
     {
         if (errors.Count > 0)
-        {
-            throw new ApiValidationException(
-                errors.ToDictionary(
-                    item => item.Key,
-                    item => item.Value.ToArray()));
-        }
+            throw new ApiValidationException(errors.ToDictionary(x => x.Key, item => item.Value.ToArray()));
     }
 
-    private static void Required(
-        Dictionary<string, List<string>> errors,
-        string name,
-        string? value,
-        int max)
+    private static void Required(Dictionary<string, List<string>> errors, string name, string? value, int max)
     {
         if (string.IsNullOrWhiteSpace(value))
             Add(errors, name, $"{name} is required.");
         else if (value.Length > max)
-            Add(
-                errors,
-                name,
-                $"{name} cannot exceed {max} characters.");
+            Add(errors, name, $"{name} cannot exceed {max} characters.");
     }
 
     private static void Positive(Dictionary<string, List<string>> errors, string name, decimal value)

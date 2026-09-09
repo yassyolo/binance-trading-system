@@ -21,10 +21,7 @@ public sealed class ReplaysController(
     {
         RequestValidation.Validate(request);
 
-        var id = await replayJobStore.EnqueueAsync(
-            request with { BatchSize = Math.Clamp(request.BatchSize, 1, 1000) },
-            DashboardUserName,
-            ct);
+        var id = await replayJobStore.EnqueueAsync(request with { BatchSize = Math.Clamp(request.BatchSize, 1, 1000) }, DashboardUserName, ct);
 
         return Accepted($"/api/v1/replays/{id}", new { replayId = id });
     }

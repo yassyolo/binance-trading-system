@@ -197,48 +197,21 @@ public static class DependencyInjection
 
     private static void AddAuthorization(IServiceCollection services)
     {
-        services.AddAuthorization(options =>
+        services.AddAuthorization(opts =>
         {
-            options.FallbackPolicy =
-                new AuthorizationPolicyBuilder()
-                    .RequireAuthenticatedUser()
-                    .Build();
-
-            options.AddPolicy(
-                "Viewer",
-                policy => policy.RequireRole(
-                    "Viewer",
-                    "Operator",
-                    "Administrator"));
-
-            options.AddPolicy(
-                "Operator",
-                policy => policy.RequireRole(
-                    "Operator",
-                    "Administrator"));
-
-            options.AddPolicy(
-                "Administrator",
-                policy => policy.RequireRole(
-                    "Administrator"));
+            opts.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+            opts.AddPolicy("Viewer", p => p.RequireRole("Viewer", "Operator", "Administrator"));
+            opts.AddPolicy("Operator", p => p.RequireRole( "Operator", "Administrator"));
+            opts.AddPolicy("Administrator", p => p.RequireRole( "Administrator"));
         });
     }
 
-    private static void AddCors(
-        IServiceCollection services,
-        IConfiguration configuration,
-        IWebHostEnvironment environment)
+    private static void AddCors(IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
-        var corsOrigins = configuration
-            .GetSection("Cors:Origins")
-            .Get<string[]>() ?? [];
+        var corsOrigins = configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 
-        if (!environment.IsDevelopment() &&
-            corsOrigins.Length == 0)
-        {
-            throw new InvalidOperationException(
-                "At least one explicit CORS origin is required outside Development.");
-        }
+        if (!environment.IsDevelopment() && corsOrigins.Length == 0)
+            throw new InvalidOperationException("At least one explicit CORS origin is required outside Development.");
 
         services.AddCors(options =>
             options.AddPolicy(
@@ -246,16 +219,8 @@ public static class DependencyInjection
                 policy =>
                 {
                     policy
-                        .WithOrigins(
-                            corsOrigins.Length == 0
-                                ? ["http://localhost:5173"]
-                                : corsOrigins)
-                        .WithMethods(
-                            "GET",
-                            "POST",
-                            "PUT",
-                            "PATCH",
-                            "DELETE")
+                        .WithOrigins(corsOrigins.Length == 0 ? ["http://localhost:5173"] : corsOrigins)
+                        .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")
                         .WithHeaders(
                             "Authorization",
                             "Content-Type",
