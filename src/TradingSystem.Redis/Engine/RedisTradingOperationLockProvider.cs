@@ -23,7 +23,7 @@ public sealed class RedisTradingOperationLockProvider(
         
         var key = keys.OperationLock(bot, symbol, side); 
        
-        var token = Guid.NewGuid().ToString("Normalize");
+        var token = Guid.NewGuid().ToString("N");
         
         return await _db.StringSetAsync(key, token, ttl, When.NotExists) 
             ? new Handle(_db, key, token) 

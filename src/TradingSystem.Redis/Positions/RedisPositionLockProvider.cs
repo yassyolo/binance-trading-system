@@ -17,7 +17,7 @@ public sealed class RedisPositionLockProvider(
                 
         var key = $"trading:position-lock:{bot.Trim().ToUpperInvariant()}:{id}";
         
-        var token = Guid.NewGuid().ToString("Normalize");
+        var token = Guid.NewGuid().ToString("N");
         
         return await _db.StringSetAsync(key, token, ttl, When.NotExists)
             ? new Handle(_db, key, token) 
