@@ -305,7 +305,7 @@ public sealed class PostgresPerformanceAnalyticsStore(
 				" score)" +
 				"VALUES" +
 				"(@RunId, @BotName, @Symbol, @PeriodFromUtc, @PeriodToUtc, @Signals, @OpenedPositions, @BlockedSignals, @ClosedPositions, @WinningPositions, @LosingPositions, @InitialBalance, @FinalBalance, @NetProfit, @ReturnPercent, @WinRatePercent, @ProfitFactor, @MaximumDrawdownAmount, @MaximumDrawdownPercent, @TotalFees, @Expectancy, @Score)" +
-				"ON CONFLICT (run_id) DO UPDATE SET" +
+				"ON CONFLICT (run_id) DO UPDATE SET " +
 				   "bot_name = EXCLUDED.bot_name," +
 				   "symbol = EXCLUDED.symbol," +
 				   "period_from_utc = EXCLUDED.period_from_utc," +

@@ -373,44 +373,64 @@ public sealed class PostgresDashboardStore(
             .AsList();
     }
 
-    public async Task<IReadOnlyCollection<OptimizationTrialDto>> GetOptimizationTrialsAsync(Guid runId, int take, CancellationToken ct)
+    public async Task<IReadOnlyCollection<OptimizationTrialDto>>
+    GetOptimizationTrialsAsync(Guid runId, int take, CancellationToken ct)
     {
-        await using var command = await factory.OpenAsync(ct);
+        await using var c = await factory.OpenAsync(ct);
 
-        var rows = await command.QueryAsync<dynamic>(
-            new CommandDefinition("select " +
-            "trial_id, " +
-            "parameters::text, " +
-            "score, " +
-            "metrics::text, " +
-            "selected, " +
-            "row_number() over(order by score desc) rank" +
-            " from trading.optimization_trials" +
-            " where optimization_run_id = @runId" +
-            " order by score desc " +
-            "limit @take", 
-            new { runId, take = Take(take) }, 
-            cancellationToken: ct)); 
-        
-        return rows.Select(x => 
-        { 
-            var parameters = JsonSerializer.Deserialize<Dictionary<string, string>>((string)x.parameters) ?? [];
+        var rows = await c.QueryAsync<dynamic>(
+            new CommandDefinition(
+                """
+            select
+                trial_id,
+                parameters::text,
+                score,
+                metrics::text,
+                selected,
+                row_number() over(order by score desc) rank
+            from trading.optimization_trials
+            where optimization_run_id = @runId
+            order by score desc
+            limit @take
+            """,
+                new { runId, take = Take(take) },
+                cancellationToken: ct));
+
+        return rows.Select(x =>
+        {
+            using var parametersJson = JsonDocument.Parse((string)x.parameters);
+
+            var parameters = parametersJson.RootElement
+                .EnumerateObject()
+                .ToDictionary(
+                    p => p.Name,
+                    p => p.Value.ToString());
+
             using var metrics = JsonDocument.Parse((string)x.metrics);
-            
-            decimal V(string n) => metrics.RootElement.TryGetProperty(n, out var v) && v.TryGetDecimal(out var d) ? d : 0; 
-            int I(string n) => metrics.RootElement.TryGetProperty(n, out var v) && v.TryGetInt32(out var d) ? d : 0; 
-            
+
+            decimal V(string name) =>
+                metrics.RootElement.TryGetProperty(name, out var value)
+                && value.TryGetDecimal(out var result)
+                    ? result
+                    : 0;
+
+            int I(string name) =>
+                metrics.RootElement.TryGetProperty(name, out var value)
+                && value.TryGetInt32(out var result)
+                    ? result
+                    : 0;
+
             return new OptimizationTrialDto(
                 (Guid)x.trial_id,
-                (int)(long)x.rank, 
-                parameters, 
+                (int)(long)x.rank,
+                parameters,
                 (decimal)x.score,
-                V("NetProfit"),
-                V("MaximumDrawdownPercent"), 
-                V("WinRatePercent"), 
-                I("ClosedPositions"), 
-                (bool)x.selected); })
-            .ToArray();
+                V("netProfit"),
+                V("maximumDrawdownPercent"),
+                V("winRatePercent"),
+                I("closedPositions"),
+                (bool)x.selected);
+        }).ToArray();
     }
 
     public async Task<StrategyComparisonDto?> CompareRunsAsync(Guid l, Guid r, CancellationToken ct)

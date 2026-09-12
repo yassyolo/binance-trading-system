@@ -2,7 +2,7 @@ import type { BotRuntimeStatus, TradingEnvironment } from '@/types/dashboard-ove
 import type { StatusTone } from '@/components/ui/StatusBadge'
 
 const runtimeStatuses = ['Stopped', 'Running', 'Paused', 'EmergencyStopped', 'Faulted'] as const
-const environments = ['Demo', 'Production'] as const
+const environments = ['Demo', 'Production', 'Paper'] as const
 
 export function runtimeStatusLabel(status: BotRuntimeStatus) {
   if (typeof status === 'number')

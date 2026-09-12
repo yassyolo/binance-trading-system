@@ -1,5 +1,5 @@
 import { RefreshCcw } from 'lucide-react'
-
+import { useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
 import {
   DataTable,
@@ -48,21 +48,25 @@ export function OptimizationRuns({
       take,
     )
 
-  const optimizationRuns =
-    query.data?.filter((run) =>
-      run.runType
-        .toLowerCase()
-        .includes('optimization'),
-    ) ?? []
+const optimizationRuns = useMemo(
+  () =>
+    query.data?.filter((run) => {
+      const runType = run.runType.toLowerCase()
 
-  if (
-    query.data &&
-    query.data !== undefined
-  ) {
-    queueMicrotask(() =>
-      onRunsLoaded(optimizationRuns),
-    )
-  }
+      return (
+        runType === 'optimization' ||
+        runType === 'walkforward'
+      )
+    }) ?? [],
+  [query.data],
+)
+
+useEffect(() => {
+  if (!query.data)
+    return
+
+  onRunsLoaded(optimizationRuns)
+}, [query.data, optimizationRuns, onRunsLoaded])
 
   if (query.isPending) {
     return (

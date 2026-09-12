@@ -147,6 +147,7 @@ export function BotConfigurationForm({
             >
               <option value={tradingEnvironmentValues.Demo}>Demo</option>
               <option value={tradingEnvironmentValues.Production}>Production</option>
+              <option value={tradingEnvironmentValues.Paper}>Paper</option>
             </select>
           </Field>
 

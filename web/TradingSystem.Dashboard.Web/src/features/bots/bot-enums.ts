@@ -4,6 +4,7 @@ import type { StatusTone } from '@/components/ui/StatusBadge'
 export const tradingEnvironmentValues = {
   Demo: 0,
   Production: 1,
+  Paper: 2
 } as const
 
 export const botCommandValues = {

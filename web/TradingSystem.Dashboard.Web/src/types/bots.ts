@@ -1,5 +1,11 @@
-export type TradingEnvironment = 'Demo' | 'Production' | 0 | 1
-
+export type TradingEnvironment =
+  | 'Paper'
+  | 'Demo'
+  | 'Production'
+  | 0
+  | 1
+  | 2
+  
 export type BotCommandType =
   | 'Start'
   | 'Stop'
