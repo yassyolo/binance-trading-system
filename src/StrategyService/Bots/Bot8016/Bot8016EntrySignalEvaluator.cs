@@ -7,16 +7,15 @@ namespace StrategyService.Bots.Bot8016;
 
 public sealed class Bot8016EntrySignalEvaluator(
     IOptions<Bot8016Options> options, 
-    AlligatorEntryPolicy policy)
+    AlligatorEntryPolicy alligatorPolicy)
 {
-    private readonly Bot8016Options o = options.Value;
+    private readonly Bot8016Options _options = options.Value;
     
     public Bot8016EntrySignal? Evaluate(Bot8016Candle c, Bot8016IndicatorSnapshot i)
     {
-        var d = policy.Evaluate(new(c.Symbol, c.Interval, c.IsClosed, c.Open, c.High, c.Low, c.Close, i.Teeth, i.Sma200), 
-            new(o.Symbol, o.EntryTimeframe, o.EnableLong, o.EnableShort, o.UseMa200Filter, o.MinimumSignalCandleRange));
+        var decision = alligatorPolicy.Evaluate(new(c.Symbol, c.Interval, c.IsClosed, c.Open, c.High, c.Low, c.Close, i.Teeth, i.Sma200), 
+            new(_options.Symbol, _options.EntryTimeframe, _options.EnableLong, _options.EnableShort, _options.UseMa200Filter, _options.MinimumSignalCandleRange));
         
-        return d is null 
-            ? null : new(d.Side, c, i, d.Reason);
+        return decision is null  ? null : new(decision.Side, c, i, decision.Reason);
     }
 }

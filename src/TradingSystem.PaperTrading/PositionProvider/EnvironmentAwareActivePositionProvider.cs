@@ -6,7 +6,7 @@ using TradingSystem.BotRuntime.Configuration.Contracts;
 namespace TradingSystem.PaperTrading.Position;
 
 public sealed class EnvironmentAwareActivePositionProvider(
-    LivePositionProviderRegistry livePositionProviderRegistry,
+    ActivePositionProviderRegistry livePositionProviderRegistry,
     PaperActivePositionProvider paperPositionProvider,
     IBotRuntimeConfigurationProvider configProvider) 
     : IActivePositionProvider

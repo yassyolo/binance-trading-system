@@ -37,6 +37,7 @@ public sealed class BollingerState
             var deviation = b.Multiplier * IndicatorMath.StandardDeviation(values);
             var upper = basis + deviation;
             var lower = basis - deviation;
+          
             _previous.TryGetValue(b.Name, out var previous);
 
             result[$"{b.Name}.basis"] = new IndicatorValueMessage { Value = basis, PreviousValue = previous.Basis, Metadata = Metadata(b) };
@@ -46,6 +47,7 @@ public sealed class BollingerState
         }
 
         _previous = current;
+      
         return result;
     }
 

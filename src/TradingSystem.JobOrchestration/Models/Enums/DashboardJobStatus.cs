@@ -8,6 +8,3 @@ public enum DashboardJobStatus
     Failed, 
     Cancelled 
 }
-
-
-

@@ -60,9 +60,9 @@ public sealed class HealingSnapshotSubscriber(
                     {
                         await subscriber.UnsubscribeAsync(channel);
                     }
-                    catch (Exception exception)
+                    catch (Exception ex)
                     {
-                        logger.LogWarning(exception, "Could not unsubscribe cleanly from healing channel {Channel}", channel);
+                        logger.LogWarning(ex, "Could not unsubscribe cleanly from healing channel {Channel}", channel);
                     }
                 }
             }

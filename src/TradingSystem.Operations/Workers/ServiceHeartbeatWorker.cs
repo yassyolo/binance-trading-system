@@ -40,7 +40,7 @@ public sealed class ServiceHeartbeatWorker(
                         ["machine"] = Environment.MachineName
                     };
                     
-                    await heartbeatStore.UpsertAsync(new ServiceHeartbeat(
+                    await heartbeatStore.UpsertHeartbeatAsync(new ServiceHeartbeat(
                         _options.ServiceName,
                         _instanceId,
                         version,

@@ -5,16 +5,20 @@ using TradingSystem.Application.Positions.Models;
 
 namespace StrategyService.Bots.Bot8016;
 
-public sealed class Bot8016ActivePositionProvider(IOptions<Bot8016Options> options, IPositionStore positions) : IBotActivePositionProvider
+public sealed class Bot8016ActivePositionProvider(
+    IOptions<Bot8016Options> options, 
+    IPositionStore positionStore) 
+    : IBotActivePositionProvider
 {
     private readonly Bot8016Options _options = options.Value;
+   
     public string BotName => _options.BotName;
-
+  
     public async Task<IReadOnlyCollection<ActivePositionView>> GetActivePositionsAsync(string symbol, CancellationToken ct)
     {
-        var items = await positions.GetAllAsync(_options.BotName, ct);
-        return items
-            .Where(x => !x.Closed && x.RemainingQuantity > 0 && x.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+        var positions = await positionStore.GetAllAsync(_options.BotName, ct);
+        
+        return positions.Where(x => !x.Closed && x.RemainingQuantity > 0 && x.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
             .Select(x => new ActivePositionView
             {
                 ShortId = x.ShortId,

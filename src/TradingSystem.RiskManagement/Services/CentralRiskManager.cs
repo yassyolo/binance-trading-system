@@ -89,20 +89,6 @@ public sealed class CentralRiskManager(
             if (projectedTotalNotional > _options.MaximumEstimatedNotional)
                 return RiskDecision.Block("MAX_ESTIMATED_NOTIONAL", $"Projected gross notional {projectedTotalNotional:F2} exceeds {_options.MaximumEstimatedNotional:F2}.");
 
-            var symbolReservations = activeReservations.Where(x => x.Symbol.Equals(ctx.Signal.Symbol, StringComparison.OrdinalIgnoreCase)).ToArray();
-
-            var currentSymbolGross = (symbol?.GrossNotional ?? 0m) + symbolReservations.Sum(x => x.Notional);
-            var projectedSymbolGross = currentSymbolGross + candidateNotional;
-            if (_options.MaximumGrossNotionalPerSymbol > 0 && projectedSymbolGross > _options.MaximumGrossNotionalPerSymbol)
-                return RiskDecision.Block("MAX_SYMBOL_GROSS_NOTIONAL", $"Projected gross notional for '{ctx.Signal.Symbol}' is {projectedSymbolGross:F2}.");
-
-            var candidateSignedNotional = ctx.Signal.Side == PositionSide.Long ? candidateNotional : -candidateNotional;
-            var reservedSignedNotional = symbolReservations.Sum(x => x.Side == PositionSide.Long ? x.Notional : -x.Notional);
-
-            var projectedSymbolNet = (symbol?.NetNotional ?? 0m) + reservedSignedNotional + candidateSignedNotional;
-            if (_options.MaximumAbsoluteNetNotionalPerSymbol > 0 && Math.Abs(projectedSymbolNet) > _options.MaximumAbsoluteNetNotionalPerSymbol)
-                return RiskDecision.Block("MAX_SYMBOL_NET_NOTIONAL", $"Projected net notional for '{ctx.Signal.Symbol}' is {projectedSymbolNet:F2}.");
-
             reservations.Add(new RiskAdmissionReservation(
                 Guid.NewGuid(),
                 ctx.Signal.SignalId,

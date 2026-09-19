@@ -15,11 +15,7 @@ public sealed class CentralRiskOptions
     public int MaximumOpenPositionsPerSymbol { get; set; } = 6;
    
     public decimal MaximumEstimatedNotional { get; set; } = 100_000m;
-    
-    public decimal MaximumGrossNotionalPerSymbol { get; set; }
-   
-    public decimal MaximumAbsoluteNetNotionalPerSymbol { get; set; }
-   
+          
     public decimal MaximumDailyLoss { get; set; } = 500m;
     
     public decimal MaximumDailyDrawdownPercent { get; set; } = 5m;

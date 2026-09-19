@@ -19,12 +19,14 @@ public sealed class OptimizationExecutionService(
     Bot8012BacktestEngine engine, 
     ParameterTuningEngine parameterTuningEngine, 
     WalkForwardOptimizationEngine walkForwardOptimizationEngine, 
-    IPerformanceAnalyticsStore analytics)
+    IPerformanceAnalyticsStore performanceAnalytics)
 {
     public async Task<Guid> ExecuteAsync(OptimizationRequest request, string interval, CancellationToken ct)
     {
-        if (!request.BotName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase))
-            throw new NotSupportedException("Dashboard range optimization currently supports BOT8012. Other bots keep their CLI parameter spaces until explicit range binders are added.");
+        if (!request.BotName.Equals("BOT8012", StringComparison.OrdinalIgnoreCase)
+            || !request.BotName.Equals("BOT8013", StringComparison.OrdinalIgnoreCase)
+            || !request.BotName.Equals("BOT8014", StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("Dashboard range optimization currently supports BOT8012 - 14. Other bots keep their CLI parameter spaces until explicit range binders are added.");
 
         if (await historicalMarketDataStore.HasGapsAsync(request.Symbol, interval, request.FromUtc, request.ToUtc, ct))
             throw new InvalidOperationException("Historical data contains unresolved candle gaps for the requested period."); 
@@ -51,7 +53,7 @@ public sealed class OptimizationExecutionService(
             ParametersJson = JsonSerializer.Serialize(request)
         };
 
-        await analytics.CreateRunAsync(run, ct);
+        await performanceAnalytics.CreateRunAsync(run, ct);
        
         try
         {
@@ -92,7 +94,7 @@ public sealed class OptimizationExecutionService(
                     OutOfSampleMetrics = BacktestPerformanceMapper.ToMetrics(x.OutOfSampleMetrics) 
                 }).ToArray(); 
                 
-                await analytics.SaveWalkForwardWindowsAsync(windows, ct);
+                await performanceAnalytics.SaveWalkForwardWindowsAsync(windows, ct);
             }
             else
             {
@@ -114,16 +116,16 @@ public sealed class OptimizationExecutionService(
                     Selected = i == 0 
                 }).ToArray();
                 
-                await analytics.SaveOptimizationTrialsAsync(trials, ct);
+                await performanceAnalytics.SaveOptimizationTrialsAsync(trials, ct);
             }
             
-            await analytics.CompleteRunAsync(runId, PerformanceRunStatus.Completed, DateTime.UtcNow, null, ct);
+            await performanceAnalytics.CompleteRunAsync(runId, PerformanceRunStatus.Completed, DateTime.UtcNow, null, ct);
             
             return runId;
         }
         catch (Exception ex) 
         { 
-            await analytics.CompleteRunAsync(runId, PerformanceRunStatus.Failed, DateTime.UtcNow, ex.Message, ct); 
+            await performanceAnalytics.CompleteRunAsync(runId, PerformanceRunStatus.Failed, DateTime.UtcNow, ex.Message, ct); 
             
             throw; 
         }

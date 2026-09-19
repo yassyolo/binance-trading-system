@@ -12,7 +12,7 @@ public sealed class PostgresOperationalStore(
     IAlertStore,
     IAuditLog
 {
-    public async Task UpsertAsync(ServiceHeartbeat heartbeat, CancellationToken ct)
+    public async Task UpsertHeartbeatAsync(ServiceHeartbeat heartbeat, CancellationToken ct)
     {
         const string sql = """
             insert into trading_dashboard.service_heartbeats

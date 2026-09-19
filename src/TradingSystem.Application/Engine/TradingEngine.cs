@@ -26,9 +26,9 @@ public sealed class TradingEngine(
 	IMarketPriceProvider marketPriceProvider,
 	IActivePositionProvider activePositionProvider,
 	ITradeExecutor tradeExecutor,
-	ITradingOperationLockProvider lockProvider,
+	ITradingOperationLockProvider operationLockProvider,
 	ISignalIdempotencyStore idempotencyStore,
-	ISignalCooldownStore cooldownStore,
+	ISignalCooldownStore signalCooldown,
 	ITradingEngineNotifier tradingEngineNotifier,
 	ICentralRiskManager riskManager,
 	IRiskAdmissionLifecycle riskAdmissionLifecycle,
@@ -65,7 +65,7 @@ public sealed class TradingEngine(
 
 		try
 		{
-			await using var operationLock = await lockProvider.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Side, _options.OperationLockTtl, ct);
+			await using var operationLock = await operationLockProvider.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Side, _options.OperationLockTtl, ct);
 			if (operationLock is null)
 			{
 				await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
@@ -76,19 +76,19 @@ public sealed class TradingEngine(
 			if (!runtimeState.AcceptsNewSignals)
 				return await CompleteBlockedAsync(signal, $"BOT_RUNTIME_BLOCKED [{runtimeState.Status}]: {runtimeState.Reason ?? "Bot does not accept new signals."}", ct);
 
-			var runtimeConfiguration = await configProvider.GetAsync(signal.BotName, ct);
-			if (runtimeConfiguration is not null)
+			var runtimeConfig = await configProvider.GetAsync(signal.BotName, ct);
+			if (runtimeConfig is not null)
 			{
-				if (!runtimeConfiguration.Symbol.Equals(signal.Symbol, StringComparison.OrdinalIgnoreCase))
+				if (!runtimeConfig.Symbol.Equals(signal.Symbol, StringComparison.OrdinalIgnoreCase))
 					return await CompleteBlockedAsync(signal, $"Dynamic configuration does not support symbol '{signal.Symbol}'.", ct);
 
-				var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfiguration.EnableLong 
-					|| signal.Side == PositionSide.Short && !runtimeConfiguration.EnableShort;
+				var sideDisabled = signal.Side == PositionSide.Long && !runtimeConfig.EnableLong 
+					|| signal.Side == PositionSide.Short && !runtimeConfig.EnableShort;
 				if (sideDisabled)
-					return await CompleteBlockedAsync(signal, $"{signal.Side} is disabled by dynamic configuration version {runtimeConfiguration.Version}.", ct);
+					return await CompleteBlockedAsync(signal, $"{signal.Side} is disabled by dynamic configuration version {runtimeConfig.Version}.", ct);
 			}
 
-			var remainingCooldown = await cooldownStore.GetRemainingAsync(signal.BotName, signal.Symbol, signal.Side, now, ct);
+			var remainingCooldown = await signalCooldown.GetRemainingAsync(signal.BotName, signal.Symbol, signal.Side, now, ct);
 			if (remainingCooldown is not null)
 				return await CompleteBlockedAsync(signal, $"Cooldown active. Remaining = {remainingCooldown.Value:g}.", ct);
 
@@ -107,7 +107,7 @@ public sealed class TradingEngine(
 				MarkPrice = markPrice,
 				ActivePositions = activePositions,
 				EvaluatedAtUtc = now,
-				RuntimeConfiguration = runtimeConfiguration
+				RuntimeConfiguration = runtimeConfig
 			};
 
 			var decision = await strategy.DecideAsync(context, ct);
@@ -154,6 +154,7 @@ public sealed class TradingEngine(
 				if (!closeResult.Succeeded)
 				{
 					await idempotencyStore.ReleaseAsync(signal.SignalId, ct);
+					
 					return new(false, false, false, closeResult.Reason);
 				}
 			}
@@ -175,20 +176,18 @@ public sealed class TradingEngine(
 			executionSucceeded = true;
 			executedShortId = execution.ShortId;
 
-			var cooldown = runtimeConfiguration is not null
-				? TimeSpan.FromSeconds(runtimeConfiguration.CooldownSeconds)
-				: strategy is IHasSignalCooldown configurable
-					? configurable.SignalCooldown : TimeSpan.Zero;
+			var cooldown = runtimeConfig is not null ? TimeSpan.FromSeconds(runtimeConfig.CooldownSeconds)
+				: strategy is IHasSignalCooldown configurable ? configurable.SignalCooldown : TimeSpan.Zero;
 
 			if (cooldown > TimeSpan.Zero)
 			{
 				try
 				{
-					await cooldownStore.SetAsync(signal.BotName, signal.Symbol, signal.Side, now.Add(cooldown), ct);
+					await signalCooldown.SetAsync(signal.BotName, signal.Symbol, signal.Side, now.Add(cooldown), ct);
 				}
-				catch (Exception exception) when (exception is not OperationCanceledException)
+				catch (Exception ex) when (ex is not OperationCanceledException)
 				{
-					logger.LogCritical(exception, "Position opened but cooldown persistence failed. SignalId = {SignalId}, ShortId = {ShortId}", signal.SignalId, execution.ShortId);
+					logger.LogCritical(ex, "Position opened but cooldown persistence failed. SignalId = {SignalId}, ShortId = {ShortId}", signal.SignalId, execution.ShortId);
 				}
 			}
 
@@ -355,6 +354,7 @@ public sealed class TradingEngine(
 			try
 			{
 				_ = await eventStore.AppendAsync(request, ct);
+				
 				return;
 			}
 			catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -364,7 +364,7 @@ public sealed class TradingEngine(
 			catch (Exception ex) when (IsTransientEventStoreFailure(ex))
 			{
 				lastError = ex;
-				logger.LogWarning(ex,"EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5", signal.SignalId, eventType, attempt);
+				logger.LogWarning(ex, "EventStore append failed transiently. SignalId = {SignalId}, EventType = {EventType}, Attempt = {Attempt}/5", signal.SignalId, eventType, attempt);
 
 				if (attempt < 5)
 					await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt, 3)), ct);

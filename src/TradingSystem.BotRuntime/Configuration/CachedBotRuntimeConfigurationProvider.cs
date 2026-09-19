@@ -5,7 +5,7 @@ using TradingSystem.BotRuntime.Configuration.Models;
 namespace TradingSystem.BotRuntime.Configuration;
 
 public sealed class CachedBotRuntimeConfigurationProvider(
-    IBotRuntimeConfigurationStore store) 
+    IBotRuntimeConfigurationStore configStore) 
     : IBotRuntimeConfigurationProvider
 {
     private readonly ConcurrentDictionary<string, BotRuntimeConfiguration> _configurations = new(StringComparer.OrdinalIgnoreCase);
@@ -15,7 +15,7 @@ public sealed class CachedBotRuntimeConfigurationProvider(
         if (_configurations.TryGetValue(botName, out var current))
             return current;
        
-        var loaded = await store.GetAsync(botName, ct);
+        var loaded = await configStore.GetAsync(botName, ct);
         if (loaded is not null) 
             Set(loaded);
         

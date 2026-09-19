@@ -13,7 +13,7 @@ namespace StrategyService.Services;
 public sealed class LivePositionLifecycleRecorder(
     IPositionStore positionStore,
     IBotRuntimeConfigurationProvider configProvider,
-    ITradingPipelineRecorder tradingPipelineRecorder,
+    ITradingPipelineRecorder history,
     ITradingEventStore eventStore,
     ITradingEnvironmentProvider fallbackEnvironment,
     ILogger<LivePositionLifecycleRecorder> logger)
@@ -22,11 +22,11 @@ public sealed class LivePositionLifecycleRecorder(
 
     public async Task RecordOpenedAsync(BotPosition position, string? signalId, string strategyVersion, CancellationToken ct)
     {
-        var environment = await ResolveEnvironmentAsync(position.BotName, ct);
-        if (!IsLive(environment))
+        var env = await ResolveEnvironmentAsync(position.BotName, ct);
+        if (!IsLive(env))
             return;
 
-        await PersistProjectionBestEffortAsync(position, environment, signalId, strategyVersion, null, ct);
+        await PersistProjectionBestEffortAsync(position, env, signalId, strategyVersion, null, ct);
 
         await TryHistoryEventAsync(new PositionEventHistoryRecord(
             position.ShortId,
@@ -38,7 +38,7 @@ public sealed class LivePositionLifecycleRecorder(
             position.Quantity,
             new Dictionary<string, object?>
             {
-                ["env"] = environment,
+                ["env"] = env,
                 ["signalId"] = signalId,
                 ["source"] = position.Source,
                 ["takeProfitPrice"] = position.TpPrice
@@ -47,7 +47,7 @@ public sealed class LivePositionLifecycleRecorder(
         await AppendLifecycleBestEffortAsync(
             position,
             TradingEventTypes.PositionOpened,
-            environment,
+            env,
             signalId,
             position.ParentFilledAtUtc ?? position.CreatedAtUtc,
             new { position.Status, position.Quantity, position.EntryPrice, position.TpPrice, position.Source },
@@ -153,7 +153,7 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            await tradingPipelineRecorder.UpsertPositionAsync(new PositionHistoryRecord(
+            await history.UpsertPositionAsync(new PositionHistoryRecord(
                 PositionId: p.ShortId,
                 SignalId: signalId,
                 BotName: p.BotName,
@@ -196,7 +196,7 @@ public sealed class LivePositionLifecycleRecorder(
     {
         try
         {
-            await tradingPipelineRecorder.RecordPositionEventAsync(record, ct);
+            await history.RecordPositionEventAsync(record, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -204,7 +204,7 @@ public sealed class LivePositionLifecycleRecorder(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Live position tradingPipelineRecorder event persistence failed. Bot = {Bot}, Position = {Position}", record.BotName, record.PositionId);
+            logger.LogError(ex, "Live position history event persistence failed. Bot = {Bot}, Position = {Position}", record.BotName, record.PositionId);
         }
     }
 
@@ -263,7 +263,6 @@ public sealed class LivePositionLifecycleRecorder(
         return fallbackEnvironment.EnvironmentName;
     }
 
-    private static bool IsLive(string environment) =>
-        environment.Equals("Demo", StringComparison.OrdinalIgnoreCase) ||
-        environment.Equals("Production", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLive(string env) =>
+        env.Equals("Demo", StringComparison.OrdinalIgnoreCase) || env.Equals("Production", StringComparison.OrdinalIgnoreCase);
 }

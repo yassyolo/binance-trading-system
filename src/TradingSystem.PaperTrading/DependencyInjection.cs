@@ -7,13 +7,12 @@ using TradingSystem.Application.Execution.Contracts;
 using TradingSystem.Application.Positions.Contracts;
 using TradingSystem.PaperTrading.Executor;
 using TradingSystem.PaperTrading.Position;
-using TradingSystem.PaperTrading.Workers;
 
 namespace TradingSystem.PaperTrading.Configuration;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddPaperTrading(this IServiceCollection services, IConfiguration configuration, bool addFillWorker = true)
+    public static IServiceCollection AddPaperTrading(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<PaperTradingOptions>().Bind(configuration.GetSection(PaperTradingOptions.SectionName)).ValidateOnStart();
         services.AddSingleton<IValidateOptions<PaperTradingOptions>, PaperTradingOptionsValidator>();
@@ -27,9 +26,6 @@ public static class DependencyInjection
 
         services.RemoveAll<IActivePositionProvider>();
         services.AddSingleton<IActivePositionProvider, EnvironmentAwareActivePositionProvider>();
-
-        if (addFillWorker)
-            services.AddHostedService<PaperFillWorker>();
 
         return services;
     }

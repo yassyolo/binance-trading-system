@@ -19,8 +19,7 @@ public sealed class EnvironmentAwareTradeExecutor(
         if (config is null)
             return TradeExecutionResult.Failure($"Runtime config for '{botName}' was not found. Execution is blocked.");
 
-        return IsPaper(config)
-            ? await paperExecutor.OpenAsync(botName, symbol, side, source, ct)
+        return IsPaper(config) ? await paperExecutor.OpenAsync(botName, symbol, side, source, ct)
             : IsLive(config) ? await liveExecutorRegistry.OpenAsync(botName, symbol, side, source, ct)
             : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }
@@ -31,8 +30,7 @@ public sealed class EnvironmentAwareTradeExecutor(
         if (config is null)
             return TradeExecutionResult.Failure($"Runtime config for '{botName}' was not found. Execution is blocked.");
 
-        return IsPaper(config)
-            ? await paperExecutor.CloseAsync(botName, shortId, reason, ct)
+        return IsPaper(config) ? await paperExecutor.CloseAsync(botName, shortId, reason, ct)
             : IsLive(config) ? await liveExecutorRegistry.CloseAsync(botName, shortId, reason, ct)
             : TradeExecutionResult.Failure($"Unsupported execution environment '{config.Environment}' for '{botName}'.");
     }

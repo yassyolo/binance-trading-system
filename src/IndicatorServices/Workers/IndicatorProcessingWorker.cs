@@ -38,7 +38,8 @@ public sealed class IndicatorProcessingWorker(
 				{
 					var normalizedSymbol = symbol.Trim().ToUpperInvariant();
 					var normalizedInterval = interval.Trim().ToLowerInvariant();
-
+					
+					//currently from Binance
 					var candles = await historicalCandleSource.LoadLatestAsync(normalizedSymbol, normalizedInterval, processor.RequiredHistory, ct);
 
 					var closedCandles = candles.Where(x => x.IsClosed).OrderBy(x => x.OpenTimeUtc).ToArray();
@@ -61,9 +62,7 @@ public sealed class IndicatorProcessingWorker(
 		}
 
 		var subscriptions = _processors.SelectMany(p => p.Symbols.SelectMany(s =>
-				p.Intervals.Select(i => (
-					Symbol: s.Trim().ToUpperInvariant(),
-					Interval: i.Trim().ToLowerInvariant()))))
+				p.Intervals.Select(i => (Symbol: s.Trim().ToUpperInvariant(), Interval: i.Trim().ToLowerInvariant()))))
 			.Distinct()
 			.ToArray();
 
@@ -73,7 +72,8 @@ public sealed class IndicatorProcessingWorker(
 		{
 			var channel = RedisChannels.Kline(subscription.Interval, subscription.Symbol);
 
-			await subscriber.SubscribeAsync(RedisChannel.Literal(channel), async (_, value) => await HandleAsync(value.ToString(), ct));
+			await subscriber.SubscribeAsync(RedisChannel.Literal(channel), async (_, value) 
+				=> await HandleAsync(value.ToString(), ct));
 
 			logger.LogInformation("Indicator host subscribed. Channel = {Channel}", channel);
 		}

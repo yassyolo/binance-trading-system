@@ -19,5 +19,6 @@ public sealed class RedisSignalThrottleStore(
 		return redis.GetDatabase().StringSetAsync(key, new DateTimeOffset(at).ToUnixTimeMilliseconds(), interval, When.NotExists);
 	}
 	
-	static string Normalize(string x) => x.Trim().ToUpperInvariant();
+	static string Normalize(string x)
+		=> x.Trim().ToUpperInvariant();
 }

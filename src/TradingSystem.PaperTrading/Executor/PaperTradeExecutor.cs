@@ -18,10 +18,10 @@ using TradingSystem.PaperTrading.Models.Enums;
 namespace TradingSystem.PaperTrading.Executor;
 
 public sealed class PaperTradeExecutor(
-    IPaperTradingStore store,
+    IPaperTradingStore paperPositionStore,
     IMarketPriceProvider markPriceProvider,
     IBotRuntimeConfigurationProvider configProvider,
-    ITradingPipelineRecorder tradingPipelineRecorder,
+    ITradingPipelineRecorder history,
     ITradingEventStore eventStore,
     ITradingSignalContextAccessor signalContext,
     IOptions<PaperTradingOptions> options,
@@ -37,8 +37,8 @@ public sealed class PaperTradeExecutor(
         if (!_options.Enabled)
             return TradeExecutionResult.Failure("Paper trading is disabled.");
 
-        var openPositions = await store.GetOpenAsync(ct);
-        if (openPositions.Count >= _options.MaximumOpenPositions)
+        var positions = await paperPositionStore.GetOpenAsync(ct);
+        if (positions.Count >= _options.MaximumOpenPositions)
             return TradeExecutionResult.Failure("Paper trading maximum open positions limit reached.");
 
         var config = await configProvider.GetAsync(botName, ct);
@@ -87,7 +87,7 @@ public sealed class PaperTradeExecutor(
             Version = 1
         };
 
-        await store.CreateAsync(position, ct);
+        await paperPositionStore.CreateAsync(position, ct);
         
         await TryRecordPositionOpenedAsync(position, ct);
         
@@ -114,7 +114,7 @@ public sealed class PaperTradeExecutor(
 
     public async Task<TradeExecutionResult> CloseAsync(string botName, string shortId, string reason, CancellationToken ct)
     {
-        var position = await store.GetAsync(botName, shortId, ct);
+        var position = await paperPositionStore.GetAsync(botName, shortId, ct);
         
         var validationResult = ValidatePositionForClose(position, shortId);
         if (validationResult is not null)
@@ -132,7 +132,7 @@ public sealed class PaperTradeExecutor(
         if (triggerPrice <= 0)
             return TradeExecutionResult.Failure("Paper p trigger price must be positive.");
 
-        var position = await store.GetAsync(botName, shortId, ct);
+        var position = await paperPositionStore.GetAsync(botName, shortId, ct);
        
         var validationResult = ValidatePositionForClose(position, shortId);
         if (validationResult is not null)
@@ -149,7 +149,7 @@ public sealed class PaperTradeExecutor(
         var realizedPnl = grossPnl - p.EntryFee - exitFee;
         var closedAtUtc = DateTime.UtcNow;
 
-        var closed = await store.TryCloseAsync(
+        var closed = await paperPositionStore.TryCloseAsync(
             p.PositionId,
             p.Version,
             exitPrice,
@@ -229,9 +229,9 @@ public sealed class PaperTradeExecutor(
     {
         try
         {
-            await tradingPipelineRecorder.UpsertPositionAsync(CreateOpenHistoryRecord(p), ct);
+            await history.UpsertPositionAsync(CreateOpenHistoryRecord(p), ct);
 
-            await tradingPipelineRecorder.RecordPositionEventAsync(
+            await history.RecordPositionEventAsync(
                 new PositionEventHistoryRecord(
                     PositionId: ToHistoryPositionId(p.PositionId),
                     BotName: p.BotName,
@@ -258,7 +258,7 @@ public sealed class PaperTradeExecutor(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Paper p was opened, but its tradingPipelineRecorder record could not be persisted. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
+            logger.LogError(ex, "Paper p was opened, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", p.BotName, p.ShortId);
         }
     }
 
@@ -274,7 +274,7 @@ public sealed class PaperTradeExecutor(
     {
         try
         {
-            await tradingPipelineRecorder.UpsertPositionAsync(
+            await history.UpsertPositionAsync(
                 CreateClosedHistoryRecord(
                     position,
                     exitPrice,
@@ -285,7 +285,7 @@ public sealed class PaperTradeExecutor(
                     closedAtUtc),
                 ct);
 
-            await tradingPipelineRecorder.RecordPositionEventAsync(
+            await history.RecordPositionEventAsync(
                 new PositionEventHistoryRecord(
                     PositionId: ToHistoryPositionId(position.PositionId),
                     BotName: position.BotName,
@@ -313,9 +313,9 @@ public sealed class PaperTradeExecutor(
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Paper p was closed, but its tradingPipelineRecorder record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
+            logger.LogError(ex, "Paper position was closed, but its history record could not be persisted. Bot = {Bot}, Position = {Position}", position.BotName,  position.ShortId);
         }
     }
 

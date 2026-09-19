@@ -16,7 +16,6 @@ public static class StrategyPluginLoader
     {
         var section = configuration.GetSection(StrategyPluginOptions.SectionName);
         var options = section.Get<StrategyPluginOptions>() ?? new StrategyPluginOptions();
-
         services.AddOptions<StrategyPluginOptions>().Bind(section).ValidateOnStart();
         services.AddSingleton<IValidateOptions<StrategyPluginOptions>, StrategyPluginOptionsValidator>();
 
@@ -67,9 +66,9 @@ public static class StrategyPluginLoader
         {
             return assembly.GetTypes();
         }
-        catch (ReflectionTypeLoadException exception)
+        catch (ReflectionTypeLoadException reflectionEx)
         {
-            return exception.Types.OfType<Type>();
+            return reflectionEx.Types.OfType<Type>();
         }
     }
 }

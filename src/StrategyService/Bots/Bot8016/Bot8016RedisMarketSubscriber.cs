@@ -129,6 +129,7 @@ public sealed class Bot8016RedisMarketSubscriber(
             await _processingGate.WaitAsync(ct);
             
             lockTaken = true;
+           
             await action();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -147,6 +148,7 @@ public sealed class Bot8016RedisMarketSubscriber(
                 _processingGate.Release();
         }
     }
+   
     private async Task ProcessIndicatorAsync(RedisChannel channel, string json, CancellationToken cancellationToken)
     {
         var indicator = ParseIndicator(json);

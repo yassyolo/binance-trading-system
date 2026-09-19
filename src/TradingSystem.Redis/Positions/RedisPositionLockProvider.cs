@@ -14,7 +14,10 @@ public sealed class RedisPositionLockProvider(
     public async Task<IAsyncDisposable?> TryAcquireAsync(string bot, string id, TimeSpan ttl, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-                
+
+        if (ttl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ttl));
+
         var key = $"trading:position-lock:{bot.Trim().ToUpperInvariant()}:{id}";
         
         var token = Guid.NewGuid().ToString("N");

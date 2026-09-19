@@ -28,13 +28,13 @@ app.MapGet("/health", () =>
     }));
 
 app.MapPost("/api/v1/tradingview/{botName}", async (string botName, TradingViewSignalRequest request, TradingViewSignalPublisher publisher, CancellationToken ct) =>
-    {
-        var result = await publisher.PublishAsync(botName, request, ct);
+{
+    var result = await publisher.PublishAsync(botName, request, ct);
 
-        if (!result.Succeeded)
-            return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
+    if (!result.Succeeded)
+        return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
 
-        return Results.Accepted(value: result.Response);
-    });
+    return Results.Accepted(value: result.Response);
+});
 
 await app.RunAsync();

@@ -41,7 +41,9 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
                       j.started_at_utc StartedAtUtc, j.completed_at_utc CompletedAtUtc, j.deterministic_hash DeterministicHash;
             """;
 		await using var connection = await connections.OpenAsync(ct);
+		
 		var rows = await connection.QueryAsync<JobRow>(new CommandDefinition(sql, new { workerId, take = Math.Clamp(take, 1, 10), staleAfter }, cancellationToken: ct));
+		
 		return rows.Select(Map).ToArray();
 	}
 
@@ -296,34 +298,13 @@ public sealed class PostgresReplayStore(ITradingDbConnectionFactory connections)
             metadata::text as MetadataJson
         from trading_event_store.events
         where global_position > @AfterGlobalPosition
-          and (
-                cast(@FromGlobalPosition as bigint) is null
-                or global_position >= cast(@FromGlobalPosition as bigint)
-              )
-          and (
-                cast(@ToGlobalPosition as bigint) is null
-                or global_position <= cast(@ToGlobalPosition as bigint)
-              )
-          and (
-                cast(@FromUtc as timestamptz) is null
-                or occurred_at_utc >= cast(@FromUtc as timestamptz)
-              )
-          and (
-                cast(@ToUtc as timestamptz) is null
-                or occurred_at_utc <= cast(@ToUtc as timestamptz)
-              )
-          and (
-                cast(@BotName as text) is null
-                or bot_name = cast(@BotName as text)
-              )
-          and (
-                cast(@Symbol as text) is null
-                or symbol = cast(@Symbol as text)
-              )
-          and (
-                cast(@CorrelationId as text) is null
-                or correlation_id = cast(@CorrelationId as text)
-              )
+          and (cast(@FromGlobalPosition as bigint) is null or global_position >= cast(@FromGlobalPosition as bigint))
+          and (cast(@ToGlobalPosition as bigint) is null or global_position <= cast(@ToGlobalPosition as bigint))
+          and (cast(@FromUtc as timestamptz) is null or occurred_at_utc >= cast(@FromUtc as timestamptz))
+          and (cast(@ToUtc as timestamptz) is null or occurred_at_utc <= cast(@ToUtc as timestamptz))
+          and (cast(@BotName as text) is null or bot_name = cast(@BotName as text))
+          and (cast(@Symbol as text) is null or symbol = cast(@Symbol as text))
+          and (cast(@CorrelationId as text) is null or correlation_id = cast(@CorrelationId as text))
         order by global_position asc
         limit @Take;
         """;

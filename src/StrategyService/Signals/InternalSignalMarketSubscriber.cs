@@ -18,7 +18,7 @@ namespace StrategyService.Signals;
 public sealed class InternalSignalMarketSubscriber(
     IConnectionMultiplexer redis,
     IOptions<SignalGenerationOptions> options,
-    ISignalGenerationCoordinator coordinator,
+    ISignalGenerationCoordinator signalGenerationCoordinator,
     ILogger<InternalSignalMarketSubscriber> logger)
     : BackgroundService
 {
@@ -38,8 +38,7 @@ public sealed class InternalSignalMarketSubscriber(
     ];
 
     private readonly ConcurrentDictionary<MarketKey, JoinedState> _states = new();
-    private readonly HashSet<MarketKey> _markets = options.Value.Bots
-        .Where(x => x.Value.Enabled && x.Value.Mode != SignalGenerationMode.TradingViewOnly)
+    private readonly HashSet<MarketKey> _markets = options.Value.Bots.Where(x => x.Value.Enabled && x.Value.Mode != SignalGenerationMode.TradingViewOnly)
         .Select(x => new MarketKey(NormalizeSymbol(x.Value.Symbol), NormalizeInterval(x.Value.Interval)))
         .ToHashSet();
 
@@ -221,7 +220,7 @@ public sealed class InternalSignalMarketSubscriber(
             volume,
             new Dictionary<string, decimal>(state.Indicators, StringComparer.OrdinalIgnoreCase));
 
-        await coordinator.ProcessAsync(snapshot, ct);
+        await signalGenerationCoordinator.ProcessAsync(snapshot, ct);
     }
 
     private static void ReplaceIndicatorFamily(IDictionary<string, decimal> cachedIndicators, IEnumerable<string> incomingKeys)

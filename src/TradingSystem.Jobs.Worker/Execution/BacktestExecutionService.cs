@@ -101,7 +101,10 @@ public sealed class BacktestExecutionService(
                         new Bot8013BacktestOptions
                         {
                             Symbol = request.Symbol,
-                            InitialBalance = request.InitialBalance
+                            InitialBalance = request.InitialBalance,
+                            EntryFeeRate = request.CommissionPercent / 100m,
+                            ExitFeeRate = request.CommissionPercent / 100m,
+                            SlippageBasisPoints = request.SlippagePercent * 100m
                         },
                         parameters)),
                 "1.0.0",
@@ -116,7 +119,10 @@ public sealed class BacktestExecutionService(
                         new Bot8014BacktestOptions
                         {
                             Symbol = request.Symbol,
-                            InitialBalance = request.InitialBalance
+                            InitialBalance = request.InitialBalance,
+                            EntryFeeRate = request.CommissionPercent / 100m,
+                            ExitFeeRate = request.CommissionPercent / 100m,
+                            SlippageBasisPoints = request.SlippagePercent * 100m
                         },
                         parameters)),
                 "1.0.0",
@@ -210,8 +216,7 @@ public sealed class BacktestExecutionService(
         for (var i = 0; i < candles.Count; i++)
         {
             var start = Math.Max(0, i - 199);
-            var average = candles
-                .Skip(start)
+            var average = candles.Skip(start)
                 .Take(i - start + 1)
                 .Average(x => x.Close);
 

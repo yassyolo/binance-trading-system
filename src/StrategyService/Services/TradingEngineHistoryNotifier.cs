@@ -17,7 +17,7 @@ public sealed class TradingEngineHistoryNotifier(
     TelegramTradingEngineNotifier telegramNotifier,
     TradingStrategyRegistry strategyRegistry,
     IPositionStore positionStore,
-    IHistoricalEventSink historicalDatabase,
+    IHistoricalEventSink history,
     TradingMetrics metrics,
     ITradingEnvironmentProvider envProvider,
     IBotRuntimeConfigurationProvider configProvider,
@@ -33,7 +33,7 @@ public sealed class TradingEngineHistoryNotifier(
         metrics.SignalsReceived.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), signal.Source ?? "unknown").Inc();
         metrics.Decisions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), decisionName).Inc();
 
-        await historicalDatabase.WriteAsync(
+        await history.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.StrategyDecision,
@@ -65,7 +65,7 @@ public sealed class TradingEngineHistoryNotifier(
     {
         metrics.Executions.WithLabels(signal.BotName, signal.Symbol, signal.Side.ToString(), result.Succeeded ? "success" : "failure").Inc();
 
-        var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
+        var env = await ResolveEnvironmentAsync(signal.BotName, ct);
         string? strategyVersion = null;
 
         if (result.Succeeded && !string.IsNullOrWhiteSpace(result.ShortId))
@@ -81,12 +81,12 @@ public sealed class TradingEngineHistoryNotifier(
             }
         }
 
-        await historicalDatabase.WriteAsync(
+        await history.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.ExecutionCompleted,
                 DateTime.UtcNow,
-                environmentName,
+                env,
                 signal.SignalId,
                 signal.BotName,
                 strategyVersion,
@@ -114,7 +114,7 @@ public sealed class TradingEngineHistoryNotifier(
        
         var environmentName = await ResolveEnvironmentAsync(signal.BotName, ct);
 
-        await historicalDatabase.WriteAsync(
+        await history.WriteAsync(
             new HistoricalEvent(
                 Guid.NewGuid(),
                 HistoricalEventType.ProcessingFailed,

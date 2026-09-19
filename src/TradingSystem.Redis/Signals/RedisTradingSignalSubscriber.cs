@@ -77,7 +77,7 @@ public sealed class RedisTradingSignalSubscriber(
         logger.LogInformation("Trading signal subscriber stopped. Channel = {Channel}", channel);
     }
 
-    private async Task ProcessSafelyAsync(string raw, CancellationToken cancellationToken)
+    private async Task ProcessSafelyAsync(string raw, CancellationToken ct)
     {
         try
         {
@@ -92,11 +92,11 @@ public sealed class RedisTradingSignalSubscriber(
 
             var signal = TradingSignalMessageMapper.Map(message, clock.UtcNow);
            
-            await HandleWithTransientRetryAsync(signal, cancellationToken);
+            await HandleWithTransientRetryAsync(signal, ct);
 
             logger.LogInformation("Trading signal signalHandler completed. BotName = {BotName}, Symbol = {Symbol}, Side = {Side}", signal.BotName, signal.Symbol, signal.Side);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {}
         catch (JsonException jsonEx)
         {
@@ -122,6 +122,7 @@ public sealed class RedisTradingSignalSubscriber(
             try
             {
                 _ = await signalHandler.HandleAsync(signal, ct);
+               
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

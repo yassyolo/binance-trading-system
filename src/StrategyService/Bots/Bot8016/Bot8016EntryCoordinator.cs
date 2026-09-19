@@ -10,7 +10,7 @@ namespace StrategyService.Bots.Bot8016;
 
 public sealed class Bot8016EntryCoordinator(
     IOptions<Bot8016Options> options,
-    Bot8016EntrySignalEvaluator evaluator,
+    Bot8016EntrySignalEvaluator signalEvaluator,
     Bot8016SignalContextStore signalContexts,
     ITradingSignalHandler handler,
     ILogger<Bot8016EntryCoordinator> logger)
@@ -19,7 +19,7 @@ public sealed class Bot8016EntryCoordinator(
 
     public async Task ProcessAsync(Bot8016Candle candle, Bot8016IndicatorSnapshot indicator, CancellationToken cancellationToken)
     {
-        var entrySignal = evaluator.Evaluate(candle, indicator);
+        var entrySignal = signalEvaluator.Evaluate(candle, indicator);
         if (entrySignal is null)
             return;
 

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using TradingSystem.Dashboard.Contracts;
 using TradingSystem.Dashboard.Contracts.Models.Optimization;
 using TradingSystem.JobOrchestration.Contracts;
 using TradingSystem.JobOrchestration.Models;
@@ -10,7 +9,7 @@ using TradingSystem.Jobs.Worker.Execution;
 namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class OptimizationJobWorker(
-	IDashboardJobQueue queue,
+	IDashboardJobQueue jobQueue,
 	OptimizationExecutionService optimizationExecutor,
 	IOptions<JobWorkerOptions> options,
 	ILogger<OptimizationJobWorker> logger)
@@ -29,7 +28,7 @@ public sealed class OptimizationJobWorker(
 		{
 			try
 			{
-				var jobs = await queue.ClaimAsync("Optimization", workerId, 1, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
+				var jobs = await jobQueue.ClaimAsync("Optimization", workerId, 1, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
 
 				foreach (var job in jobs)
 					await ProcessSafelyAsync(job, settings, ct);
@@ -58,14 +57,14 @@ public sealed class OptimizationJobWorker(
 	{
 		try
 		{
-			await queue.ReportProgressAsync(job.JobId, 5, "Preparing parameter combinations", ct);
+			await jobQueue.ReportProgressAsync(job.JobId, 5, "Preparing parameter combinations", ct);
 
 			var request = JsonSerializer.Deserialize<OptimizationRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
 				?? throw new ArgumentException("Invalid optimization request.");
 
 			var runId = await optimizationExecutor.ExecuteAsync(request, settings.Interval, ct);
 			
-			await queue.CompleteAsync(job.JobId, runId, ct);
+			await jobQueue.CompleteAsync(job.JobId, runId, ct);
 		}
 		catch (OperationCanceledException) when (ct.IsCancellationRequested)
 		{
@@ -81,7 +80,7 @@ public sealed class OptimizationJobWorker(
 
 				var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
-				await queue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
+				await jobQueue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
 			}
 			catch (OperationCanceledException) when (ct.IsCancellationRequested)
 			{

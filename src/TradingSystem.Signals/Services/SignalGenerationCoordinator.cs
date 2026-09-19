@@ -16,7 +16,7 @@ namespace TradingSystem.Signals.Services;
 public sealed class SignalGenerationCoordinator(
     IEnumerable<ITradingSignalGenerator> generators,
     ISignalPublisher publisher,
-    IDistributedSignalThrottleStore throttle,
+    IDistributedSignalThrottleStore signalThrottle,
     ITradingPipelineRecorder history,
     ITradingEnvironmentProvider environment,
     IOptions<SignalGenerationOptions> options,
@@ -65,10 +65,7 @@ public sealed class SignalGenerationCoordinator(
 
             ValidateGeneratedSignal(generator, snapshot, signal);
 
-            signal = signal with
-            {
-                SignalId = BuildDeterministicSignalId(generator, snapshot, signal)
-            };
+            signal = signal with { SignalId = BuildDeterministicSignalId(generator, snapshot, signal) };
 
             if (!_processedSignalIds.TryAdd(signal.SignalId, snapshot.CandleCloseTimeUtc))
                 continue;
@@ -76,7 +73,7 @@ public sealed class SignalGenerationCoordinator(
             try
             {
                 var minimumInterval = TimeSpan.FromSeconds(botOptions.MinimumSecondsBetweenGeneratedSignals);
-                var acquired = await throttle.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Action, signal.GeneratedAtUtc, minimumInterval, ct);
+                var acquired = await signalThrottle.TryAcquireAsync(signal.BotName, signal.Symbol, signal.Action, signal.GeneratedAtUtc, minimumInterval, ct);
                 if (!acquired)
                     continue;
 

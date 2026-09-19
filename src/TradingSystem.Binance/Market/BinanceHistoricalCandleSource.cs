@@ -21,8 +21,7 @@ public sealed class BinanceHistoricalCandleSource(
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var normalizedInterval = interval.Trim().ToLowerInvariant();
         
-        var url = $"fapi/v1/klines?symbol={Uri.EscapeDataString(normalizedSymbol)}" +
-                  $"&interval={Uri.EscapeDataString(normalizedInterval)}&limit={limit}";
+        var url = $"fapi/v1/klines?symbol={Uri.EscapeDataString(normalizedSymbol)}&interval={Uri.EscapeDataString(normalizedInterval)}&limit={limit}";
 
         using var response = await httpClient.GetAsync(url, ct);
         var content = await response.Content.ReadAsStringAsync(ct);

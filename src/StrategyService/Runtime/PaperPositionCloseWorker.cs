@@ -7,7 +7,7 @@ using TradingSystem.PaperTrading.Models;
 namespace StrategyService.Runtime;
 
 public sealed class PaperPositionCloseWorker(
-    IPaperTradingStore store,
+    IPaperTradingStore paperPositionStore,
     IMarketPriceProvider marketPriceProvider,
     PaperTradeExecutor paperTradeExecutor,
     ILogger<PaperPositionCloseWorker> logger)
@@ -52,15 +52,15 @@ public sealed class PaperPositionCloseWorker(
 
     private async Task ProcessOpenPositionsAsync(CancellationToken ct)
     {
-        var openPositions = await store.GetOpenAsync(ct);
+        var openPositions = await paperPositionStore.GetOpenAsync(ct);
         if (openPositions.Count == 0)
             return;
 
-        foreach (var symbolGroup in openPositions.GroupBy(p => p.Symbol, StringComparer.OrdinalIgnoreCase))
+        foreach (var symbol in openPositions.GroupBy(p => p.Symbol, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
 
-            await ProcessSymbolPositionsAsync(symbolGroup.Key, symbolGroup, ct);
+            await ProcessSymbolPositionsAsync(symbol.Key, symbol, ct);
         }
     }
 
@@ -99,13 +99,14 @@ public sealed class PaperPositionCloseWorker(
     {
         if (!HasValidExitLevels(p))
         {
-            logger.LogError("Paper p has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
+            logger.LogError("Paper position has invalid exit levels. Bot = {Bot}, Position = {Position}, Side = {Side}, Entry = {Entry}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}",
                 p.BotName,
                 p.ShortId,
                 p.Side,
                 p.EntryPrice,
                 p.TakeProfitPrice,
                 p.StopLossPrice);
+           
             return;
         }
 
@@ -113,8 +114,7 @@ public sealed class PaperPositionCloseWorker(
         if (closeReason is null)
             return;
 
-        logger.LogInformation("Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, " +
-            "Side = {Side}, MarkPrice = {MarkPrice}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, Reason = {Reason}",
+        logger.LogInformation("Paper exit condition reached. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}, Side = {Side}, MarkPrice = {MarkPrice}, TakeProfit = {TakeProfit}, StopLoss = {StopLoss}, Reason = {Reason}",
             p.BotName,
             p.ShortId,
             p.Symbol,
@@ -163,17 +163,13 @@ public sealed class PaperPositionCloseWorker(
     {
         return position.Side switch
         {
-            PositionSide.Long
-                when position.TakeProfitPrice != default && markPrice >= position.TakeProfitPrice
+            PositionSide.Long when position.TakeProfitPrice != default && markPrice >= position.TakeProfitPrice
                 => "PAPER_TAKE_PROFIT",
-            PositionSide.Long
-                when position.StopLossPrice != default && markPrice <= position.StopLossPrice
+            PositionSide.Long when position.StopLossPrice != default && markPrice <= position.StopLossPrice
                 => "PAPER_STOP_LOSS",
-            PositionSide.Short
-                when position.TakeProfitPrice != default && markPrice <= position.TakeProfitPrice
+            PositionSide.Short when position.TakeProfitPrice != default && markPrice <= position.TakeProfitPrice
                 => "PAPER_TAKE_PROFIT",
-            PositionSide.Short
-                when position.StopLossPrice != default && markPrice >= position.StopLossPrice
+            PositionSide.Short when position.StopLossPrice != default && markPrice >= position.StopLossPrice
                 => "PAPER_STOP_LOSS",
             _ => null
         };

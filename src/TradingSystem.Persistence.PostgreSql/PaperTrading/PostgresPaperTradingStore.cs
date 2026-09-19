@@ -83,8 +83,7 @@ public sealed class PostgresPaperTradingStore(
             p.Side,
             p.Quantity,
             p.EntryPrice,
-            p.OpenedAtUtc))
-            .ToArray();
+            p.OpenedAtUtc)).ToArray();
     }
 
     public async Task<IReadOnlyCollection<PaperTradingPosition>> QueryAsync(string? botName, string? symbol, PaperPositionStatus? status, int skip, int take, CancellationToken ct)

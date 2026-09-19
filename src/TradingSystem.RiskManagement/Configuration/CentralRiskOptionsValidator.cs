@@ -18,13 +18,7 @@ public sealed class CentralRiskOptionsValidator : IValidateOptions<CentralRiskOp
             e.Add("MaximumOpenPositionsPerSymbol must be positive.");
         
         if (options.MaximumEstimatedNotional <= 0)
-            e.Add("MaximumEstimatedNotional must be positive.");
-        
-        if (options.MaximumGrossNotionalPerSymbol < 0)
-            e.Add("MaximumGrossNotionalPerSymbol cannot be negative.");
-        
-        if (options.MaximumAbsoluteNetNotionalPerSymbol < 0)
-            e.Add("MaximumAbsoluteNetNotionalPerSymbol cannot be negative.");
+            e.Add("MaximumEstimatedNotional must be positive.");     
         
         if (options.MaximumDailyLoss < 0)
             e.Add("MaximumDailyLoss cannot be negative.");

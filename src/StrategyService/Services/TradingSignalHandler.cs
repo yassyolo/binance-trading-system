@@ -14,11 +14,11 @@ namespace StrategyService.Services;
 public sealed class TradingSignalHandler(
     TradingEngine engine,
     TradingStrategyRegistry strategyRegistry,
-    ITradingPipelineRecorder history,
+    ITradingPipelineRecorder tradingHstory,
     ITradingEnvironmentProvider environment,
     IBotRuntimeConfigurationProvider configurations,
     ITradingSignalContextAccessor signalContext,
-    TelegramTradingEngineNotifier notifications,
+    TelegramTradingEngineNotifier telegramNotifier,
     ILogger<TradingSignalHandler> logger)
     : ITradingSignalHandler
 {
@@ -27,22 +27,32 @@ public sealed class TradingSignalHandler(
         var strategyVersion = ResolveStrategyVersion(signal.BotName);
         
         await TryRecordSignalAsync(signal, strategyVersion, ct);
+        
         using var contextScope = signalContext.Push(new TradingSignalExecutionContext(signal.SignalId, strategyVersion, signal.Source));
+        
         TradingEngineResult result;
 
         try 
         { 
             result = await engine.ProcessSignalAsync(signal, ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
         {
-            await TryRecordDecisionAsync(signal, strategyVersion, "Failed", exception.Message,
-                new Dictionary<string, object?> { ["exceptionType"] = exception.GetType().FullName }, ct);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await TryRecordDecisionAsync(
+                signal, 
+                strategyVersion, 
+                "Failed", 
+                ex.Message,
+                new Dictionary<string, object?> { ["exceptionType"] = ex.GetType().FullName }, 
+                ct);
            
-            logger.LogError(exception, "Signal handler failed. Id = {Id} Bot = {Bot}", signal.SignalId, signal.BotName);
+            logger.LogError(ex, "Signal handler failed. Id = {Id} Bot = {Bot}", signal.SignalId, signal.BotName);
 
-            if (IsTransientInfrastructureFailure(exception))
+            if (IsTransientInfrastructureFailure(ex))
                 throw;
 
             return false;
@@ -50,7 +60,11 @@ public sealed class TradingSignalHandler(
 
         var finalDecision = ResolveFinalDecision(result);
         
-        await TryRecordDecisionAsync(signal, strategyVersion, finalDecision, result.Reason,
+        await TryRecordDecisionAsync(
+            signal, 
+            strategyVersion, 
+            finalDecision, 
+            result.Reason,
             new Dictionary<string, object?>
             {
                 ["succeeded"] = result.Succeeded,
@@ -68,11 +82,17 @@ public sealed class TradingSignalHandler(
 
     private async Task TryNotifyFinalOutcomeAsync(TradeSignal signal, string finalDecision, string? reason, CancellationToken ct)
     {
-        try { await notifications.FinalOutcomeAsync(signal, finalDecision, reason, ct); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        try 
+        { 
+            await telegramNotifier.FinalOutcomeAsync(signal, finalDecision, reason, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
+        { 
+            throw; 
+        }
+        catch (Exception ex)
         {
-            logger.LogWarning(exception, "Final Telegram outcome notification failed. SignalId = {SignalId}", signal.SignalId);
+            logger.LogWarning(ex, "Final Telegram outcome notification failed. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
@@ -82,7 +102,8 @@ public sealed class TradingSignalHandler(
         {
             var metadata = signal.Metadata.ToDictionary(x => x.Key, x => (object?)x.Value, StringComparer.OrdinalIgnoreCase);
             metadata["receivedAtUtc"] = DateTime.UtcNow;
-            await history.RecordSignalAsync(new SignalHistoryRecord(
+           
+            await tradingHstory.RecordSignalAsync(new SignalHistoryRecord(
                 SignalId: signal.SignalId,
                 BotName: signal.BotName,
                 StrategyVersion: strategyVersion,
@@ -98,19 +119,27 @@ public sealed class TradingSignalHandler(
                 RawPayload: signal.RawPayload,
                 Metadata: metadata), ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
+        { 
+            throw; 
+        }
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Signal history could not be recorded. SignalId = {SignalId}", signal.SignalId);
+            logger.LogError(ex, "Signal tradingHstory could not be recorded. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
-    private async Task TryRecordDecisionAsync(TradeSignal signal, string strategyVersion, string decision, string? reason,
-        IReadOnlyDictionary<string, object?>? metadata, CancellationToken ct)
+    private async Task TryRecordDecisionAsync(
+        TradeSignal signal, 
+        string strategyVersion, 
+        string decision, 
+        string? reason,
+        IReadOnlyDictionary<string, object?>? metadata, 
+        CancellationToken ct)
     {
         try
         {
-            await history.RecordDecisionAsync(new DecisionHistoryRecord(
+            await tradingHstory.RecordDecisionAsync(new DecisionHistoryRecord(
                 SignalId: signal.SignalId,
                 BotName: signal.BotName,
                 StrategyVersion: strategyVersion,
@@ -124,32 +153,35 @@ public sealed class TradingSignalHandler(
                 Parameters: null,
                 Metadata: metadata), ct);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
+        { 
+            throw; 
+        }
+        catch (Exception ex)
         {
-            logger.LogError(exception, "Final signal decision could not be recorded. SignalId = {SignalId}", signal.SignalId);
+            logger.LogError(ex, "Final signal decision could not be recorded. SignalId = {SignalId}", signal.SignalId);
         }
     }
 
     private async Task<string> ResolveEnvironmentAsync(string botName, CancellationToken ct)
     {
-        var configuration = await configurations.GetAsync(botName, ct);
+        var config = await configurations.GetAsync(botName, ct);
 
-        return configuration is not null && !string.IsNullOrWhiteSpace(configuration.Environment)
-            ? configuration.Environment.Trim()
+        return config is not null && !string.IsNullOrWhiteSpace(config.Environment)
+            ? config.Environment.Trim()
             : environment.EnvironmentName;
     }
 
-    private static bool IsTransientInfrastructureFailure(Exception exception)
+    private static bool IsTransientInfrastructureFailure(Exception ex)
     {
-        for (var current = exception; current is not null; current = current.InnerException)
+        for (var current = ex; current is not null; current = current.InnerException)
         {
             if (current is TimeoutException)
                 return true;
 
             var typeName = current.GetType().FullName ?? current.GetType().Name;
-            if (typeName.StartsWith("Npgsql.", StringComparison.Ordinal) ||
-                typeName.StartsWith("StackExchange.Redis.", StringComparison.Ordinal))
+            if (typeName.StartsWith("Npgsql.", StringComparison.Ordinal) 
+                || typeName.StartsWith("StackExchange.Redis.", StringComparison.Ordinal))
                 return true;
 
             if (current.Message.Contains("EventStore remained unavailable", StringComparison.OrdinalIgnoreCase))
@@ -175,10 +207,18 @@ public sealed class TradingSignalHandler(
 
     private static string ResolveFinalDecision(TradingEngineResult result)
     {
-        if (result.Duplicate) return "Duplicate";
-        if (result.OpenedPosition) return "Open";
-        if (IsTimestampRejection(result.Reason)) return "Rejected";
-        if (result.Succeeded) return "Block";
+        if (result.Duplicate) 
+            return "Duplicate";
+       
+        if (result.OpenedPosition) 
+            return "Open";
+       
+        if (IsTimestampRejection(result.Reason))
+            return "Rejected";
+       
+        if (result.Succeeded) 
+            return "Block";
+       
         return "Failed";
     }
 

@@ -39,7 +39,7 @@ builder.Services.AddTradingObservability(builder.Configuration);
 builder.Services.AddTradingApplication(builder.Configuration);
 builder.Services.AddSingleton<ITradingSignalHandler, TradingSignalHandler>();
 builder.Services.AddStrategyPluginSystem(builder.Configuration);
-builder.Services.AddPaperTrading(builder.Configuration, addFillWorker: false);
+builder.Services.AddPaperTrading(builder.Configuration);
 builder.Services.AddTradingRedis(builder.Configuration, subscribeToSignals: true);
 builder.Services.AddBinanceFutures(builder.Configuration);
 builder.Services.AddTradingSignals(builder.Configuration);

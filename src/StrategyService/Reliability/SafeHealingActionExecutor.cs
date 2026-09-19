@@ -27,7 +27,6 @@ public sealed class SafeHealingActionExecutor(
             return false;
 
         var position = await postionStore.GetAsync(finding.BotName, finding.ShortId, ct);
-
         if (position is null)
         {
             logger.LogInformation("Stale local-position healing is already satisfied because the local position is absent. Bot = {Bot}, Position = {Position}, Finding = {FindingId}", finding.BotName, finding.ShortId, finding.Id);
@@ -42,9 +41,9 @@ public sealed class SafeHealingActionExecutor(
 
         var remote = await exchangeStateProvider.GetAsync(position.Symbol, ct);
 
-        var hasRemoteSidePosition = remote.Positions.Any(p => p.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase)
-            && p.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) 
-            && Math.Abs(p.Quantity) > _options.QuantityTolerance);
+        var hasRemoteSidePosition = remote.Positions.Any(remote => remote.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase)
+            && remote.Side.Equals(position.Side.ToString(), StringComparison.OrdinalIgnoreCase) 
+            && Math.Abs(remote.Quantity) > _options.QuantityTolerance);
         if (hasRemoteSidePosition)
         {
             logger.LogWarning("Automatic stale-position healing refused because Binance exposure exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);
@@ -54,7 +53,6 @@ public sealed class SafeHealingActionExecutor(
         var knownClientIds = PositionReconciliationService.EnumerateClientOrderIds(position).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var hasRelatedOpenOrder = remote.Orders.Any(o => !string.IsNullOrWhiteSpace(o.ClientOrderId) && knownClientIds.Contains(o.ClientOrderId));
-
         if (hasRelatedOpenOrder)
         {
             logger.LogWarning("Automatic stale-position healing refused because a related Binance order exists again. Bot = {Bot}, Position = {Position}, Symbol = {Symbol}", position.BotName, position.ShortId, position.Symbol);

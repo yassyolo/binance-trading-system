@@ -6,7 +6,7 @@ using TradingSystem.ReplayEngine.Store;
 namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class ReplayJobWorker(
-	IReplayJobStore jobs,
+	IReplayJobStore replayJobs,
 	ReplayEngine.Engine.ReplayEngine engine,
 	IOptions<JobWorkerOptions> options,
 	ILogger<ReplayJobWorker> logger)
@@ -25,7 +25,7 @@ public sealed class ReplayJobWorker(
 		{
 			try
 			{
-				var claimed = await jobs.ClaimAsync(workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
+				var claimed = await replayJobs.ClaimAsync(workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
 
 				foreach (var job in claimed)
 					await ProcessSafelyAsync(job, ct);
@@ -64,9 +64,9 @@ public sealed class ReplayJobWorker(
 		{
 			try
 			{
-				if (await jobs.IsCancellationRequestedAsync(job.ReplayId, CancellationToken.None))
+				if (await replayJobs.IsCancellationRequestedAsync(job.ReplayId, CancellationToken.None))
 				{
-					await jobs.MarkCancelledAsync(job.ReplayId, CancellationToken.None);
+					await replayJobs.MarkCancelledAsync(job.ReplayId, CancellationToken.None);
 
 					logger.LogInformation("Replay {ReplayId} was cancelled.", job.ReplayId);
 				}
@@ -82,7 +82,7 @@ public sealed class ReplayJobWorker(
 
 			try
 			{
-				await jobs.FailAsync(job.ReplayId, ex.ToString(), CancellationToken.None);
+				await replayJobs.FailAsync(job.ReplayId, ex.ToString(), CancellationToken.None);
 			}
 			catch (Exception persistenceEx)
 			{

@@ -11,7 +11,7 @@ namespace TradingSystem.Reconciliation.Services;
 
 public sealed class PositionReconciliationService(
     IOptions<ReconciliationOptions> options,
-    IPositionStore localPositionStore,
+    IPositionStore positionStore,
     IExchangeStateProvider exchangeStateProvider,
     IHealingActionExecutor healerExecutor,
     IReconciliationFindingStore reconciliationFindingStore,
@@ -92,7 +92,7 @@ public sealed class PositionReconciliationService(
         {
             ct.ThrowIfCancellationRequested();
 
-            var positions = await localPositionStore.GetAllAsync(bot, ct);
+            var positions = await positionStore.GetAllAsync(bot, ct);
 
             result.AddRange(positions.Where(p =>!p.Closed  && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
         }

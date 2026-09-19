@@ -10,29 +10,29 @@ using TradingSystem.Jobs.Worker.Execution;
 namespace TradingSystem.Jobs.Worker.Workers;
 
 public sealed class BacktestingJobWorker(
-    IDashboardJobQueue queue,
+    IDashboardJobQueue jobQueue,
     BacktestExecutionService backtestExecutor,
-    IOptions<JobWorkerOptions> options,
+    IOptions<JobWorkerOptions> jobOptions,
     ILogger<BacktestingJobWorker> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        var settings = options.Value;
-        if (!settings.Enabled)
+        var options = jobOptions.Value;
+        if (!options.Enabled)
             return;
 
         var workerId = $"backtest:{Environment.MachineName}:{Guid.NewGuid():N}";
-        var pollDelay = TimeSpan.FromSeconds(Math.Max(1, settings.PollSeconds));
+        var pollDelay = TimeSpan.FromSeconds(Math.Max(1, options.PollSeconds));
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                var jobs = await queue.ClaimAsync("Backtest", workerId, settings.BatchSize, TimeSpan.FromMinutes(settings.ProcessingTimeoutMinutes), ct);
+                var jobs = await jobQueue.ClaimAsync("Backtest", workerId, options.BatchSize, TimeSpan.FromMinutes(options.ProcessingTimeoutMinutes), ct);
 
                 foreach (var job in jobs)
-                    await ProcessSafelyAsync(job, settings, ct);
+                    await ProcessSafelyAsync(job, options, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -58,14 +58,14 @@ public sealed class BacktestingJobWorker(
     {
         try
         {
-            await queue.ReportProgressAsync(job.JobId, 5, "Loading historical data", ct);
+            await jobQueue.ReportProgressAsync(job.JobId, 5, "Loading historical data", ct);
 
             var request = JsonSerializer.Deserialize<BacktestRequest>(job.RequestJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new ArgumentException("Invalid backtest request.");
 
             var runId = await backtestExecutor.ExecuteAsync(request, settings.Interval, ct);
             
-            await queue.CompleteAsync(job.JobId, runId, ct);
+            await jobQueue.CompleteAsync(job.JobId, runId, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -81,7 +81,7 @@ public sealed class BacktestingJobWorker(
 
                 var retrySeconds = Math.Min(300, Math.Pow(2, Math.Max(1, job.AttemptCount)));
 
-                await queue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
+                await jobQueue.FailAsync(job.JobId, ex.ToString(), maximumAttempts, TimeSpan.FromSeconds(retrySeconds), ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

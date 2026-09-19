@@ -3,11 +3,11 @@ using TradingSystem.Application.Positions.Models;
 
 namespace TradingSystem.Application.Positions;
 
-public sealed class LivePositionProviderRegistry : IActivePositionProvider
+public sealed class ActivePositionProviderRegistry : IActivePositionProvider
 {
     private readonly IReadOnlyDictionary<string, IBotActivePositionProvider> _providers;
 
-    public LivePositionProviderRegistry(IEnumerable<IBotActivePositionProvider> providers)
+    public ActivePositionProviderRegistry(IEnumerable<IBotActivePositionProvider> providers)
     {
         var map = new Dictionary<string, IBotActivePositionProvider>(StringComparer.OrdinalIgnoreCase);
        

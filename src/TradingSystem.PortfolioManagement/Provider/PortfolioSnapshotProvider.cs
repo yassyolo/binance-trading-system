@@ -15,8 +15,8 @@ namespace TradingSystem.PortfolioManagement.Provider;
 public sealed class PortfolioSnapshotProvider(
     IOptions<PortfolioOptions> options,
     IPositionStore positionStore,
-    IPaperPortfolioPositionSource paperPositionSource,
-    IMarketPriceProvider marketPriceProvider,
+    IPaperPortfolioPositionSource paperPositionStore,
+    IMarketPriceProvider markPriceProvider,
     IPortfolioPerformanceSource performanceSource,
     IClock clock,
     ILogger<PortfolioSnapshotProvider> logger) 
@@ -70,7 +70,7 @@ public sealed class PortfolioSnapshotProvider(
         var botNames = _options.Bots.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
         var livePositionsTask = LoadRedisPositionsAsync(botNames, ct);
-        var paperPositionsTask = paperPositionSource.GetOpenAsync(ct);
+        var paperPositionsTask = paperPositionStore.GetOpenAsync(ct);
 
         await Task.WhenAll(livePositionsTask, paperPositionsTask);
 
@@ -168,7 +168,7 @@ public sealed class PortfolioSnapshotProvider(
         if (symbols.Count == 0)
             return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
 
-        var tasks = symbols.ToDictionary(s => s, s => marketPriceProvider.GetMarkPriceAsync(s, ct), StringComparer.OrdinalIgnoreCase);
+        var tasks = symbols.ToDictionary(s => s, s => markPriceProvider.GetMarkPriceAsync(s, ct), StringComparer.OrdinalIgnoreCase);
 
         await Task.WhenAll(tasks.Values);
 

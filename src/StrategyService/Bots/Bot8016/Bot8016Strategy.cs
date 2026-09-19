@@ -27,7 +27,6 @@ public sealed class Bot8016Strategy(IOptions<Bot8016Options> options, ILogger<Bo
 
         var sideLimit = ctx.RuntimeConfiguration?.OrderSideLimit ?? _options.PositionSideLimit;     
         var sameSideCount = ctx.ActivePositions.Count(x => x.Side == side);
-       
         if (sameSideCount >= sideLimit)
             return Task.FromResult(StrategyDecision.Block(side, $"ORDER_SIDE_LIMIT reached ({sameSideCount}/{sideLimit})."));
 

@@ -5,6 +5,6 @@ public sealed class HistoricalDataUnavailableException : Exception
     public HistoricalDataUnavailableException(string message) : base(message)
     {}
 
-    public HistoricalDataUnavailableException(string message, Exception innerException) : base(message, innerException)
+    public HistoricalDataUnavailableException(string message, Exception innerEx) : base(message, innerEx)
     {}
 }

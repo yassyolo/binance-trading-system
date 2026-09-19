@@ -11,7 +11,7 @@ public sealed class StrategyPluginCatalog : IStrategyPluginCatalog
     public StrategyPluginCatalog(IEnumerable<ITradingStrategy> strategies, IEnumerable<IStrategyPluginModule> modules)
     {
         var descriptors = new List<StrategyPluginDescriptor>();
-        descriptors.AddRange(modules.Select(x  =>  x.Descriptor));
+        descriptors.AddRange(modules.Select(x => x.Descriptor));
 
         foreach (var strategy in strategies)
         {
@@ -33,10 +33,7 @@ public sealed class StrategyPluginCatalog : IStrategyPluginCatalog
         }
 
         _plugins = descriptors.GroupBy(x => x.PluginId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                x => x.Key, 
-                x => x.OrderByDescending(d =>  ParseVersion(d.Version)).First(), 
-                StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(x => x.Key,  x => x.OrderByDescending(d =>  ParseVersion(d.Version)).First(), StringComparer.OrdinalIgnoreCase);
     }
 
     public StrategyPluginDescriptor GetRequired(string pluginId)

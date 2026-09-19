@@ -10,7 +10,7 @@ public sealed class RedisTradingOperationLockProvider(
     RedisKeyFactory keys) 
     : ITradingOperationLockProvider
 {
-    private const string ReleaseScript = """if redis.call('get',  KEYS[1]) == ARGV[1] then return redis.call('del',  KEYS[1]) end return 0""";
+    private const string ReleaseScript = """if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0""";
    
     private readonly IDatabase _db = redis.GetDatabase();
     
